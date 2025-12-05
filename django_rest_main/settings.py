@@ -25,7 +25,8 @@ SECRET_KEY = 'django-insecure-b#--p%6fpdr-ub523h198vs!#-2%fvtv+at(_@tzr#kaazchp=
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+
+ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 
 
 # Application definition
@@ -39,10 +40,13 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'restapi',
-    'corsheaders', 
+    'corsheaders',
+    'drf_yasg',
+     
 ]
 
 MIDDLEWARE = [
+    'restapi.middleware.RequestIDMiddleware',   #  ADDED: Request ID middleware (must be first)
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.security.SecurityMiddleware',
@@ -52,6 +56,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    
+
 ]
 
 ROOT_URLCONF = 'django_rest_main.urls'
@@ -131,3 +137,51 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ➕ Minimal Working Example (Enable all CORS)
 CORS_ALLOW_ALL_ORIGINS = True
+
+REST_FRAMEWORK = {
+    'EXCEPTION_HANDLER': 'restapi.exception_handler.custom_exception_handler'
+}
+
+
+import os
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+
+    # ⭐ ADDED: Better formatter for structured logs
+    "formatters": {
+        "detailed": {
+            "format": "[{levelname}] {asctime} {name}:{lineno} — {message}",
+            "style": "{",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+    },
+
+    # ⭐ Updated API log handler
+    "handlers": {
+        "api_file": {
+            "level": "ERROR",
+            "class": "logging.FileHandler",
+            "filename": BASE_DIR / "restapi/log/api.log",
+            "formatter": "detailed",
+        },
+    },
+
+    # ⭐ Ensuring both Django errors & our app errors go to api.log
+    "loggers": {
+        "restapi": {
+            "handlers": ["api_file"],
+            "level": "ERROR",
+            "propagate": True,
+        },
+        "django": {
+            "handlers": ["api_file"],
+            "level": "ERROR",
+            "propagate": True,
+        },
+    },
+}

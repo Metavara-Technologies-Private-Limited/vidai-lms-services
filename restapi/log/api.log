@@ -1,0 +1,16 @@
+
+[ERROR] 2025-12-05 08:06:39 restapi.exception_handler:30 � [ERROR][2025-12-05 02:36:39.345912][ReqID: 98589a670fa8][IP: 127.0.0.1]
+Path: /api/get_clinic/45/
+Error: Clinic not found
+[ERROR] 2025-12-05 10:21:22 restapi.exception_handler:30 � [ERROR][2025-12-05 04:51:22.195007][ReqID: d85c923e57de][IP: 127.0.0.1]
+Path: /api/get_clinic/45/
+Error: Clinic not found
+[ERROR] 2025-12-05 10:32:50 restapi.exception_handler:30 � [ERROR][2025-12-05 05:02:50.046126][ReqID: 05e4e99f9de8][IP: 127.0.0.1]
+Path: /api/clinics/45/
+Error: Clinic not found
+[ERROR] 2025-12-05 10:34:09 restapi.exception_handler:30 � [ERROR][2025-12-05 05:04:09.691873][ReqID: 0954b8879f63][IP: 127.0.0.1]
+Path: /api/get_clinic/45/
+Error: Clinic not found
+[ERROR] 2025-12-05 10:36:28 restapi.exception_handler:30 � [ERROR][2025-12-05 05:06:28.707266][ReqID: 0d7ffa70f6a5][IP: 127.0.0.1]
+Path: /api/departments/45/equipments/
+Error: Department not found

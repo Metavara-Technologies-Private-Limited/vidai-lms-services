@@ -1,8 +1,23 @@
 from django.urls import path
-from .views import ClinicCreateAPIView, ClinicRetrieveUpdateAPIView, GetClinicView
+from .views import (
+    ClinicCreateAPIView,
+    ClinicUpdateAPIView,
+    GetClinicView,
+    DepartmentEquipmentCreateAPIView
+)
 
 urlpatterns = [
+    # Create Clinic
     path('clinics', ClinicCreateAPIView.as_view(), name='clinic-create'),
-    path('clinics/<int:id>/', ClinicRetrieveUpdateAPIView.as_view(), name='clinic-detail'),
-    path('get_clinic/<int:clinic_id>/', GetClinicView.as_view())
+
+    # Update Clinic (PUT)
+    path('clinics/<int:clinic_id>/', ClinicUpdateAPIView.as_view(), name='clinic-update'),
+
+    # Get Clinic by ID (GET)
+    path('get_clinic/<int:clinic_id>/', GetClinicView.as_view(), name='clinic-get'),
+
+    # Create Equipment under Department
+    path(
+        'departments/<int:department_id>/equipments/', 
+        DepartmentEquipmentCreateAPIView.as_view(), name='department-equipment-create'),
 ]
