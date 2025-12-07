@@ -219,5 +219,5 @@ class DepartmentEquipmentUpdateAPIView(APIView):
 
         except Exception as e:
             logger.error("Unhandled Exception during update:\n" + traceback.format_exc())
-            return Response({"error": "Internal Server Error"}, status=500)
+            return Response({"error": " Internal Server Error"}, status=500)
 
