@@ -113,7 +113,8 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
-# Internationalization
+
+
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'
@@ -135,7 +136,7 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# ➕ Minimal Working Example (Enable all CORS)
+#  Minimal Working Example (Enable all CORS)
 CORS_ALLOW_ALL_ORIGINS = True
 
 REST_FRAMEWORK = {
