@@ -8,6 +8,10 @@ from .models import Clinic, Department, Equipments
 from .serializers import ClinicSerializer, ClinicReadSerializer, EquipmentSerializer
 import logging
 
+
+
+
+
 logger = logging.getLogger(__name__)
 
 
