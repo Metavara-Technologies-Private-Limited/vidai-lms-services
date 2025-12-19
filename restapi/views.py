@@ -10,7 +10,8 @@ from .models import Clinic, Department, Equipments
 from .serializers import (
     ClinicSerializer,
     ClinicReadSerializer,
-    EquipmentSerializer
+    EquipmentSerializer,
+    DepartmentSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,7 @@ class ClinicUpdateAPIView(APIView):
             return Response({"error": ve.detail}, status=400)
 
         except Exception:
+            print(traceback.format_exc)
             logger.error("Unhandled Clinic Update Error:\n" + traceback.format_exc())
             return Response({"error": "Internal Server Error"}, status=500)
 
@@ -176,54 +178,43 @@ class DepartmentEquipmentUpdateAPIView(APIView):
         responses={
             200: EquipmentSerializer,
             400: "Validation Error",
-            404: "Department or Equipment not found",
-            500: "Internal Server Error"
+            404: "Equipment not found",
+            500: "Internal Server Error",
         }
     )
     def put(self, request, department_id, equipment_id):
         try:
-            logger.info(
-                f"PUT Equipment | dep_id={department_id}, equipment_id={equipment_id}"
-            )
-
-            # 1 Validate Department
-            department = Department.objects.get(id=department_id)
-
-            # 2 Validate Equipment under Department
-            equipment = Equipments.objects.filter(
+            equipment = Equipments.objects.get(
                 id=equipment_id,
                 dep_id=department_id
-            ).first()
+            )
 
-            if not equipment:
-                logger.warning("Equipment not found under department")
-                raise NotFound("Equipment not found under this department")
-
-            # 3 Validate & Save
-            serializer = EquipmentSerializer(equipment, data=request.data)
+            serializer = EquipmentSerializer(
+                equipment,
+                data=request.data
+            )
             serializer.is_valid(raise_exception=True)
-
-            updated_equipment = serializer.save()
+            updated = serializer.save()
 
             return Response(
-                EquipmentSerializer(updated_equipment).data,
+                EquipmentSerializer(updated).data,
                 status=status.HTTP_200_OK
             )
 
-        except Department.DoesNotExist:
-            logger.warning("Department not found")
-            raise NotFound("Department not found")
+        except Equipments.DoesNotExist:
+            logger.warning("Equipment not found")
+            raise NotFound("Equipment not found")
 
         except ValidationError as ve:
             logger.warning(f"Equipment update validation failed: {ve.detail}")
             return Response({"error": ve.detail}, status=400)
 
-        except NotFound:
-            raise
-
         except Exception:
             logger.error("Unhandled Equipment Update Error:\n" + traceback.format_exc())
-            return Response({"error": "Internal Server Error"}, status=500)
+            return Response(
+                {"error": "Internal Server Error"},
+                status=500
+            )
 
 
 # -------------------------------------------------------------------

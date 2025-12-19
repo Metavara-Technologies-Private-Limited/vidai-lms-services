@@ -86,7 +86,7 @@ WSGI_APPLICATION = 'django_rest_main.wsgi.application'
 DATABASES = {
     'default':{
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'my_database',
+        'NAME': 'staging_db',
         'USER': 'postgres',
         'PASSWORD': 'saimohan',
         'HOST': 'localhost'
