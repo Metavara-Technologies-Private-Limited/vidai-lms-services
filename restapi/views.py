@@ -77,7 +77,7 @@ class ClinicUpdateAPIView(APIView):
             updated = serializer.save()
 
             return Response(
-                ClinicSerializer(updated).data,
+                ClinicReadSerializer(updated).data,
                 status=status.HTTP_200_OK
             )
 
@@ -215,6 +215,7 @@ class DepartmentEquipmentUpdateAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=500
             )
+
 
 
 # -------------------------------------------------------------------

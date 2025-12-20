@@ -166,69 +166,72 @@ class DepartmentSerializer(serializers.ModelSerializer):
 # Clinic
 # =========================
 class ClinicSerializer(serializers.ModelSerializer):
+    # 🔹 Display departments in response
+    department = serializers.SerializerMethodField()
+
     class Meta:
         model = Clinic
-        fields = ["id", "name",]
+        fields = ["id", "name", "department"]
 
+    # 🔹 DISPLAY departments (READ)
+    def get_department(self, obj):
+        from .serializers import DepartmentReadSerializer
+        return DepartmentReadSerializer(
+            obj.department_set.all(),
+            many=True
+        ).data
+
+    # 🔹 UPDATE with FULL REPLACE (PUT)
     @transaction.atomic
     def update(self, instance, validated_data):
-        #  READ FULL REQUEST (DRF DROPS NESTED DATA OTHERWISE)
+        # Read full request body for nested data
         departments_data = self.initial_data.get("department", [])
 
-        # 1. Update Clinic
+        # 🔥 STEP 0: FULL RESET (REPLACE behavior)
+        Department.objects.filter(clinic=instance).delete()
+
+        # 1️⃣ Update clinic fields
         instance.name = validated_data.get("name", instance.name)
         instance.save()
 
-        # 2. Update Department / Equipment / Parameters WITHOUT IDS
+        # 2️⃣ Recreate everything from request
         for d in departments_data:
-            department, _ = Department.objects.get_or_create(
+            department = Department.objects.create(
                 clinic=instance,
                 name=d.get("name"),
-                defaults={"is_active": d.get("is_active", True)},
+                is_active=d.get("is_active", True)
             )
-            department.is_active = d.get("is_active", department.is_active)
-            department.save()
 
             for e in d.get("equipments", []):
-                equipment, _ = Equipments.objects.get_or_create(
+                equipment = Equipments.objects.create(
                     dep=department,
                     equipment_name=e.get("equipment_name"),
-                    defaults={"is_active": e.get("is_active", True)},
+                    is_active=e.get("is_active", True)
                 )
-                equipment.is_active = e.get("is_active", equipment.is_active)
-                equipment.save()
 
-                # Equipment Details (append)
                 for det in e.get("equipment_details", []):
                     EquipmentDetails.objects.create(
                         equipment=equipment,
                         equipment_num=det.get("equipment_num"),
                         make=det.get("make"),
                         model=det.get("model"),
-                        is_active=det.get("is_active", True),
+                        is_active=det.get("is_active", True)
                     )
 
-                # Parameters
                 for p in e.get("parameters", []):
-                    parameter, _ = Parameters.objects.get_or_create(
+                    parameter = Parameters.objects.create(
                         equipment=equipment,
                         parameter_name=p.get("parameter_name"),
-                        defaults={"is_active": p.get("is_active", True)},
+                        is_active=p.get("is_active", True)
                     )
-                    parameter.is_active = p.get(
-                        "is_active", parameter.is_active
-                    )
-                    parameter.save()
 
-                    # Parameter Values (history)
                     for v in p.get("parameter_values", []):
                         ParameterValues.objects.create(
                             parameter=parameter,
-                            content=v.get("content"),
+                            content=v.get("content")
                         )
 
         return instance
-
 # =====================================================
 # READ SERIALIZERS
 # =====================================================
