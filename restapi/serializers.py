@@ -168,11 +168,11 @@ class DepartmentSerializer(serializers.ModelSerializer):
 class ClinicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Clinic
-        fields = ["id", "name"]
+        fields = ["id", "name",]
 
     @transaction.atomic
     def update(self, instance, validated_data):
-        # 🔥 READ FULL REQUEST (DRF DROPS NESTED DATA OTHERWISE)
+        #  READ FULL REQUEST (DRF DROPS NESTED DATA OTHERWISE)
         departments_data = self.initial_data.get("department", [])
 
         # 1. Update Clinic
