@@ -34,12 +34,10 @@ class ParameterValueSerializer(serializers.ModelSerializer):
 class ParameterSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(required=False)
 
-    parameter_values = ParameterValueSerializer(many=True, required=False)
-
     class Meta:
         model = Parameters
-        fields = ["id", "parameter_name", "is_active", "parameter_values"]
-        
+        fields = ["id", "parameter_name", "format", "is_active"]
+
 
 
 
@@ -62,34 +60,20 @@ class EquipmentSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         details = validated_data.pop("equipment_details", [])
         params = validated_data.pop("parameters", [])
+        dep = validated_data.pop("dep")
 
-        dep = validated_data.pop("dep")  #  REQUIRED FIX
-
-        equipment = Equipments.objects.create(
-            dep=dep,
-            **validated_data
-        )
+        equipment = Equipments.objects.create(dep=dep, **validated_data)
 
         for d in details:
-            EquipmentDetails.objects.create(
-                equipment=equipment,
-                **d
-            )
+            EquipmentDetails.objects.create(equipment=equipment, **d)
 
         for p in params:
-            values = p.pop("parameter_values", [])
-
             parameter = Parameters.objects.create(
                 equipment=equipment,
-                parameter_name=p["parameter_name"],
+                parameter_name=p.get("parameter_name"),
+                format=p.get("format"),
                 is_active=p.get("is_active", True)
             )
-
-            for v in values:
-                ParameterValues.objects.create(
-                    parameter=parameter,
-                    content=v["content"]
-                )
 
         return equipment
 
@@ -113,31 +97,40 @@ class EquipmentSerializer(serializers.ModelSerializer):
                 **d
             )
 
+        # 🔹 KRISHNA RULE IMPLEMENTED HERE
         for p in params:
             param_id = p.get("id")
-            values = p.get("parameter_values", [])
 
+            # ❌ No id → skip silently
             if not param_id:
-                raise serializers.ValidationError(
-                    "Parameter id is required for update"
-                )
+                continue
 
-            #  SAFE GET
             try:
                 parameter = Parameters.objects.get(
                     id=param_id,
                     equipment=instance
                 )
             except Parameters.DoesNotExist:
-                raise serializers.ValidationError(
-                    f"Parameter with id {param_id} not found"
-                )
+                continue  # ❌ no error
 
-            #  APPEND HISTORY
+            # ✅ UPDATE PARAMETERS TABLE
+            if "parameter_name" in p:
+                parameter.parameter_name = p.get("parameter_name")
+
+            if "format" in p:
+                parameter.format = p.get("format")
+
+            if "is_active" in p:
+                parameter.is_active = p.get("is_active")
+
+            parameter.save()
+
+            # ✅ UPDATE PARAMETER VALUES ONLY IF PROVIDED
+            values = p.get("parameter_values", [])
             for v in values:
                 ParameterValues.objects.create(
                     parameter=parameter,
-                    content=v["content"]
+                    content=v.get("content")
                 )
 
         return instance
@@ -166,35 +159,74 @@ class DepartmentSerializer(serializers.ModelSerializer):
 # Clinic
 # =========================
 class ClinicSerializer(serializers.ModelSerializer):
-    # 🔹 Display departments in response
     department = serializers.SerializerMethodField()
 
     class Meta:
         model = Clinic
         fields = ["id", "name", "department"]
 
-    # 🔹 DISPLAY departments (READ)
+    # 🔹 DISPLAY departments (GET)
     def get_department(self, obj):
-        from .serializers import DepartmentReadSerializer
         return DepartmentReadSerializer(
             obj.department_set.all(),
             many=True
         ).data
 
-    # 🔹 UPDATE with FULL REPLACE (PUT)
+    # 🔹 CREATE (POST)
     @transaction.atomic
-    def update(self, instance, validated_data):
-        # Read full request body for nested data
+    def create(self, validated_data):
         departments_data = self.initial_data.get("department", [])
 
-        # 🔥 STEP 0: FULL RESET (REPLACE behavior)
+        clinic = Clinic.objects.create(
+            name=validated_data.get("name")
+        )
+
+        for d in departments_data:
+            department = Department.objects.create(
+                clinic=clinic,
+                name=d.get("name"),
+                is_active=d.get("is_active", True)
+            )
+
+            for e in d.get("equipments", []):
+                equipment = Equipments.objects.create(
+                    dep=department,
+                    equipment_name=e.get("equipment_name"),
+                    is_active=e.get("is_active", True)
+                )
+
+                # ✅ ADDED HERE — SAVE EQUIPMENT DETAILS
+                for det in e.get("equipment_details", []):
+                    EquipmentDetails.objects.create(
+                        equipment=equipment,
+                        equipment_num=det.get("equipment_num"),
+                        make=det.get("make"),
+                        model=det.get("model"),
+                        is_active=det.get("is_active", True)
+                    )
+
+                # Parameters
+                for p in e.get("parameters", []):
+                    Parameters.objects.create(
+                        equipment=equipment,
+                        parameter_name=p.get("parameter_name"),
+                        format=p.get("format"),
+                        is_active=p.get("is_active", True)
+                    )
+
+        return clinic
+
+    # 🔹 UPDATE (PUT) — FULL REPLACE
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        departments_data = self.initial_data.get("department", [])
+
+        # FULL REPLACE
         Department.objects.filter(clinic=instance).delete()
 
-        # 1️⃣ Update clinic fields
         instance.name = validated_data.get("name", instance.name)
         instance.save()
 
-        # 2️⃣ Recreate everything from request
         for d in departments_data:
             department = Department.objects.create(
                 clinic=instance,
@@ -209,6 +241,7 @@ class ClinicSerializer(serializers.ModelSerializer):
                     is_active=e.get("is_active", True)
                 )
 
+                # ✅ ADDED HERE — SAVE EQUIPMENT DETAILS
                 for det in e.get("equipment_details", []):
                     EquipmentDetails.objects.create(
                         equipment=equipment,
@@ -218,20 +251,18 @@ class ClinicSerializer(serializers.ModelSerializer):
                         is_active=det.get("is_active", True)
                     )
 
+                # Parameters
                 for p in e.get("parameters", []):
-                    parameter = Parameters.objects.create(
+                    Parameters.objects.create(
                         equipment=equipment,
                         parameter_name=p.get("parameter_name"),
+                        format=p.get("format"),
                         is_active=p.get("is_active", True)
                     )
 
-                    for v in p.get("parameter_values", []):
-                        ParameterValues.objects.create(
-                            parameter=parameter,
-                            content=v.get("content")
-                        )
-
         return instance
+
+
 # =====================================================
 # READ SERIALIZERS
 # =====================================================
@@ -247,11 +278,20 @@ class ParameterValueReadSerializer(serializers.ModelSerializer):
 
 
 class ParameterReadSerializer(serializers.ModelSerializer):
+    format = serializers.JSONField()
+
     parameter_values = ParameterValueReadSerializer(many=True)
+
     class Meta:
         model = Parameters
-        fields = ['id', 'parameter_name', 'is_active', 'parameter_values']
-   
+        fields = [
+            "id",
+            "parameter_name",
+            "format",
+            "is_active",
+            "parameter_values"
+        ]
+
 
 
 class EquipmentReadSerializer(serializers.ModelSerializer):
