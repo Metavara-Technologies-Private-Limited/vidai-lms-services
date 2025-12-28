@@ -62,12 +62,12 @@ class EquipmentDetails(models.Model):
 class Parameters(models.Model):
     equipment = models.ForeignKey(Equipments, on_delete=models.CASCADE)
     parameter_name = models.CharField(max_length=200)
-    format = models.JSONField(null=True, blank=True)   #  ADD THIS
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.parameter_name
+
 
 # =========================
 # Parameter Values (NEW TABLE)

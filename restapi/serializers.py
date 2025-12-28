@@ -5,19 +5,18 @@ from .models import (
     EquipmentDetails, Parameters, ParameterValues
 )
 
-
-# =========================
-# Equipment Details
-# =========================
+# =====================================================
+# Equipment Details Serializer
+# =====================================================
 class EquipmentDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = EquipmentDetails
         fields = ['equipment_num', 'make', 'model', 'is_active']
 
 
-# =========================
-# Parameter Values (NEW)
-# =========================
+# =====================================================
+# Parameter Value Serializer
+# =====================================================
 class ParameterValueSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(required=False)
 
@@ -27,23 +26,30 @@ class ParameterValueSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'is_deleted']
 
 
-
-# =========================
-# Parameters
-# =========================
+# =====================================================
+# Parameter Serializer
+# =====================================================
 class ParameterSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(required=False)
+    parameter_values = ParameterValueSerializer(many=True, required=False)
+
+    # Optional alias field (frontend may send `format`)
+    format = serializers.JSONField(write_only=True, required=False)
 
     class Meta:
         model = Parameters
-        fields = ["id", "parameter_name", "format", "is_active"]
+        fields = [
+            "id",
+            "parameter_name",
+            "is_active",
+            "parameter_values",
+            "format"
+        ]
 
 
-
-
-# =========================
-# Equipments
-# =========================
+# =====================================================
+# Equipment Serializer
+# =====================================================
 class EquipmentSerializer(serializers.ModelSerializer):
     equipment_details = EquipmentDetailSerializer(many=True, required=False)
     parameters = ParameterSerializer(many=True, required=False)
@@ -51,37 +57,71 @@ class EquipmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Equipments
         fields = [
-            "id", "equipment_name", "is_active",
-            "equipment_details", "parameters"
+            'id',
+            'equipment_name',
+            'is_active',
+            'equipment_details',
+            'parameters'
         ]
 
-    # -------- CREATE --------
+    # -------------------------------------------------
+    # CREATE Equipment
+    # -------------------------------------------------
     @transaction.atomic
     def create(self, validated_data):
-        details = validated_data.pop("equipment_details", [])
-        params = validated_data.pop("parameters", [])
-        dep = validated_data.pop("dep")
+        equipment_details_data = validated_data.pop("equipment_details", [])
+        parameters_data = validated_data.pop("parameters", [])
+        department = validated_data.pop("dep")  # injected from view
 
-        equipment = Equipments.objects.create(dep=dep, **validated_data)
+        equipment = Equipments.objects.create(
+            dep=department,
+            **validated_data
+        )
 
-        for d in details:
-            EquipmentDetails.objects.create(equipment=equipment, **d)
+        # ---------- Create Equipment Details ----------
+        for equipment_detail in equipment_details_data:
+            EquipmentDetails.objects.create(
+                equipment=equipment,
+                **equipment_detail
+            )
 
-        for p in params:
+        # ---------- Create Parameters ----------
+        for parameter_data in parameters_data:
+            parameter_values_data = parameter_data.pop("parameter_values", [])
+
+            # VALIDATION:
+            # If both parameter_values and format are missing
+            # DRF will return HTTP 400 to frontend
+            if not parameter_values_data and "format" not in parameter_data:
+                raise serializers.ValidationError({
+                    "parameter_values": "Parameter values cannot be empty"
+                })
+
+            # Support `format` as alias
+            if not parameter_values_data and "format" in parameter_data:
+                parameter_values_data = [{"content": parameter_data.pop("format")}]
+
             parameter = Parameters.objects.create(
                 equipment=equipment,
-                parameter_name=p.get("parameter_name"),
-                format=p.get("format"),
-                is_active=p.get("is_active", True)
+                parameter_name=parameter_data["parameter_name"],
+                is_active=parameter_data.get("is_active", True)
             )
+
+            for parameter_value in parameter_values_data:
+                ParameterValues.objects.create(
+                    parameter=parameter,
+                    content=parameter_value["content"]
+                )
 
         return equipment
 
-    # -------- UPDATE --------
+    # -------------------------------------------------
+    # UPDATE Equipment (APPEND ONLY)
+    # -------------------------------------------------
     @transaction.atomic
     def update(self, instance, validated_data):
-        params = validated_data.pop("parameters", [])
-        details = validated_data.pop("equipment_details", [])
+        equipment_details_data = validated_data.pop("equipment_details", [])
+        parameters_data = validated_data.pop("parameters", [])
 
         instance.equipment_name = validated_data.get(
             "equipment_name", instance.equipment_name
@@ -91,53 +131,56 @@ class EquipmentSerializer(serializers.ModelSerializer):
         )
         instance.save()
 
-        for d in details:
+        # ---------- Append Equipment Details ----------
+        for equipment_detail in equipment_details_data:
             EquipmentDetails.objects.create(
                 equipment=instance,
-                **d
+                **equipment_detail
             )
 
-        # 🔹 KRISHNA RULE IMPLEMENTED HERE
-        for p in params:
-            param_id = p.get("id")
+        # ---------- Append Parameter Values ----------
+        for parameter_data in parameters_data:
+            param_id = parameter_data.get("id")
+            parameter_values_data = parameter_data.get("parameter_values", [])
 
-            # ❌ No id → skip silently
+            # VALIDATION 1:
+            # Parameter ID must be provided
             if not param_id:
-                continue
+                raise serializers.ValidationError({
+                    "parameter_id": "Parameter id is required for update"
+                })
 
+            # VALIDATION 2:
+            # Parameter must belong to this equipment (PARENT VALIDATION)
             try:
                 parameter = Parameters.objects.get(
                     id=param_id,
                     equipment=instance
                 )
             except Parameters.DoesNotExist:
-                continue  # ❌ no error
+                raise serializers.ValidationError({
+                    "parameter_id": f"Parameter with id {param_id} not found for this equipment"
+                })
 
-            # ✅ UPDATE PARAMETERS TABLE
-            if "parameter_name" in p:
-                parameter.parameter_name = p.get("parameter_name")
+            # VALIDATION 3:
+            # Parameter values must not be empty
+            if not parameter_values_data:
+                raise serializers.ValidationError({
+                    "parameter_values": "Parameter values cannot be empty"
+                })
 
-            if "format" in p:
-                parameter.format = p.get("format")
-
-            if "is_active" in p:
-                parameter.is_active = p.get("is_active")
-
-            parameter.save()
-
-            # ✅ UPDATE PARAMETER VALUES ONLY IF PROVIDED
-            values = p.get("parameter_values", [])
-            for v in values:
+            for parameter_value in parameter_values_data:
                 ParameterValues.objects.create(
                     parameter=parameter,
-                    content=v.get("content")
+                    content=parameter_value["content"]
                 )
 
         return instance
 
-# =========================
-# Department
-# =========================
+
+# =====================================================
+# Department Serializer
+# =====================================================
 class DepartmentSerializer(serializers.ModelSerializer):
     equipments = EquipmentSerializer(many=True, required=False)
 
@@ -145,120 +188,77 @@ class DepartmentSerializer(serializers.ModelSerializer):
         model = Department
         fields = ['id', 'name', 'is_active', 'equipments']
 
+    @transaction.atomic
     def create(self, validated_data):
         equipments_data = validated_data.pop('equipments', [])
         department = Department.objects.create(**validated_data)
 
-        for e in equipments_data:
-            EquipmentSerializer().create({**e, 'dep': department})
+        for equipment_data in equipments_data:
+            EquipmentSerializer().create({
+                **equipment_data,
+                'dep': department
+            })
 
         return department
 
 
-# =========================
-# Clinic
-# =========================
+# =====================================================
+# Clinic Serializer
+# =====================================================
 class ClinicSerializer(serializers.ModelSerializer):
-    department = serializers.SerializerMethodField()
+    department = DepartmentSerializer(many=True, required=False)
 
     class Meta:
         model = Clinic
-        fields = ["id", "name", "department"]
+        fields = ['id', 'name', 'department']
 
-    # 🔹 DISPLAY departments (GET)
-    def get_department(self, obj):
-        return DepartmentReadSerializer(
-            obj.department_set.all(),
-            many=True
-        ).data
-
-    # 🔹 CREATE (POST)
+    # ---------------- CREATE Clinic ----------------
     @transaction.atomic
     def create(self, validated_data):
-        departments_data = self.initial_data.get("department", [])
+        departments_data = validated_data.pop('department', [])
+        clinic = Clinic.objects.create(**validated_data)
 
-        clinic = Clinic.objects.create(
-            name=validated_data.get("name")
-        )
+        for department_data in departments_data:
+            equipments_data = department_data.pop('equipments', [])
 
-        for d in departments_data:
             department = Department.objects.create(
                 clinic=clinic,
-                name=d.get("name"),
-                is_active=d.get("is_active", True)
+                name=department_data.get('name'),
+                is_active=department_data.get('is_active', True)
             )
 
-            for e in d.get("equipments", []):
-                equipment = Equipments.objects.create(
-                    dep=department,
-                    equipment_name=e.get("equipment_name"),
-                    is_active=e.get("is_active", True)
-                )
-
-                # ✅ ADDED HERE — SAVE EQUIPMENT DETAILS
-                for det in e.get("equipment_details", []):
-                    EquipmentDetails.objects.create(
-                        equipment=equipment,
-                        equipment_num=det.get("equipment_num"),
-                        make=det.get("make"),
-                        model=det.get("model"),
-                        is_active=det.get("is_active", True)
-                    )
-
-                # Parameters
-                for p in e.get("parameters", []):
-                    Parameters.objects.create(
-                        equipment=equipment,
-                        parameter_name=p.get("parameter_name"),
-                        format=p.get("format"),
-                        is_active=p.get("is_active", True)
-                    )
+            for equipment_data in equipments_data:
+                EquipmentSerializer().create({
+                    **equipment_data,
+                    'dep': department
+                })
 
         return clinic
 
-    # 🔹 UPDATE (PUT) — FULL REPLACE
+    # ---------------- UPDATE Clinic ----------------
     @transaction.atomic
     def update(self, instance, validated_data):
-        departments_data = self.initial_data.get("department", [])
+        departments_data = validated_data.pop('department', [])
 
-        # FULL REPLACE
         Department.objects.filter(clinic=instance).delete()
 
-        instance.name = validated_data.get("name", instance.name)
+        instance.name = validated_data.get('name', instance.name)
         instance.save()
 
-        for d in departments_data:
+        for department_data in departments_data:
+            equipments_data = department_data.pop('equipments', [])
+
             department = Department.objects.create(
                 clinic=instance,
-                name=d.get("name"),
-                is_active=d.get("is_active", True)
+                name=department_data.get('name'),
+                is_active=department_data.get('is_active', True)
             )
 
-            for e in d.get("equipments", []):
-                equipment = Equipments.objects.create(
-                    dep=department,
-                    equipment_name=e.get("equipment_name"),
-                    is_active=e.get("is_active", True)
-                )
-
-                # ✅ ADDED HERE — SAVE EQUIPMENT DETAILS
-                for det in e.get("equipment_details", []):
-                    EquipmentDetails.objects.create(
-                        equipment=equipment,
-                        equipment_num=det.get("equipment_num"),
-                        make=det.get("make"),
-                        model=det.get("model"),
-                        is_active=det.get("is_active", True)
-                    )
-
-                # Parameters
-                for p in e.get("parameters", []):
-                    Parameters.objects.create(
-                        equipment=equipment,
-                        parameter_name=p.get("parameter_name"),
-                        format=p.get("format"),
-                        is_active=p.get("is_active", True)
-                    )
+            for equipment_data in equipments_data:
+                EquipmentSerializer().create({
+                    **equipment_data,
+                    'dep': department
+                })
 
         return instance
 
@@ -278,20 +278,11 @@ class ParameterValueReadSerializer(serializers.ModelSerializer):
 
 
 class ParameterReadSerializer(serializers.ModelSerializer):
-    format = serializers.JSONField()
-
     parameter_values = ParameterValueReadSerializer(many=True)
-
     class Meta:
         model = Parameters
-        fields = [
-            "id",
-            "parameter_name",
-            "format",
-            "is_active",
-            "parameter_values"
-        ]
-
+        fields = ['id', 'parameter_name', 'is_active', 'parameter_values']
+   
 
 
 class EquipmentReadSerializer(serializers.ModelSerializer):

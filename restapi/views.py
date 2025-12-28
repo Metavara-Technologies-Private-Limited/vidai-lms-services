@@ -16,7 +16,6 @@ from .serializers import (
 
 logger = logging.getLogger(__name__)
 
-
 # -------------------------------------------------------------------
 # 1. Create Clinic (POST)
 # -------------------------------------------------------------------
@@ -24,9 +23,9 @@ class ClinicCreateAPIView(APIView):
 
     @swagger_auto_schema(
         operation_description="Create a new clinic",
-        request_body=ClinicSerializer,
+        request_body=ClinicSerializer,   # ✅ WRITE
         responses={
-            201: ClinicSerializer,
+            201: ClinicReadSerializer,        # ✅ READ
             400: "Validation Error",
             500: "Internal Server Error"
         }
@@ -39,7 +38,7 @@ class ClinicCreateAPIView(APIView):
             clinic = serializer.save()
 
             return Response(
-                ClinicSerializer(clinic).data,
+                ClinicReadSerializer(clinic).data,
                 status=status.HTTP_201_CREATED
             )
 
@@ -47,9 +46,14 @@ class ClinicCreateAPIView(APIView):
             logger.warning(f"Clinic validation failed: {ve.detail}")
             return Response({"error": ve.detail}, status=400)
 
-        except Exception as e:
-            logger.error("Unhandled Clinic Create Error:\n" + traceback.format_exc())
-            return Response({"error": "Internal Server Error"}, status=500)
+        except Exception:
+            logger.error(
+                "Unhandled Clinic Create Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=500
+            )
 
 
 # -------------------------------------------------------------------
