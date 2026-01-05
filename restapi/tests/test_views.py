@@ -1,6 +1,7 @@
 from rest_framework.test import APITestCase
 from rest_framework import status
-from restapi.models import Clinic, Department, Equipments
+from restapi.models import Clinic, Department, Equipments, Employee
+from django.contrib.auth import get_user_model
 
 
 class FullAPITestSuite(APITestCase):
@@ -316,3 +317,49 @@ class FullAPITestSuite(APITestCase):
         equipment.refresh_from_db()
 
         self.assertTrue(equipment.is_deleted)
+
+
+class EventAPITest(APITestCase):
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            username="testuser",
+            password="testpass"
+        )
+
+        self.client.login(username="testuser", password="testpass")
+
+        clinic = Clinic.objects.create(name="Test Clinic")
+        department = Department.objects.create(
+            name="Test Dept", clinic=clinic
+        )
+
+        Employee.objects.create(
+            user=self.user,
+            clinic=clinic,
+            dep=department,
+            emp_type="Doctor",
+            emp_name="Test User"
+        )
+
+        self.payload = {
+            "department_id": department.id,
+            "event_name": "Test Event",
+            "description": "Test description",
+            "equipment_ids": [],
+            "schedule": {
+                "type": 1,
+                "from_time": "2025-01-01T09:00:00Z",
+                "to_time": "2025-01-01T10:00:00Z",
+                "one_time_date": "2025-01-01T00:00:00Z"
+            }
+        }
+
+    def test_create_event(self):
+        response = self.client.post(
+            "/api/event",
+            self.payload,
+            format="json"
+        )
+        self.assertEqual(response.status_code, 201)
