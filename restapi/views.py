@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 # -------------------------------------------------------------------
 class ClinicCreateAPIView(APIView):
     
-    permission_classes = [IsAuthenticated]
+    
 
     @swagger_auto_schema(
         operation_description="Create a new clinic",
@@ -80,8 +80,6 @@ class ClinicCreateAPIView(APIView):
 # 2. Update Clinic (PUT)
 # -------------------------------------------------------------------
 class ClinicUpdateAPIView(APIView):
-    
-    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Update an existing clinic",
@@ -95,11 +93,18 @@ class ClinicUpdateAPIView(APIView):
     )
     def put(self, request, clinic_id):
         try:
+            # ✅ fetch existing clinic
             clinic = Clinic.objects.get(id=clinic_id)
 
-            serializer = ClinicSerializer(clinic, data=request.data)
+            # ✅ IMPORTANT: instance + data (PUT = full update)
+            serializer = ClinicSerializer(
+                clinic,
+                data=request.data
+            )
+
             serializer.is_valid(raise_exception=True)
 
+            # ✅ calls serializer.update() (not create)
             updated = serializer.save()
 
             return Response(
@@ -112,25 +117,30 @@ class ClinicUpdateAPIView(APIView):
             raise NotFound("Clinic not found")
 
         except ValidationError as ve:
-            logger.warning(f"Clinic update validation failed: {ve.detail}")
-            return Response({"error": ve.detail}, status=400)
+            logger.warning(
+                f"Clinic update validation failed: {ve.detail}"
+            )
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         except Exception:
-            print(traceback.format_exc)
-            logger.error("Unhandled Clinic Update Error:\n" + traceback.format_exc())
-            return Response({"error": "Internal Server Error"}, status=500)
+            logger.error(
+                "Unhandled Clinic Update Error:\n" +
+                traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # -------------------------------------------------------------------
 # 3. Get Clinic by ID (GET)
 # -------------------------------------------------------------------
 class GetClinicView(APIView):
-    authentication_classes = [
-        JWTAuthentication,          # ✅ REQUIRED
-        SessionAuthentication,
-        BasicAuthentication
-    ]
-    permission_classes = [IsAuthenticated]  # optional, but recommended
+    
 
 
     @swagger_auto_schema(
@@ -162,7 +172,7 @@ class GetClinicView(APIView):
 # -------------------------------------------------------------------
 class DepartmentEquipmentCreateAPIView(APIView):
     
-    permission_classes = [IsAuthenticated]
+    
 
     @swagger_auto_schema(
         operation_description="Create equipment under a specific department",
@@ -206,8 +216,6 @@ class DepartmentEquipmentCreateAPIView(APIView):
 # 5. Update Equipment under Department (PUT)
 # -------------------------------------------------------------------
 class DepartmentEquipmentUpdateAPIView(APIView):
-    
-    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Update an existing equipment under a specific department",
@@ -215,17 +223,40 @@ class DepartmentEquipmentUpdateAPIView(APIView):
         responses={
             200: EquipmentSerializer,
             400: "Validation Error",
-            404: "Equipment not found",
+            404: "Not found",
             500: "Internal Server Error",
         }
     )
     def put(self, request, department_id, equipment_id):
         try:
-            equipment = Equipments.objects.get(
-                id=equipment_id,
-                dep_id=department_id
-            )
+            # 1️⃣ Validate Department
+            try:
+                department = Department.objects.get(id=department_id)
+            except Department.DoesNotExist:
+                return Response(
+                    {"error": "Department not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
+            # 2️⃣ Validate Equipment exists
+            try:
+                equipment = Equipments.objects.get(id=equipment_id)
+            except Equipments.DoesNotExist:
+                return Response(
+                    {"error": "Equipment not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # 3️⃣ Validate Equipment belongs to Department
+            if equipment.dep_id != department.id:
+                return Response(
+                    {
+                        "error": "Equipment does not belong to this department"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 4️⃣ Update Equipment
             serializer = EquipmentSerializer(
                 equipment,
                 data=request.data
@@ -238,19 +269,23 @@ class DepartmentEquipmentUpdateAPIView(APIView):
                 status=status.HTTP_200_OK
             )
 
-        except Equipments.DoesNotExist:
-            logger.warning("Equipment not found")
-            raise NotFound("Equipment not found")
-
         except ValidationError as ve:
-            logger.warning(f"Equipment update validation failed: {ve.detail}")
-            return Response({"error": ve.detail}, status=400)
+            logger.warning(
+                f"Equipment update validation failed: {ve.detail}"
+            )
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         except Exception:
-            logger.error("Unhandled Equipment Update Error:\n" + traceback.format_exc())
+            logger.error(
+                "Unhandled Equipment Update Error:\n" +
+                traceback.format_exc()
+            )
             return Response(
                 {"error": "Internal Server Error"},
-                status=500
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 
@@ -260,7 +295,7 @@ class DepartmentEquipmentUpdateAPIView(APIView):
 # -------------------------------------------------------------------
 class EquipmentInactiveAPIView(APIView):
     
-    permission_classes = [IsAuthenticated]
+    
 
     @swagger_auto_schema(
         operation_description="Mark equipment as inactive",
@@ -297,7 +332,7 @@ class EquipmentInactiveAPIView(APIView):
 # -------------------------------------------------------------------
 class EquipmentSoftDeleteAPIView(APIView):
     
-    permission_classes = [IsAuthenticated]
+   
 
     @swagger_auto_schema(
         operation_description="Soft delete equipment",
@@ -347,8 +382,7 @@ class EquipmentSoftDeleteAPIView(APIView):
 # -------------------------------------------------------------------
 class EventAPIView(APIView):
     
-    permission_classes = [IsAuthenticated]
-
+   
     @swagger_auto_schema(
         operation_summary="Create Event",
         operation_description=(
@@ -404,8 +438,7 @@ class EventAPIView(APIView):
 # -------------------------------------------------------------------
 
 class ClinicEventListAPIView(APIView):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    
 
     def get(self, request, clinic_id):
         #  Validate clinic
@@ -439,7 +472,7 @@ class ClinicEventListAPIView(APIView):
 
 
 class TaskCreateAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+   
 
     @swagger_auto_schema(
         operation_summary="Create Task",
@@ -490,8 +523,7 @@ class TaskCreateAPIView(APIView):
 
 
 class TaskUpdateAPIView(APIView):
-    permission_classes = [IsAuthenticated]
-
+    
     @swagger_auto_schema(
         operation_summary="Update Task",
         operation_description=(
@@ -544,7 +576,7 @@ class TaskUpdateAPIView(APIView):
 # 12. Task Get API View
 # -------------------------------------------------------------------
 class TaskGetAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    
 
     @swagger_auto_schema(
         operation_summary="Get Task",
@@ -574,8 +606,7 @@ class TaskGetAPIView(APIView):
 # -------------------------------------------------------------------
 
 class ClinicEmployeesAPIView(APIView):
-    permission_classes = [IsAuthenticated]
-
+    
     @swagger_auto_schema(
         operation_summary="Get Clinic Employees",
         operation_description="Retrieve all employees under a specific clinic",
@@ -601,7 +632,7 @@ class ClinicEmployeesAPIView(APIView):
 # -------------------------------------------------------------------
 
 class EmployeeCreateAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+   
 
     @swagger_auto_schema(
         operation_summary="Create Employee",
@@ -629,8 +660,7 @@ class EmployeeCreateAPIView(APIView):
 # 15. Task Soft Delete API
 # -------------------------------------------------------------------
 class TaskSoftDeleteAPIView(APIView):
-    permission_classes = [IsAuthenticated]
-
+    
     @swagger_auto_schema(
         operation_summary="Soft Delete Task",
         operation_description=(
@@ -670,8 +700,7 @@ class TaskSoftDeleteAPIView(APIView):
 # 16. SubTask Soft Delete API
 # -------------------------------------------------------------------
 class SubTaskSoftDeleteAPIView(APIView):
-    permission_classes = [IsAuthenticated]
-
+    
     @swagger_auto_schema(
         operation_summary="Soft Delete SubTask",
         responses={
@@ -702,8 +731,7 @@ class SubTaskSoftDeleteAPIView(APIView):
 
 
 class UserCreateAPIView(APIView):
-    permission_classes = [AllowAny]   
-
+    
     def post(self, request):
         serializer = UserCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
