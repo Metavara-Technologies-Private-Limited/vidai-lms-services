@@ -62,13 +62,23 @@ class EquipmentDetails(models.Model):
 # content REMOVED
 # =========================
 class Parameters(models.Model):
-    equipment = models.ForeignKey(Equipments, on_delete=models.CASCADE)
+    equipment = models.ForeignKey(
+        Equipments,
+        on_delete=models.CASCADE,
+        related_name="parameters"
+    )
     parameter_name = models.CharField(max_length=200)
+
+    # ✅ JSONB config (limits, unit, metadata)
+    config = models.JSONField(null=True, blank=True)
+
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+
     def __str__(self):
         return self.parameter_name
+
 
 
 # =========================
@@ -80,10 +90,22 @@ class ParameterValues(models.Model):
         on_delete=models.CASCADE,
         related_name="parameter_values"
     )
-    content = models.JSONField()
+
+    # ✅ TEMPORARILY NULLABLE (REQUIRED)
+    equipment_details = models.ForeignKey(
+        EquipmentDetails,
+        on_delete=models.CASCADE,
+        related_name="parameter_values",
+        null=True,
+        blank=True
+    )
+
+    content = models.TextField()
     is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+
+
 
 
 
