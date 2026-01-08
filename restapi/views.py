@@ -17,7 +17,7 @@ from django.utils import timezone
 from .pagination import StandardResultsPagination
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
-from .models import Clinic, Department, Equipments,Event, Task, Employee, SubTask
+from .models import Clinic, Department, Equipments,Event, Task, Employee, SubTask, ParameterValues, Parameters
 from .serializers import (
     ClinicSerializer,
     ClinicReadSerializer,
@@ -29,6 +29,8 @@ from .serializers import (
     EmployeeReadSerializer,
     UserCreateSerializer,
     EmployeeCreateSerializer,
+    ParameterValueCreateSerializer,
+    ParameterValueReadSerializer,
     
 )
 
@@ -746,5 +748,77 @@ class UserCreateAPIView(APIView):
         )
     
 
+class ParameterValueCreateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Create Parameter Value",
+        operation_description=(
+            "Create a runtime reading for a parameter.\n\n"
+            "This API stores live readings (e.g., Oxygen level, BP, ECG) "
+            "and does NOT modify parameter config."
+        ),
+        request_body=ParameterValueCreateSerializer,
+        responses={
+            201: openapi.Response(
+                description="Parameter value created successfully",
+                schema=ParameterValueCreateSerializer
+            ),
+            400: "Validation Error",
+            500: "Internal Server Error"
+        },
+        tags=["Parameter Values"]
+    )
+    def post(self, request):
+        serializer = ParameterValueCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        value = serializer.save()
+
+        return Response(
+            ParameterValueCreateSerializer(value).data,
+            status=status.HTTP_201_CREATED
+        )
+
+class ParameterValueListAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="List Parameter Values",
+        operation_description=(
+            "Retrieve all runtime readings for a given parameter.\n\n"
+            "Results are ordered by latest first."
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                name="parameter_id",
+                in_=openapi.IN_PATH,
+                type=openapi.TYPE_INTEGER,
+                required=True,
+                description="Parameter ID"
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="List of parameter values",
+                schema=ParameterValueReadSerializer(many=True)
+            ),
+            404: "Parameter not found",
+            500: "Internal Server Error"
+        },
+        tags=["Parameter Values"]
+    )
+    def get(self, request, parameter_id):
+        parameter = get_object_or_404(
+            Parameters,
+            id=parameter_id,
+            is_active=True
+        )
+
+        values = ParameterValues.objects.filter(
+            parameter=parameter,
+            is_deleted=False
+        ).order_by("-created_at")
+
+        serializer = ParameterValueReadSerializer(values, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
