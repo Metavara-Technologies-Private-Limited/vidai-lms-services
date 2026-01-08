@@ -11,7 +11,7 @@ from .views import (
     DepartmentEquipmentCreateAPIView,
     DepartmentEquipmentUpdateAPIView,
     EquipmentInactiveAPIView,TaskGetAPIView, TaskSoftDeleteAPIView, SubTaskSoftDeleteAPIView,
-    EquipmentSoftDeleteAPIView,
+    EquipmentSoftDeleteAPIView,ParameterValueCreateAPIView, ParameterValueListAPIView,
     EventAPIView, UserCreateAPIView,
     ClinicEventListAPIView, ClinicEmployeesAPIView, EmployeeCreateAPIView,
     TaskCreateAPIView, TaskUpdateAPIView
@@ -79,7 +79,18 @@ urlpatterns = [
     # User Create API View (POST)
     path("users/", UserCreateAPIView.as_view(), name="user-create"),
 
-   
+   path(
+    "parameter-values/",
+    ParameterValueCreateAPIView.as_view(),
+    name="parameter-value-create"
+),
+
+path(
+    "parameters/<int:parameter_id>/values/",
+    ParameterValueListAPIView.as_view(),
+    name="parameter-value-list"
+),
+
 
 
 ]

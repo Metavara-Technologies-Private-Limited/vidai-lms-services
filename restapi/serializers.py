@@ -71,12 +71,12 @@ class ParameterValueSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at", "is_deleted"]
 
 
+
 # =====================================================
 # Parameter Serializer
 # =====================================================
 class ParameterSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(required=False)
-    parameter_values = ParameterValueSerializer(many=True, required=False)
 
     class Meta:
         model = Parameters
@@ -85,38 +85,12 @@ class ParameterSerializer(serializers.ModelSerializer):
             "parameter_name",
             "is_active",
             "config",
-            "parameter_values",
         ]
 
-
-# =====================================================
-# Equipment Serializer
-# =====================================================
-class ParameterValueSerializer(serializers.ModelSerializer):
-    id = serializers.IntegerField(required=False)
-
+class ParameterValueCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ParameterValues
-        fields = ['id', 'content', 'created_at', 'is_deleted']
-        read_only_fields = ['created_at', 'is_deleted']
-
-
-# =====================================================
-# Parameter Serializer
-# =====================================================
-class ParameterSerializer(serializers.ModelSerializer):
-    id = serializers.IntegerField(required=False)
-    parameter_values = ParameterValueSerializer(many=True, required=False)
-
-    class Meta:
-        model = Parameters
-        fields = [
-            "id",
-            "parameter_name",
-            "is_active",
-            "config",
-            "parameter_values",
-        ]
+        fields = ["id", "parameter", "equipment_details", "content"]
 
 
 # =====================================================
@@ -127,7 +101,7 @@ class EquipmentSerializer(serializers.ModelSerializer):
     parameters = ParameterSerializer(many=True, required=False)
 
     def __init__(self, *args, **kwargs):
-        # 🔑 replace_mode=True → CLINIC / DEPARTMENT PUT
+        # 🔑 replace_mode=True  → CLINIC / DEPARTMENT PUT
         # 🔑 replace_mode=False → EQUIPMENT PUT
         self.replace_mode = kwargs.pop("replace_mode", False)
         super().__init__(*args, **kwargs)
@@ -151,34 +125,27 @@ class EquipmentSerializer(serializers.ModelSerializer):
         params_data = validated_data.pop("parameters", [])
         department = validated_data.pop("dep")
 
-        equipment = Equipments.objects.create(dep=department, **validated_data)
+        # Create equipment
+        equipment = Equipments.objects.create(
+            dep=department,
+            **validated_data
+        )
 
-        # ---------- Equipment Details ----------
-        details = []
+        # Create equipment details
         for d in details_data:
-            ed = EquipmentDetails.objects.create(equipment=equipment, **d)
-            details.append(ed)
+            EquipmentDetails.objects.create(
+                equipment=equipment,
+                **d
+            )
 
-        # ---------- Parameters ----------
+        # Create parameters (CONFIG ONLY)
         for p in params_data:
-            values = p.get("parameter_values", [])
-            config = p.get("config")
-
-            parameter = Parameters.objects.create(
+            Parameters.objects.create(
                 equipment=equipment,
                 parameter_name=p["parameter_name"],
                 is_active=p.get("is_active", True),
-                config=config,
+                config=p.get("config"),
             )
-
-            content = values[0]["content"] if values else "NO_RECORD"
-
-            for ed in details:
-                ParameterValues.objects.create(
-                    parameter=parameter,
-                    equipment_details=ed,
-                    content=content,
-                )
 
         return equipment
 
@@ -190,6 +157,7 @@ class EquipmentSerializer(serializers.ModelSerializer):
         details_data = validated_data.pop("equipment_details", [])
         params_data = validated_data.pop("parameters", [])
 
+        # Update equipment fields
         instance.equipment_name = validated_data.get(
             "equipment_name", instance.equipment_name
         )
@@ -198,99 +166,82 @@ class EquipmentSerializer(serializers.ModelSerializer):
         )
         instance.save()
 
-        # ---------- Equipment Details ----------
-        details_map = {}
+        # ----------------------------------------------
+        # Equipment Details
+        # ----------------------------------------------
         for d in details_data:
             d_id = d.get("id")
-
             if d_id:
-                ed = EquipmentDetails.objects.get(id=d_id, equipment=instance)
+                ed = EquipmentDetails.objects.get(
+                    id=d_id,
+                    equipment=instance
+                )
                 for k, v in d.items():
                     if k != "id":
                         setattr(ed, k, v)
                 ed.save()
             else:
-                ed = EquipmentDetails.objects.create(equipment=instance, **d)
+                EquipmentDetails.objects.create(
+                    equipment=instance,
+                    **d
+                )
 
-            details_map[ed.id] = ed
-
-        current_ed = (
-            next(iter(details_map.values()))
-            if details_map
-            else instance.equipmentdetails_set.first()
-        )
-
-        # ---------- PARAMETERS ----------
+        # ----------------------------------------------
+        # Parameters
+        # ----------------------------------------------
         for p in params_data:
             p_id = p.get("id")
             if not p_id:
                 raise ValidationError("Parameter ID is required")
 
-            parameter = Parameters.objects.get(id=p_id, equipment=instance)
+            parameter = Parameters.objects.get(
+                id=p_id,
+                equipment=instance
+            )
 
-            # =================================================
-            # CLINIC / DEPARTMENT LEVEL → REPLACE
-            # =================================================
+            # ==========================================
+            # CLINIC / DEPARTMENT PUT → REPLACE
+            # ==========================================
             if self.replace_mode:
                 if "config" in p:
                     parameter.config = p["config"]
 
-                parameter.parameter_name = p.get(
-                    "parameter_name", parameter.parameter_name
-                )
-                parameter.is_active = p.get(
-                    "is_active", parameter.is_active
-                )
-                parameter.save()
-
-                # ❌ remove old readings
-                ParameterValues.objects.filter(parameter=parameter).delete()
-
-                # ✅ insert new readings
-                for pv in p.get("parameter_values", []):
-                    ParameterValues.objects.create(
-                        parameter=parameter,
-                        equipment_details=current_ed,
-                        content=pv["content"],
-                    )
-
-            # =================================================
-            # EQUIPMENT LEVEL → HISTORY MODE
-            # =================================================
+            # ==========================================
+            # EQUIPMENT PUT → ADD (HISTORY)
+            # ==========================================
             else:
                 if "config" in p:
                     existing_config = parameter.config or {}
 
-                    # 🔑 normalize config → history
-                    if "history" not in existing_config:
+                    # Normalize to history once
+                    if isinstance(existing_config, dict) and "history" in existing_config:
+                        history = existing_config["history"]
+                    else:
                         history = []
                         if existing_config:
                             history.append({
                                 **existing_config,
                                 "updated_at": timezone.now().isoformat(),
                             })
-                    else:
-                        history = existing_config["history"]
 
+                    # Append new config
                     history.append({
                         **p["config"],
                         "updated_at": timezone.now().isoformat(),
                     })
 
                     parameter.config = {"history": history}
-                    parameter.save()
 
-                # ✅ always append values
-                for pv in p.get("parameter_values", []):
-                    ParameterValues.objects.create(
-                        parameter=parameter,
-                        equipment_details=current_ed,
-                        content=pv["content"],
-                    )
+            # Common fields
+            parameter.parameter_name = p.get(
+                "parameter_name", parameter.parameter_name
+            )
+            parameter.is_active = p.get(
+                "is_active", parameter.is_active
+            )
+            parameter.save()
 
         return instance
-
-
 
 
 
@@ -316,23 +267,16 @@ class DepartmentSerializer(serializers.ModelSerializer):
 
         for eq in equipments_data:
             eq_id = eq.get("id")
-
             if not eq_id:
                 raise serializers.ValidationError(
                     "Equipment ID is required for clinic-level update"
                 )
 
-            try:
-                equipment = Equipments.objects.get(
-                    id=eq_id,
-                    dep=instance
-                )
-            except Equipments.DoesNotExist:
-                raise serializers.ValidationError(
-                    f"Equipment {eq_id} does not belong to this department"
-                )
+            equipment = Equipments.objects.get(
+                id=eq_id,
+                dep=instance
+            )
 
-            # 🔥 IMPORTANT: replace_mode=True (CLINIC LEVEL)
             serializer = EquipmentSerializer(
                 instance=equipment,
                 data=eq,
@@ -342,6 +286,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
             serializer.save()
 
         return instance
+
 
 
 
@@ -355,9 +300,9 @@ class ClinicSerializer(serializers.ModelSerializer):
         model = Clinic
         fields = ["id", "name", "department"]
 
-    # ==================================================
+    # =========================
     # CREATE
-    # ==================================================
+    # =========================
     @transaction.atomic
     def create(self, validated_data):
         departments_data = validated_data.pop("department", [])
@@ -375,9 +320,9 @@ class ClinicSerializer(serializers.ModelSerializer):
 
         return clinic
 
-    # ==================================================
+    # =========================
     # UPDATE
-    # ==================================================
+    # =========================
     @transaction.atomic
     def update(self, instance, validated_data):
         departments_data = validated_data.pop("department", [])
@@ -387,7 +332,6 @@ class ClinicSerializer(serializers.ModelSerializer):
 
         for dep in departments_data:
             dep_id = dep.get("id")
-
             if dep_id:
                 department = Department.objects.get(
                     id=dep_id,
@@ -410,9 +354,9 @@ class ClinicSerializer(serializers.ModelSerializer):
 
         return instance
 
-    # ==================================================
+    # =========================
     # HELPERS
-    # ==================================================
+    # =========================
     def _create_equipment(self, eq, department):
         equipment = Equipments.objects.create(
             dep=department,
@@ -420,45 +364,23 @@ class ClinicSerializer(serializers.ModelSerializer):
             is_active=eq.get("is_active", True),
         )
 
-        # ---------- Equipment Details ----------
-        equipment_details_objs = []
         for d in eq.get("equipment_details", []):
-            ed = EquipmentDetails.objects.create(
+            EquipmentDetails.objects.create(
                 equipment=equipment,
                 **d
             )
-            equipment_details_objs.append(ed)
 
-        # ---------- Parameters ----------
         for p in eq.get("parameters", []):
-            parameter = Parameters.objects.create(
+            Parameters.objects.create(
                 equipment=equipment,
                 parameter_name=p["parameter_name"],
                 is_active=p.get("is_active", True),
                 config=p.get("config"),
             )
 
-            incoming_values = p.get("parameter_values", [])
-
-            for ed in equipment_details_objs:
-                if incoming_values:
-                    # take first value during CREATE
-                    ParameterValues.objects.create(
-                        parameter=parameter,
-                        equipment_details=ed,
-                        content=incoming_values[0].get("content") or "NO_RECORD",
-                    )
-                else:
-                    ParameterValues.objects.create(
-                        parameter=parameter,
-                        equipment_details=ed,
-                        content="NO_RECORD",
-                    )
-
     def _update_or_create_equipment(self, eq, department):
         eq_id = eq.get("id")
 
-        # ---------- Equipment ----------
         if eq_id:
             equipment = Equipments.objects.get(
                 id=eq_id,
@@ -478,11 +400,8 @@ class ClinicSerializer(serializers.ModelSerializer):
                 is_active=eq.get("is_active", True),
             )
 
-        # ---------- Equipment Details ----------
-        equipment_details_map = {}
         for d in eq.get("equipment_details", []):
             d_id = d.get("id")
-
             if d_id:
                 ed = EquipmentDetails.objects.get(
                     id=d_id,
@@ -493,17 +412,13 @@ class ClinicSerializer(serializers.ModelSerializer):
                         setattr(ed, k, v)
                 ed.save()
             else:
-                ed = EquipmentDetails.objects.create(
+                EquipmentDetails.objects.create(
                     equipment=equipment,
                     **d
                 )
 
-            equipment_details_map[ed.id] = ed
-
-        # ---------- Parameters ----------
         for p in eq.get("parameters", []):
             p_id = p.get("id")
-
             if p_id:
                 parameter = Parameters.objects.get(
                     id=p_id,
@@ -520,26 +435,27 @@ class ClinicSerializer(serializers.ModelSerializer):
                 )
                 parameter.save()
             else:
-                parameter = Parameters.objects.create(
+                Parameters.objects.create(
                     equipment=equipment,
                     parameter_name=p["parameter_name"],
                     is_active=p.get("is_active", True),
                     config=p.get("config"),
                 )
 
-            # ---------- Parameter Values UPDATE ----------
-            incoming_values = p.get("parameter_values", [])
 
-            for pv in incoming_values:
-                pv_id = pv.get("id")
+# =====================================================
+# parameter Value Create Serializer
+# =====================================================
+class ParameterValueCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ParameterValues
+        fields = [
+            "id",
+            "parameter",
+            "equipment_details",
+            "content",
+        ]
 
-                if pv_id:
-                    obj = ParameterValues.objects.get(
-                        id=pv_id,
-                        parameter=parameter
-                    )
-                    obj.content = pv.get("content", obj.content)
-                    obj.save()
 
 
 # =====================================================
@@ -553,31 +469,39 @@ class EquipmentDetailReadSerializer(serializers.ModelSerializer):
 class ParameterValueReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = ParameterValues
-        fields = ['id', 'content', 'created_at', 'is_deleted']
+        fields = ["id", "content", "created_at", "is_deleted"]
 
-
+# =====================================================
+# Parameter READ Serializer (NO parameter_values)
+# =====================================================
 class ParameterReadSerializer(serializers.ModelSerializer):
-    parameter_values = ParameterValueReadSerializer(many=True)
     class Meta:
         model = Parameters
-        fields = ['id', 'parameter_name', 'is_active','config',  'parameter_values']
+        fields = [
+            "id",
+            "parameter_name",
+            "is_active",
+            "config",
+        ]
+
+
    
-
-
 class EquipmentReadSerializer(serializers.ModelSerializer):
     equipment_details = EquipmentDetailReadSerializer(
         many=True,
         source="equipmentdetails_set"
     )
-
-    # ✅ FIXED
-    parameters = ParameterReadSerializer(
-        many=True
-    )
+    parameters = ParameterReadSerializer(many=True)
 
     class Meta:
         model = Equipments
-        fields = ["id", "equipment_name", "equipment_details", "parameters"]
+        fields = [
+            "id",
+            "equipment_name",
+            "equipment_details",
+            "parameters",
+        ]
+
 
 
 class DepartmentReadSerializer(serializers.ModelSerializer):
@@ -594,7 +518,7 @@ class DepartmentReadSerializer(serializers.ModelSerializer):
             .prefetch_related(
                 "equipmentdetails_set",
                 "parameters",
-                "parameters__parameter_values"
+          
             )
         )
         return EquipmentReadSerializer(qs, many=True).data
@@ -606,6 +530,10 @@ class ClinicReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = Clinic
         fields = ['id', 'name', 'department']
+
+
+
+
 
 class EventScheduleReadSerializer(serializers.ModelSerializer):
     class Meta:
