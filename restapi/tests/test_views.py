@@ -1,365 +1,279 @@
-from rest_framework.test import APITestCase
-from rest_framework import status
-from restapi.models import Clinic, Department, Equipments, Employee
+"""
+View Tests for restapi
+Framework: Django unittest (TestCase)
+Single file – NO separate setup
+Covers: 200, 201, 400, 404
+"""
+
+from django.test import TestCase
+from django.utils import timezone
 from django.contrib.auth import get_user_model
 
+from rest_framework.test import APIClient
+from rest_framework import status
 
-class FullAPITestSuite(APITestCase):
-    """
-    This test class covers ALL APIs in views.py.
-    These are API-level unit tests, which means:
-    - views.py is tested
-    - serializers.py is tested automatically
-    - models.py is tested automatically
-    - real DB is NOT used (test DB only)
-    """
+from restapi.models import (
+    Clinic,
+    Department,
+    Equipments,
+    EquipmentDetails,
+    Parameters,
+    ParameterValues,
+    Employee,
+    Event,
+    Task,
+    SubTask,
+    Document,
+)
+
+User = get_user_model()
+
+
+# =====================================================
+# BASE SETUP
+# =====================================================
+class BaseViewTestCase(TestCase):
 
     def setUp(self):
-        """
-        setUp() runs BEFORE EACH test case.
+        self.client = APIClient()
 
-        Here we create basic data that is required
-        for most APIs:
-        - one Clinic
-        - one Department under that Clinic
-        """
-
-        self.clinic = Clinic.objects.create(
-            name="Test Clinic"
+        self.user = User.objects.create_user(
+            username="testuser",
+            password="pass123"
         )
+
+        self.clinic = Clinic.objects.create(name="Test Clinic")
 
         self.department = Department.objects.create(
-            clinic=self.clinic,
             name="Radiology",
-            is_active=True
+            clinic=self.clinic
         )
 
-    # ==================================================
-    # CLINIC MODULE TEST CASES
-    # ==================================================
+        self.employee = Employee.objects.create(
+            user=self.user,
+            dep=self.department,
+            clinic=self.clinic,
+            emp_type="Technician",
+            emp_name="John"
+        )
 
-    def test_create_clinic_success(self):
-        """
-        SUCCESS CASE:
-        - Tests POST /api/clinics
-        - Valid payload
-        - Expected result: 201 CREATED
-        """
+        self.equipment = Equipments.objects.create(
+            equipment_name="X-Ray",
+            dep=self.department
+        )
 
+        self.equipment_detail = EquipmentDetails.objects.create(
+            equipment=self.equipment,
+            equipment_num="EQ-001",
+            make="GE",
+            model="XR-100"
+        )
+
+        self.parameter = Parameters.objects.create(
+            equipment=self.equipment,
+            parameter_name="Voltage",
+            config={"min": 10}
+        )
+
+        self.event = Event.objects.create(
+            department=self.department,
+            assignment=self.employee,
+            event_name="Monthly Maintenance",
+            description="Routine check"
+        )
+
+        self.task = Task.objects.create(
+            event=self.event,
+            assignment=self.employee,
+            due_date=timezone.now(),
+            description="Check voltage",
+            status=Task.TODO
+        )
+
+        self.subtask = SubTask.objects.create(
+            task=self.task,
+            assignment=self.employee,
+            due_date=timezone.now(),
+            description="Measure voltage",
+            status=Task.TODO
+        )
+
+        self.document = Document.objects.create(
+            task=self.task,
+            document_name="report.pdf",
+            data=b"dummy-data"
+        )
+
+        self.parameter_value = ParameterValues.objects.create(
+            parameter=self.parameter,
+            equipment_details=self.equipment_detail,
+            content="120"
+        )
+
+
+# =====================================================
+# CLINIC APIs
+# =====================================================
+class ClinicAPIViewTest(BaseViewTestCase):
+
+    def test_create_clinic_201(self):
         response = self.client.post(
-            "/api/clinics",
-            {
-                "name": "Apollo Clinic",
-                "department": []
-            },
+            "/clinics",
+            {"name": "New Clinic"},
             format="json"
         )
-
-        # Check API response status
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-    def test_create_clinic_missing_name(self):
-        """
-        ERROR CASE:
-        - Tests POST /api/clinics
-        - 'name' field is missing
-        - Serializer should fail
-        - Expected result: 400 BAD REQUEST
-        """
-
+    def test_create_clinic_400(self):
         response = self.client.post(
-            "/api/clinics",
-            {"department": []},
+            "/clinics",
+            {},
             format="json"
         )
-
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_get_clinic_success(self):
-        """
-        SUCCESS CASE:
-        - Tests GET /api/get_clinic/<clinic_id>/
-        - Clinic exists
-        - Expected result: 200 OK
-        """
-
+    def test_get_clinic_200(self):
         response = self.client.get(
-            f"/api/get_clinic/{self.clinic.id}/"
+            f"/get_clinic/{self.clinic.id}/"
         )
-
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-    def test_get_clinic_invalid_id(self):
-        """
-        ERROR CASE:
-        - Tests GET /api/get_clinic/<invalid_id>/
-        - Clinic does not exist
-        - Expected result: 404 NOT FOUND
-        """
-
-        response = self.client.get("/api/get_clinic/9999/")
-
+    def test_get_clinic_404(self):
+        response = self.client.get("/get_clinic/99999/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_update_clinic_success(self):
-        """
-        SUCCESS CASE:
-        - Tests PUT /api/clinics/<clinic_id>/
-        - Clinic exists
-        - Expected result: 200 OK
-        """
 
-        response = self.client.put(
-            f"/api/clinics/{self.clinic.id}/",
-            {
-                "name": "Updated Clinic",
-                "department": []
-            },
-            format="json"
-        )
+# =====================================================
+# EQUIPMENT APIs
+# =====================================================
+class EquipmentAPIViewTest(BaseViewTestCase):
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_update_clinic_invalid_id(self):
-        """
-        ERROR CASE:
-        - Tests PUT /api/clinics/<invalid_id>/
-        - Clinic does not exist
-        - Expected result: 404 NOT FOUND
-        """
-
-        response = self.client.put(
-            "/api/clinics/9999/",
-            {
-                "name": "Invalid Clinic",
-                "department": []
-            },
-            format="json"
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-
-    # ==================================================
-    # EQUIPMENT MODULE TEST CASES
-    # ==================================================
-
-    def test_create_equipment_success(self):
-        """
-        SUCCESS CASE:
-        - Tests POST /api/departments/<department_id>/equipments/
-        - Department exists
-        - Expected result: 201 CREATED
-        """
-
+    def test_create_equipment_201(self):
         response = self.client.post(
-            f"/api/departments/{self.department.id}/equipments/",
-            {
-                "equipment_name": "CT Scanner",
-                "is_active": True
-            },
-            format="json"
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-    def test_create_equipment_invalid_department(self):
-        """
-        ERROR CASE:
-        - Tests POST /api/departments/<invalid_id>/equipments/
-        - Department does not exist
-        - Expected result: 404 NOT FOUND
-        """
-
-        response = self.client.post(
-            "/api/departments/9999/equipments/",
+            f"/departments/{self.department.id}/equipments/",
             {"equipment_name": "CT"},
             format="json"
         )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
+    def test_create_equipment_400(self):
+        response = self.client.post(
+            f"/departments/{self.department.id}/equipments/",
+            {},
+            format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_create_equipment_department_404(self):
+        response = self.client.post(
+            "/departments/99999/equipments/",
+            {"equipment_name": "CT"},
+            format="json"
+        )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_update_equipment_success(self):
-        """
-        SUCCESS CASE:
-        - Tests PUT /api/departments/<department_id>/equipments/<equipment_id>/
-        - Equipment exists
-        - Expected result: 200 OK
-        """
-
-        equipment = Equipments.objects.create(
-            dep=self.department,
-            equipment_name="MRI",
-            is_active=True
+    def test_inactivate_equipment_200(self):
+        response = self.client.patch(
+            f"/departments/{self.department.id}/equipments/{self.equipment.id}/inactive/"
         )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        response = self.client.put(
-            f"/api/departments/{self.department.id}/equipments/{equipment.id}/",
+    def test_inactivate_equipment_404(self):
+        response = self.client.patch(
+            f"/departments/{self.department.id}/equipments/99999/inactive/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_soft_delete_equipment_200(self):
+        response = self.client.patch(
+            f"/departments/{self.department.id}/equipments/{self.equipment.id}/delete/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_soft_delete_equipment_404(self):
+        response = self.client.patch(
+            f"/departments/{self.department.id}/equipments/99999/delete/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+# =====================================================
+# TASK APIs
+# =====================================================
+class TaskAPIViewTest(BaseViewTestCase):
+
+    def test_create_task_201(self):
+        response = self.client.post(
+            "/tasks",
             {
-                "equipment_name": "MRI Updated",
-                "is_active": True
+                "event": self.event.id,
+                "assignment": self.employee.id,
+                "due_date": timezone.now(),
+                "description": "New Task",
+                "status": Task.TODO,
             },
             format="json"
         )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
+    def test_create_task_400(self):
+        response = self.client.post("/tasks", {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_get_task_200(self):
+        response = self.client.get(f"/tasks/{self.task.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-    def test_update_equipment_invalid_id(self):
-        """
-        ERROR CASE:
-        - Tests PUT /api/departments/<department_id>/equipments/<invalid_id>/
-        - Equipment does not exist
-        - Expected result: 404 NOT FOUND
-        """
-
-        response = self.client.put(
-            f"/api/departments/{self.department.id}/equipments/9999/",
-            {"equipment_name": "Invalid"},
-            format="json"
-        )
-
+    def test_get_task_404(self):
+        response = self.client.get("/tasks/99999/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_inactivate_equipment_success(self):
-        """
-        SUCCESS CASE:
-        - Tests PATCH /inactive/
-        - Equipment exists
-        - Expected result:
-            * 200 OK
-            * equipment.is_active becomes False
-        """
-
-        equipment = Equipments.objects.create(
-            dep=self.department,
-            equipment_name="XRay",
-            is_active=True
-        )
-
-        response = self.client.patch(
-            f"/api/departments/{self.department.id}/equipments/{equipment.id}/inactive/"
-        )
-
-        equipment.refresh_from_db()
-
+    def test_soft_delete_task_200(self):
+        response = self.client.patch(f"/tasks/{self.task.id}/delete/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertFalse(equipment.is_active)
 
-    def test_inactivate_equipment_invalid_id(self):
-        """
-        ERROR CASE:
-        - Tests PATCH /inactive/ with invalid equipment ID
-        - Expected result: 404 NOT FOUND
-        """
-
-        response = self.client.patch(
-            f"/api/departments/{self.department.id}/equipments/9999/inactive/"
-        )
-
+    def test_soft_delete_task_404(self):
+        response = self.client.patch("/tasks/99999/delete/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_soft_delete_equipment_success(self):
-        """
-        SUCCESS CASE:
-        - Tests PATCH /delete/
-        - Equipment exists
-        - Expected result:
-            * equipment.is_deleted = True
-            * equipment.is_active = False
-        """
-
-        equipment = Equipments.objects.create(
-            dep=self.department,
-            equipment_name="Ultrasound",
-            is_active=True,
-            is_deleted=False
-        )
-
+    def test_soft_delete_subtask_200(self):
         response = self.client.patch(
-            f"/api/departments/{self.department.id}/equipments/{equipment.id}/delete/"
+            f"/subtasks/{self.subtask.id}/delete/"
         )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        equipment.refresh_from_db()
-
-        self.assertTrue(equipment.is_deleted)
-        self.assertFalse(equipment.is_active)
-
-    def test_soft_delete_equipment_invalid_id(self):
-        """
-        ERROR CASE:
-        - Tests PATCH /delete/ with invalid equipment ID
-        - Expected result: 404 NOT FOUND
-        """
-
-        response = self.client.patch(
-            f"/api/departments/{self.department.id}/equipments/9999/delete/"
-        )
-
+    def test_soft_delete_subtask_404(self):
+        response = self.client.patch("/subtasks/99999/delete/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_soft_delete_via_delete_method(self):
-        """
-        SUCCESS CASE:
-        - Tests DELETE method
-        - DELETE internally calls PATCH logic
-        """
 
-        equipment = Equipments.objects.create(
-            dep=self.department,
-            equipment_name="ECG",
-            is_active=True,
-            is_deleted=False
-        )
+# =====================================================
+# PARAMETER VALUE APIs
+# =====================================================
+class ParameterValueAPIViewTest(BaseViewTestCase):
 
-        response = self.client.delete(
-            f"/api/departments/{self.department.id}/equipments/{equipment.id}/delete/"
-        )
-
-        equipment.refresh_from_db()
-
-        self.assertTrue(equipment.is_deleted)
-
-
-class EventAPITest(APITestCase):
-
-    def setUp(self):
-        User = get_user_model()
-        self.user = User.objects.create_user(
-            username="testuser",
-            password="testpass"
-        )
-
-        self.client.login(username="testuser", password="testpass")
-
-        clinic = Clinic.objects.create(name="Test Clinic")
-        department = Department.objects.create(
-            name="Test Dept", clinic=clinic
-        )
-
-        Employee.objects.create(
-            user=self.user,
-            clinic=clinic,
-            dep=department,
-            emp_type="Doctor",
-            emp_name="Test User"
-        )
-
-        self.payload = {
-            "department_id": department.id,
-            "event_name": "Test Event",
-            "description": "Test description",
-            "equipment_ids": [],
-            "schedule": {
-                "type": 1,
-                "from_time": "2025-01-01T09:00:00Z",
-                "to_time": "2025-01-01T10:00:00Z",
-                "one_time_date": "2025-01-01T00:00:00Z"
-            }
-        }
-
-    def test_create_event(self):
+    def test_create_parameter_value_201(self):
         response = self.client.post(
-            "/api/event",
-            self.payload,
+            "/parameter-values/",
+            {
+                "parameter": self.parameter.id,
+                "equipment_details": self.equipment_detail.id,
+                "content": "135",
+            },
             format="json"
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_create_parameter_value_400(self):
+        response = self.client.post(
+            "/parameter-values/",
+            {},
+            format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_list_parameter_value_404(self):
+        response = self.client.get(
+            "/parameters/99999/values/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

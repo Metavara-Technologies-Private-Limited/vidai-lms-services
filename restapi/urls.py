@@ -1,13 +1,8 @@
 from django.urls import path
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-)
-
 from .views import (
     ClinicCreateAPIView,
     ClinicUpdateAPIView,
-    GetClinicView,
+    GetClinicView,ActivateEquipmentAPIView,
     DepartmentEquipmentCreateAPIView,
     DepartmentEquipmentUpdateAPIView,
     EquipmentInactiveAPIView,TaskGetAPIView, TaskSoftDeleteAPIView, SubTaskSoftDeleteAPIView,
@@ -78,19 +73,15 @@ urlpatterns = [
 
     # User Create API View (POST)
     path("users/", UserCreateAPIView.as_view(), name="user-create"),
+   
+   # Parameter Value Create API View (POST)
+   path("parameter-values/", ParameterValueCreateAPIView.as_view(), name="parameter-value-create"),
 
-   path(
-    "parameter-values/",
-    ParameterValueCreateAPIView.as_view(),
-    name="parameter-value-create"
-),
+    # Parameter Value List API View (GET)
+   path("parameters/<int:parameter_id>/values/", ParameterValueListAPIView.as_view(), name="parameter-value-list"),
 
-path(
-    "parameters/<int:parameter_id>/values/",
-    ParameterValueListAPIView.as_view(),
-    name="parameter-value-list"
-),
-
-
-
+   # Activate Equipment API View (POST)
+   path("equipment/<int:equipment_id>/activate/", ActivateEquipmentAPIView.as_view(), name="activate-equipment"),
+   
+   
 ]

@@ -11,8 +11,18 @@ from .models import (
     Employee,
     Equipments,
     Task,
+    SubTask, 
+    Document,
+)
+
+from rest_framework import serializers
+from .models import (
+    EquipmentDetails,
+    Parameters,
+    ParameterValues,
     SubTask,
     Document,
+    Task,
 )
 
 # =====================================================
@@ -21,55 +31,32 @@ from .models import (
 class EquipmentDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = EquipmentDetails
-        fields = ['equipment_num', 'make', 'model', 'is_active']
-
-
-# =====================================================
-# Parameter Value Serializer
-# =====================================================
-class ParameterValueSerializer(serializers.ModelSerializer):
-    id = serializers.IntegerField(required=False)
-
-    class Meta:
-        model = ParameterValues
-        fields = ['id', 'content', 'created_at', 'is_deleted']
-        read_only_fields = ['created_at', 'is_deleted']
-
-
-# =====================================================
-# Parameter Serializer
-# =====================================================
-class ParameterSerializer(serializers.ModelSerializer):
-    id = serializers.IntegerField(required=False)
-    parameter_values = ParameterValueSerializer(many=True, required=False)
-
-    # ✅ THIS WAS MISSING
-    config = serializers.JSONField(required=False, allow_null=True)
-
-    class Meta:
-        model = Parameters
         fields = [
-            "id",
-            "parameter_name",
+            "equipment_num",
+            "make",
+            "model",
             "is_active",
-            "config",            # ✅ MUST BE HERE
-            "parameter_values",
         ]
 
 
-
 # =====================================================
-# Equipment Serializer
+# Parameter Value Serializer (READ / CREATE)
 # =====================================================
-
 class ParameterValueSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(required=False)
 
     class Meta:
         model = ParameterValues
-        fields = ["id", "content", "created_at", "is_deleted"]
-        read_only_fields = ["created_at", "is_deleted"]
-
+        fields = [
+            "id",
+            "content",
+            "created_at",
+            "is_deleted",
+        ]
+        read_only_fields = [
+            "created_at",
+            "is_deleted",
+        ]
 
 
 # =====================================================
@@ -77,6 +64,7 @@ class ParameterValueSerializer(serializers.ModelSerializer):
 # =====================================================
 class ParameterSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(required=False)
+    config = serializers.JSONField(required=False, allow_null=True)
 
     class Meta:
         model = Parameters
@@ -87,22 +75,87 @@ class ParameterSerializer(serializers.ModelSerializer):
             "config",
         ]
 
+
+# =====================================================
+# SubTask Serializer
+# =====================================================
+class SubTaskSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
+
+    class Meta:
+        model = SubTask
+        fields = [
+            "id",
+            "due_date",
+            "description",
+            "status",
+        ]
+
+
+# =====================================================
+# Document Serializer
+# =====================================================
+class DocumentSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
+
+    class Meta:
+        model = Document
+        fields = [
+            "id",
+            "document_name",
+            "data",
+        ]
+
+
+# =====================================================
+# Task Serializer
+# =====================================================
+class TaskSerializer(serializers.ModelSerializer):
+    sub_tasks = SubTaskSerializer(many=True, required=False)
+    documents = DocumentSerializer(many=True, required=False)
+
+    class Meta:
+        model = Task
+        fields = [
+            "event",
+            "assignment",
+            "due_date",
+            "description",
+            "status",
+            "sub_tasks",
+            "documents",
+        ]
+
+
+# =====================================================
+# Parameter Value Create Serializer
+# =====================================================
 class ParameterValueCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ParameterValues
-        fields = ["id", "parameter", "equipment_details", "content"]
+        fields = [
+            "id",
+            "parameter",
+            "equipment_details",
+            "content",
+        ]
 
 
 # =====================================================
 # Equipment Serializer
 # =====================================================
+# This serializer is responsible for:
+# - Creating equipment
+# - Updating equipment
+# - Handling equipment active/inactive state
+# - Managing nested equipment details and parameters
 class EquipmentSerializer(serializers.ModelSerializer):
     equipment_details = EquipmentDetailSerializer(many=True, required=False)
     parameters = ParameterSerializer(many=True, required=False)
 
     def __init__(self, *args, **kwargs):
-        # 🔑 replace_mode=True  → CLINIC / DEPARTMENT PUT
-        # 🔑 replace_mode=False → EQUIPMENT PUT
+        # replace_mode=True  → clinic / department PUT
+        # replace_mode=False → equipment PUT
         self.replace_mode = kwargs.pop("replace_mode", False)
         super().__init__(*args, **kwargs)
 
@@ -117,131 +170,123 @@ class EquipmentSerializer(serializers.ModelSerializer):
         ]
 
     # ==================================================
-    # CREATE (POST)
+    # CREATE
     # ==================================================
     @transaction.atomic
     def create(self, validated_data):
-        details_data = validated_data.pop("equipment_details", [])
-        params_data = validated_data.pop("parameters", [])
+        equipment_details_data = validated_data.pop("equipment_details", [])
+        parameters_data = validated_data.pop("parameters", [])
         department = validated_data.pop("dep")
 
-        # Create equipment
         equipment = Equipments.objects.create(
             dep=department,
             **validated_data
         )
 
         # Create equipment details
-        for d in details_data:
+        for equipment_detail_data in equipment_details_data:
             EquipmentDetails.objects.create(
                 equipment=equipment,
-                **d
+                **equipment_detail_data
             )
 
-        # Create parameters (CONFIG ONLY)
-        for p in params_data:
+        # Create parameters
+        for parameter_data in parameters_data:
             Parameters.objects.create(
                 equipment=equipment,
-                parameter_name=p["parameter_name"],
-                is_active=p.get("is_active", True),
-                config=p.get("config"),
+                parameter_name=parameter_data["parameter_name"],
+                is_active=parameter_data.get("is_active", True),
+                config=parameter_data.get("config"),
             )
 
         return equipment
 
     # ==================================================
-    # UPDATE (PUT)
+    # UPDATE
     # ==================================================
     @transaction.atomic
     def update(self, instance, validated_data):
-        details_data = validated_data.pop("equipment_details", [])
-        params_data = validated_data.pop("parameters", [])
+        equipment_details_data = validated_data.pop("equipment_details", [])
+        parameters_data = validated_data.pop("parameters", [])
 
-        # Update equipment fields
         instance.equipment_name = validated_data.get(
             "equipment_name", instance.equipment_name
         )
+
+        # Equipment active / inactive handled here
         instance.is_active = validated_data.get(
             "is_active", instance.is_active
         )
         instance.save()
 
         # ----------------------------------------------
-        # Equipment Details
+        # Equipment Details Update
         # ----------------------------------------------
-        for d in details_data:
-            d_id = d.get("id")
-            if d_id:
-                ed = EquipmentDetails.objects.get(
-                    id=d_id,
+        for equipment_detail_data in equipment_details_data:
+            equipment_detail_id = equipment_detail_data.get("id")
+
+            if equipment_detail_id:
+                equipment_detail_instance = EquipmentDetails.objects.get(
+                    id=equipment_detail_id,
                     equipment=instance
                 )
-                for k, v in d.items():
-                    if k != "id":
-                        setattr(ed, k, v)
-                ed.save()
+
+                for field_name, field_value in equipment_detail_data.items():
+                    if field_name != "id":
+                        setattr(
+                            equipment_detail_instance,
+                            field_name,
+                            field_value
+                        )
+
+                equipment_detail_instance.save()
             else:
                 EquipmentDetails.objects.create(
                     equipment=instance,
-                    **d
+                    **equipment_detail_data
                 )
 
         # ----------------------------------------------
-        # Parameters
+        # Parameters Update
         # ----------------------------------------------
-        for p in params_data:
-            p_id = p.get("id")
-            if not p_id:
+        for parameter_data in parameters_data:
+            parameter_id = parameter_data.get("id")
+            if not parameter_id:
                 raise ValidationError("Parameter ID is required")
 
-            parameter = Parameters.objects.get(
-                id=p_id,
+            parameter_instance = Parameters.objects.get(
+                id=parameter_id,
                 equipment=instance
             )
 
-            # ==========================================
-            # CLINIC / DEPARTMENT PUT → REPLACE
-            # ==========================================
-            if self.replace_mode:
-                if "config" in p:
-                    parameter.config = p["config"]
+            # ==========================================================
+            #  CONFIG UPDATE (NO HISTORY)
+            # ==========================================================
+            # Old behavior:
+            # - Config was appended to history
+            #
+            # New requirement:
+            # - Config is directly overwritten
+            # - No history maintained
+            # ==========================================================
+            if "config" in parameter_data:
+                parameter_instance.config = parameter_data["config"]
 
-            # ==========================================
-            # EQUIPMENT PUT → ADD (HISTORY)
-            # ==========================================
-            else:
-                if "config" in p:
-                    existing_config = parameter.config or {}
-
-                    # Normalize to history once
-                    if isinstance(existing_config, dict) and "history" in existing_config:
-                        history = existing_config["history"]
-                    else:
-                        history = []
-                        if existing_config:
-                            history.append({
-                                **existing_config,
-                                "updated_at": timezone.now().isoformat(),
-                            })
-
-                    # Append new config
-                    history.append({
-                        **p["config"],
-                        "updated_at": timezone.now().isoformat(),
-                    })
-
-                    parameter.config = {"history": history}
-
-            # Common fields
-            parameter.parameter_name = p.get(
-                "parameter_name", parameter.parameter_name
+            parameter_instance.parameter_name = parameter_data.get(
+                "parameter_name",
+                parameter_instance.parameter_name
             )
-            parameter.is_active = p.get(
-                "is_active", parameter.is_active
+
+            parameter_instance.is_active = parameter_data.get(
+                "is_active",
+                parameter_instance.is_active
             )
-            parameter.save()
+
+            parameter_instance.save()
 
         return instance
+
+
 
 
 
@@ -255,35 +300,47 @@ class DepartmentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Department
-        fields = ['id', 'name', 'is_active', 'equipments']
+        fields = ["id", "name", "is_active", "equipments"]
 
     @transaction.atomic
     def update(self, instance, validated_data):
+        # equipments_data → list of equipment dictionaries sent from FE
         equipments_data = validated_data.pop("equipments", [])
 
+        # Update department fields
         instance.name = validated_data.get("name", instance.name)
-        instance.is_active = validated_data.get("is_active", instance.is_active)
+        instance.is_active = validated_data.get(
+            "is_active", instance.is_active
+        )
         instance.save()
 
-        for eq in equipments_data:
-            eq_id = eq.get("id")
-            if not eq_id:
+        # ----------------------------------------------
+        # Equipment Updates (Clinic / Department level)
+        # ----------------------------------------------
+        for equipment_data in equipments_data:
+
+            # equipment_id → primary key of equipment
+            equipment_id = equipment_data.get("id")
+            if not equipment_id:
                 raise serializers.ValidationError(
                     "Equipment ID is required for clinic-level update"
                 )
 
-            equipment = Equipments.objects.get(
-                id=eq_id,
+            # Fetch equipment belonging to this department
+            equipment_instance = Equipments.objects.get(
+                id=equipment_id,
                 dep=instance
             )
 
-            serializer = EquipmentSerializer(
-                instance=equipment,
-                data=eq,
+            # Use replace_mode=True to fully overwrite parameter config
+            equipment_serializer = EquipmentSerializer(
+                instance=equipment_instance,
+                data=equipment_data,
                 replace_mode=True
             )
-            serializer.is_valid(raise_exception=True)
-            serializer.save()
+
+            equipment_serializer.is_valid(raise_exception=True)
+            equipment_serializer.save()
 
         return instance
 
@@ -294,6 +351,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
 # Clinic Serializer
 # =====================================================
 class ClinicSerializer(serializers.ModelSerializer):
+    # department → list of departments with nested equipments
     department = serializers.ListField(required=False)
 
     class Meta:
@@ -301,146 +359,208 @@ class ClinicSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "department"]
 
     # =========================
-    # CREATE
+    # CREATE CLINIC
     # =========================
     @transaction.atomic
     def create(self, validated_data):
+        # Extract departments data from request payload
         departments_data = validated_data.pop("department", [])
+
+        # Create clinic record
         clinic = Clinic.objects.create(**validated_data)
 
-        for dep in departments_data:
-            department = Department.objects.create(
+        # Loop through each department sent in payload
+        for department_data in departments_data:
+
+            # Create department under this clinic
+            department_instance = Department.objects.create(
                 clinic=clinic,
-                name=dep["name"],
-                is_active=dep.get("is_active", True),
+                name=department_data["name"],
+                is_active=department_data.get("is_active", True),
             )
 
-            for eq in dep.get("equipments", []):
-                self._create_equipment(eq, department)
+            # Create equipments under the department
+            for equipment_data in department_data.get("equipments", []):
+                self._create_equipment(
+                    equipment_data,
+                    department_instance
+                )
 
         return clinic
 
     # =========================
-    # UPDATE
+    # UPDATE CLINIC
     # =========================
     @transaction.atomic
     def update(self, instance, validated_data):
+        # Extract departments data from request payload
         departments_data = validated_data.pop("department", [])
 
+        # Update clinic name if provided
         instance.name = validated_data.get("name", instance.name)
         instance.save()
 
-        for dep in departments_data:
-            dep_id = dep.get("id")
-            if dep_id:
-                department = Department.objects.get(
-                    id=dep_id,
+        # Loop through departments sent in payload
+        for department_data in departments_data:
+            department_id = department_data.get("id")
+
+            if department_id:
+                # Update existing department
+                department_instance = Department.objects.get(
+                    id=department_id,
                     clinic=instance
                 )
-                department.name = dep.get("name", department.name)
-                department.is_active = dep.get(
-                    "is_active", department.is_active
+                department_instance.name = department_data.get(
+                    "name", department_instance.name
                 )
-                department.save()
+                department_instance.is_active = department_data.get(
+                    "is_active", department_instance.is_active
+                )
+                department_instance.save()
             else:
-                department = Department.objects.create(
+                # Create new department if ID not provided
+                department_instance = Department.objects.create(
                     clinic=instance,
-                    name=dep["name"],
-                    is_active=dep.get("is_active", True),
+                    name=department_data["name"],
+                    is_active=department_data.get("is_active", True),
                 )
 
-            for eq in dep.get("equipments", []):
-                self._update_or_create_equipment(eq, department)
+            # Update or create equipments under this department
+            for equipment_data in department_data.get("equipments", []):
+                self._update_or_create_equipment(
+                    equipment_data,
+                    department_instance
+                )
 
         return instance
 
     # =========================
-    # HELPERS
+    # HELPER: CREATE EQUIPMENT
     # =========================
-    def _create_equipment(self, eq, department):
-        equipment = Equipments.objects.create(
-            dep=department,
-            equipment_name=eq["equipment_name"],
-            is_active=eq.get("is_active", True),
+    def _create_equipment(self, equipment_data, department_instance):
+        # Create equipment under given department
+        equipment_instance = Equipments.objects.create(
+            dep=department_instance,
+            equipment_name=equipment_data["equipment_name"],
+            is_active=equipment_data.get("is_active", True),
         )
 
-        for d in eq.get("equipment_details", []):
+        # Create equipment details (like model, make, number)
+        for equipment_detail_data in equipment_data.get(
+            "equipment_details", []
+        ):
             EquipmentDetails.objects.create(
-                equipment=equipment,
-                **d
+                equipment=equipment_instance,
+                **equipment_detail_data
             )
 
-        for p in eq.get("parameters", []):
+        # Create parameters for the equipment
+        for parameter_data in equipment_data.get("parameters", []):
             Parameters.objects.create(
-                equipment=equipment,
-                parameter_name=p["parameter_name"],
-                is_active=p.get("is_active", True),
-                config=p.get("config"),
+                equipment=equipment_instance,
+                parameter_name=parameter_data["parameter_name"],
+                is_active=parameter_data.get("is_active", True),
+                config=parameter_data.get("config"),
             )
 
-    def _update_or_create_equipment(self, eq, department):
-        eq_id = eq.get("id")
+    # =========================
+    # HELPER: UPDATE OR CREATE EQUIPMENT
+    # =========================
+    def _update_or_create_equipment(
+        self,
+        equipment_data,
+        department_instance
+    ):
+        equipment_id = equipment_data.get("id")
 
-        if eq_id:
-            equipment = Equipments.objects.get(
-                id=eq_id,
-                dep=department
+        if equipment_id:
+            # Update existing equipment
+            equipment_instance = Equipments.objects.get(
+                id=equipment_id,
+                dep=department_instance
             )
-            equipment.equipment_name = eq.get(
-                "equipment_name", equipment.equipment_name
+            equipment_instance.equipment_name = equipment_data.get(
+                "equipment_name",
+                equipment_instance.equipment_name
             )
-            equipment.is_active = eq.get(
-                "is_active", equipment.is_active
+            equipment_instance.is_active = equipment_data.get(
+                "is_active",
+                equipment_instance.is_active
             )
-            equipment.save()
+            equipment_instance.save()
         else:
-            equipment = Equipments.objects.create(
-                dep=department,
-                equipment_name=eq["equipment_name"],
-                is_active=eq.get("is_active", True),
+            # Create new equipment if ID not provided
+            equipment_instance = Equipments.objects.create(
+                dep=department_instance,
+                equipment_name=equipment_data["equipment_name"],
+                is_active=equipment_data.get("is_active", True),
             )
 
-        for d in eq.get("equipment_details", []):
-            d_id = d.get("id")
-            if d_id:
-                ed = EquipmentDetails.objects.get(
-                    id=d_id,
-                    equipment=equipment
-                )
-                for k, v in d.items():
-                    if k != "id":
-                        setattr(ed, k, v)
-                ed.save()
-            else:
-                EquipmentDetails.objects.create(
-                    equipment=equipment,
-                    **d
+        # -------------------------
+        # Equipment Details Update
+        # -------------------------
+        for equipment_detail_data in equipment_data.get(
+            "equipment_details", []
+        ):
+            equipment_detail_id = equipment_detail_data.get("id")
+
+            if equipment_detail_id:
+                # Update existing equipment detail
+                equipment_detail_instance = EquipmentDetails.objects.get(
+                    id=equipment_detail_id,
+                    equipment=equipment_instance
                 )
 
-        for p in eq.get("parameters", []):
-            p_id = p.get("id")
-            if p_id:
-                parameter = Parameters.objects.get(
-                    id=p_id,
-                    equipment=equipment
-                )
-                parameter.parameter_name = p.get(
-                    "parameter_name", parameter.parameter_name
-                )
-                parameter.is_active = p.get(
-                    "is_active", parameter.is_active
-                )
-                parameter.config = p.get(
-                    "config", parameter.config
-                )
-                parameter.save()
+                for field_name, field_value in equipment_detail_data.items():
+                    if field_name != "id":
+                        setattr(
+                            equipment_detail_instance,
+                            field_name,
+                            field_value
+                        )
+
+                equipment_detail_instance.save()
             else:
-                Parameters.objects.create(
-                    equipment=equipment,
-                    parameter_name=p["parameter_name"],
-                    is_active=p.get("is_active", True),
-                    config=p.get("config"),
+                # Create new equipment detail
+                EquipmentDetails.objects.create(
+                    equipment=equipment_instance,
+                    **equipment_detail_data
                 )
+
+        # -------------------------
+        # Parameters Update
+        # -------------------------
+        for parameter_data in equipment_data.get("parameters", []):
+            parameter_id = parameter_data.get("id")
+
+            if parameter_id:
+                # Update existing parameter
+                parameter_instance = Parameters.objects.get(
+                    id=parameter_id,
+                    equipment=equipment_instance
+                )
+                parameter_instance.parameter_name = parameter_data.get(
+                    "parameter_name",
+                    parameter_instance.parameter_name
+                )
+                parameter_instance.is_active = parameter_data.get(
+                    "is_active",
+                    parameter_instance.is_active
+                )
+                parameter_instance.config = parameter_data.get(
+                    "config",
+                    parameter_instance.config
+                )
+                parameter_instance.save()
+            else:
+                # Create new parameter
+                Parameters.objects.create(
+                    equipment=equipment_instance,
+                    parameter_name=parameter_data["parameter_name"],
+                    is_active=parameter_data.get("is_active", True),
+                    config=parameter_data.get("config"),
+                )
+
 
 
 # =====================================================
@@ -498,6 +618,8 @@ class EquipmentReadSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "equipment_name",
+            "is_active",
+            "created_at", 
             "equipment_details",
             "parameters",
         ]
@@ -616,10 +738,17 @@ class EmployeeReadSerializer(serializers.ModelSerializer):
 # Event READ Serializer
 # =========================
 class EventReadSerializer(serializers.ModelSerializer):
-    schedule = EventScheduleReadSerializer(source="eventschedule", read_only=True)
+    schedule = serializers.SerializerMethodField()
     equipments = serializers.SerializerMethodField()
-    assignment = serializers.CharField(source="assignment.emp_name", read_only=True)
-    department = serializers.CharField(source="department.name", read_only=True)
+    parameters = serializers.SerializerMethodField()
+    assignment = serializers.CharField(
+        source="assignment.emp_name",
+        read_only=True
+    )
+    department = serializers.CharField(
+        source="department.name",
+        read_only=True
+    )
 
     class Meta:
         model = Event
@@ -629,37 +758,44 @@ class EventReadSerializer(serializers.ModelSerializer):
             "description",
             "department",
             "assignment",
-            "schedule",
+            "schedule",      # ✅ now works
             "equipments",
-            "created_at"
+            "parameters",
+            "created_at",
         ]
 
-    def get_equipments(self, obj):
-        return list(
-            obj.eventequipment_set
-               .select_related("equipment")
-               .values("equipment__id", "equipment__equipment_name")
+    # ✅ FIXED SCHEDULE READ
+    def get_schedule(self, event_instance):
+        schedule_instance = (
+            event_instance.eventschedule_set
+            .order_by("-created_at")
+            .first()
         )
 
+        if not schedule_instance:
+            return None
 
+        return EventScheduleReadSerializer(schedule_instance).data
 
+    def get_equipments(self, event_instance):
+        return list(
+            event_instance.eventequipment_set
+            .select_related("equipment")
+            .values(
+                "equipment__id",
+                "equipment__equipment_name"
+            )
+        )
 
-
-# =========================
-# Event Schedule Serializer
-# =========================
-class EventScheduleCreateSerializer(serializers.Serializer):
-    type = serializers.IntegerField()
-    from_time = serializers.DateTimeField()
-    to_time = serializers.DateTimeField()
-
-    one_time_date = serializers.DateTimeField(required=False, allow_null=True)
-    start_date = serializers.DateTimeField(required=False, allow_null=True)
-    end_date = serializers.DateTimeField(required=False, allow_null=True)
-
-    months = serializers.JSONField(required=False, allow_null=True)
-    days = serializers.JSONField(required=False, allow_null=True)
-    recurring_duration = serializers.IntegerField(required=False, allow_null=True)
+    def get_parameters(self, event_instance):
+        return list(
+            event_instance.eventparameter_set
+            .select_related("parameter")
+            .values(
+                "parameter__id",
+                "parameter__parameter_name"
+            )
+        )
 
 
 # =========================
@@ -684,166 +820,96 @@ class EventScheduleCreateSerializer(serializers.Serializer):
 # =========================
 class EventCreateSerializer(serializers.Serializer):
     department_id = serializers.IntegerField()
-
-    assignment_id = serializers.IntegerField(
-        required=False,
-        allow_null=True
-    )
-
-    event_name = serializers.CharField(max_length=200)
+    assignment_id = serializers.IntegerField(required=False, allow_null=True)
+    event_name = serializers.CharField()
     description = serializers.CharField()
 
+    # List of equipment IDs selected for the event
     equipment_ids = serializers.ListField(
-        child=serializers.IntegerField(),
-        required=False,
-        allow_empty=True
+        child=serializers.IntegerField(), required=False
     )
 
-    # ✅ NEW
+    # List of parameter IDs selected for the event
     parameter_ids = serializers.ListField(
-        child=serializers.IntegerField(),
-        required=False,
-        allow_empty=True
+        child=serializers.IntegerField(), required=False
     )
 
+    # Event scheduling information
     schedule = EventScheduleCreateSerializer()
 
-    # =====================================================
-    # VALIDATION
-    # =====================================================
+    # ---------------- VALIDATION ----------------
     def validate(self, attrs):
-        request = self.context.get("request")
-        if not request:
-            raise serializers.ValidationError(
-                {"request": "Request context missing"}
-            )
+        # Validate department existence
+        department = Department.objects.get(id=attrs["department_id"])
 
-        # ---------- Department ----------
-        try:
-            department = Department.objects.select_related("clinic").get(
-                id=attrs["department_id"]
-            )
-        except Department.DoesNotExist:
-            raise serializers.ValidationError({
-                "department_id": "Invalid department_id"
-            })
+        # Validate assignment (employee)
+        assignment = (
+            Employee.objects.get(id=attrs["assignment_id"])
+            if attrs.get("assignment_id")
+            else self.context["request"].user.employee
+        )
 
-        # ---------- Assignment ----------
-        assignment_id = attrs.get("assignment_id")
-
-        if assignment_id:
-            try:
-                assignment = Employee.objects.select_related(
-                    "clinic", "dep"
-                ).get(id=assignment_id)
-            except Employee.DoesNotExist:
-                raise serializers.ValidationError({
-                    "assignment_id": "Invalid assignment_id"
-                })
-        else:
-            if not hasattr(request.user, "employee"):
-                raise serializers.ValidationError({
-                    "assignment": "Employee profile not configured"
-                })
-            assignment = request.user.employee
-
-        # ---------- Clinic Match ----------
-        if assignment.clinic_id != department.clinic_id:
-            raise serializers.ValidationError({
-                "assignment": "Employee does not belong to this clinic"
-            })
-
-        # ---------- Department Match ----------
-        if assignment.dep_id != department.id:
-            raise serializers.ValidationError({
-                "assignment": "Employee does not belong to this department"
-            })
-
-        # ---------- Equipments ----------
         equipment_ids = attrs.get("equipment_ids", [])
-        if equipment_ids:
-            equipments = Equipments.objects.filter(
-                id__in=equipment_ids,
-                dep=department,
-                is_active=True,
-                is_deleted=False
-            )
-
-            if equipments.count() != len(set(equipment_ids)):
-                raise serializers.ValidationError({
-                    "equipment_ids": "Some equipments do not belong to this department"
-                })
-
-            attrs["validated_equipments"] = equipments
-
-        # ---------- Parameters ----------
         parameter_ids = attrs.get("parameter_ids", [])
-        if parameter_ids:
-            parameters = Parameters.objects.filter(
-                id__in=parameter_ids,
-                equipment__dep=department,
-                is_active=True
+
+        # ACTIVE / INACTIVE VALIDATION:
+        # Only active, non-deleted equipment can be linked to event
+        equipments = Equipments.objects.filter(
+            id__in=equipment_ids,
+            dep=department,
+            is_active=True,      #  inactive equipment blocked here
+            is_deleted=False
+        )
+
+        if equipments.count() != len(set(equipment_ids)):
+            raise ValidationError("Invalid equipment selection")
+
+        # Only active parameters are allowed
+        parameters = Parameters.objects.filter(
+            id__in=parameter_ids,
+            is_active=True
+        )
+
+        # Ensure parameters belong to selected equipment
+        invalid = parameters.exclude(equipment__in=equipments)
+        if invalid.exists():
+            raise ValidationError(
+                "Parameters must belong to selected equipments"
             )
 
-            if parameters.count() != len(set(parameter_ids)):
-                raise serializers.ValidationError({
-                    "parameter_ids": (
-                        "Some parameters do not belong to selected equipment/department"
-                    )
-                })
-
-            attrs["validated_parameters"] = parameters
-
-        attrs["department_obj"] = department
-        attrs["assignment_obj"] = assignment
+        # Store validated objects for create()
+        attrs["department"] = department
+        attrs["assignment"] = assignment
+        attrs["equipments"] = equipments
+        attrs["parameters"] = parameters
         return attrs
 
-    # =====================================================
-    # CREATE
-    # =====================================================
+    # ---------------- CREATE ----------------
     @transaction.atomic
     def create(self, validated_data):
-        department = validated_data.pop("department_obj")
-        assignment = validated_data.pop("assignment_obj")
-        equipments = validated_data.pop("validated_equipments", [])
-        parameters = validated_data.pop("validated_parameters", [])
-        schedule_data = validated_data.pop("schedule")
-
-        # ---------- Event ----------
+        # Create event
         event = Event.objects.create(
-            department=department,
-            assignment=assignment,
+            department=validated_data["department"],
+            assignment=validated_data["assignment"],
             event_name=validated_data["event_name"],
             description=validated_data["description"]
         )
 
-        # ---------- Schedule ----------
+        # Create event schedule
         EventSchedule.objects.create(
             event=event,
-            type=schedule_data["type"],
-            from_time=schedule_data["from_time"],
-            to_time=schedule_data["to_time"],
-            one_time_date=schedule_data.get("one_time_date"),
-            start_date=schedule_data.get("start_date"),
-            end_date=schedule_data.get("end_date"),
-            months=schedule_data.get("months"),
-            days=schedule_data.get("days"),
-            recurring_duration=schedule_data.get("recurring_duration"),
+            **validated_data["schedule"]
         )
 
-        # ---------- Link Equipments ----------
-        for equipment in equipments:
-            EventEquipment.objects.create(
-                event=event,
-                equipment=equipment
-            )
+        # Link equipments to event
+        # eq = one equipment object
+        for eq in validated_data["equipments"]:
+            EventEquipment.objects.create(event=event, equipment=eq)
 
-        # ---------- Link Parameters ----------
-        for parameter in parameters:
-            EventParameter.objects.create(
-                event=event,
-                parameter=parameter
-            )
+        # Link parameters to event
+        # p = one parameter object
+        for p in validated_data["parameters"]:
+            EventParameter.objects.create(event=event, parameter=p)
 
         return event
 
@@ -919,22 +985,24 @@ class TaskSerializer(serializers.ModelSerializer):
         sub_tasks_data = validated_data.pop("sub_tasks", [])
         documents_data = validated_data.pop("documents", [])
 
-        task = Task.objects.create(**validated_data)
+        task_instance = Task.objects.create(**validated_data)
 
-        for sub in sub_tasks_data:
+        # Create sub-tasks
+        for sub_task_data in sub_tasks_data:
             SubTask.objects.create(
-                task=task,
-                assignment=task.assignment,
-                **sub
+                task=task_instance,
+                assignment=task_instance.assignment,
+                **sub_task_data
             )
 
-        for doc in documents_data:
+        # Create documents
+        for document_data in documents_data:
             Document.objects.create(
-                task=task,
-                **doc
+                task=task_instance,
+                **document_data
             )
 
-        return task
+        return task_instance
 
     # =========================
     # UPDATE (ID SAFE)
@@ -948,91 +1016,109 @@ class TaskSerializer(serializers.ModelSerializer):
         documents_data = validated_data.pop("documents", [])
 
         # ---- update task fields ----
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
+        for field_name, field_value in validated_data.items():
+            setattr(instance, field_name, field_value)
         instance.save()
 
         # =================================================
         # SUB TASKS (ID SAFE)
         # =================================================
         existing_subtasks = {
-            st.id: st for st in instance.subtask_set.all()
+            existing_subtask_instance.id: existing_subtask_instance
+            for existing_subtask_instance in instance.subtask_set.all()
         }
+
         received_subtask_ids = []
 
-        for sub in sub_tasks_data:
-            sub_id = sub.get("id")
+        for sub_task_data in sub_tasks_data:
+            sub_task_id = sub_task_data.get("id")
 
-            if sub_id:
-                # UPDATE
-                obj = existing_subtasks.get(sub_id)
-                if not obj:
+            if sub_task_id:
+                # UPDATE existing sub-task
+                sub_task_instance = existing_subtasks.get(sub_task_id)
+                if not sub_task_instance:
                     raise serializers.ValidationError({
-                        "sub_tasks": f"SubTask {sub_id} does not belong to this task"
+                        "sub_tasks": (
+                            f"SubTask {sub_task_id} does not belong to this task"
+                        )
                     })
 
-                obj.due_date = sub["due_date"]
-                obj.description = sub["description"]
-                obj.status = sub.get("status", obj.status)
-                obj.save()
+                sub_task_instance.due_date = sub_task_data["due_date"]
+                sub_task_instance.description = sub_task_data["description"]
+                sub_task_instance.status = sub_task_data.get(
+                    "status",
+                    sub_task_instance.status
+                )
+                sub_task_instance.save()
 
-                received_subtask_ids.append(sub_id)
+                received_subtask_ids.append(sub_task_id)
             else:
-                # CREATE
-                obj = SubTask.objects.create(
+                # CREATE new sub-task
+                sub_task_instance = SubTask.objects.create(
                     task=instance,
                     assignment=instance.assignment,
-                    **sub
+                    **sub_task_data
                 )
-                received_subtask_ids.append(obj.id)
+                received_subtask_ids.append(sub_task_instance.id)
 
-        # DELETE removed subtasks
-        for sub_id, obj in existing_subtasks.items():
-            if sub_id not in received_subtask_ids:
-                obj.delete()
+        # DELETE removed sub-tasks
+        for existing_subtask_id, existing_subtask_instance in (
+            existing_subtasks.items()
+        ):
+            if existing_subtask_id not in received_subtask_ids:
+                existing_subtask_instance.delete()
 
         # =================================================
         # DOCUMENTS (ID SAFE)
         # =================================================
-        existing_docs = {
-            doc.id: doc for doc in instance.document_set.all()
+        existing_documents = {
+            existing_document_instance.id: existing_document_instance
+            for existing_document_instance in instance.document_set.all()
         }
-        received_doc_ids = []
 
-        for doc in documents_data:
-            doc_id = doc.get("id")
+        received_document_ids = []
 
-            if doc_id:
-                # UPDATE
-                obj = existing_docs.get(doc_id)
-                if not obj:
+        for document_data in documents_data:
+            document_id = document_data.get("id")
+
+            if document_id:
+                # UPDATE existing document
+                document_instance = existing_documents.get(document_id)
+                if not document_instance:
                     raise serializers.ValidationError({
-                        "documents": f"Document {doc_id} does not belong to this task"
+                        "documents": (
+                            f"Document {document_id} does not belong to this task"
+                        )
                     })
 
-                obj.document_name = doc.get(
-                    "document_name", obj.document_name
+                document_instance.document_name = document_data.get(
+                    "document_name",
+                    document_instance.document_name
                 )
-                if "data" in doc:
-                    obj.data = doc["data"]
-                obj.save()
 
-                received_doc_ids.append(doc_id)
+                if "data" in document_data:
+                    document_instance.data = document_data["data"]
+
+                document_instance.save()
+                received_document_ids.append(document_id)
             else:
-                # CREATE
-                obj = Document.objects.create(
+                # CREATE new document
+                document_instance = Document.objects.create(
                     task=instance,
-                    document_name=doc["document_name"],
-                    data=doc["data"]
+                    document_name=document_data["document_name"],
+                    data=document_data["data"]
                 )
-                received_doc_ids.append(obj.id)
+                received_document_ids.append(document_instance.id)
 
         # DELETE removed documents
-        for doc_id, obj in existing_docs.items():
-            if doc_id not in received_doc_ids:
-                obj.delete()
+        for existing_document_id, existing_document_instance in (
+            existing_documents.items()
+        ):
+            if existing_document_id not in received_document_ids:
+                existing_document_instance.delete()
 
         return instance
+
 
 
 
@@ -1100,3 +1186,50 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         return User.objects.create_user(**validated_data)
+
+# =========================
+# Task Activate Serializer
+# =========================
+class TaskActivateSerializer(serializers.Serializer):
+    task_id = serializers.IntegerField()
+
+    def validate(self, attrs):
+        try:
+            task = Task.objects.get(id=attrs["task_id"])
+        except Task.DoesNotExist:
+            raise ValidationError("Invalid task id")
+
+        attrs["task"] = task
+        return attrs
+
+    def save(self):
+        task = self.validated_data["task"]
+
+        # assuming inactive task uses status
+        task.status = "active"
+        task.save(update_fields=["status"])
+        return task
+    
+# =========================
+# Equipment Activate Serializer
+# =========================
+class EquipmentActivateSerializer(serializers.Serializer):
+    equipment_id = serializers.IntegerField()
+
+    def validate(self, attrs):
+        try:
+            equipment = Equipments.objects.get(
+                id=attrs["equipment_id"],
+                is_deleted=False
+            )
+        except Equipments.DoesNotExist:
+            raise ValidationError("Invalid equipment id")
+
+        attrs["equipment"] = equipment
+        return attrs
+
+    def save(self):
+        equipment = self.validated_data["equipment"]
+        equipment.is_active = True
+        equipment.save(update_fields=["is_active"])
+        return equipment

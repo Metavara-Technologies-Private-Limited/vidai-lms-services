@@ -4,19 +4,14 @@ from rest_framework import status
 from .serializers import TaskSerializer
 from django.shortcuts import get_object_or_404
 from rest_framework.pagination import PageNumberPagination
-from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.exceptions import NotFound, ValidationError
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 import traceback
-from rest_framework.permissions import AllowAny
-from rest_framework.authentication import SessionAuthentication, BasicAuthentication
-from rest_framework.permissions import IsAuthenticated
 import logging
 from django.utils import timezone
 from .pagination import StandardResultsPagination
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import IsAuthenticated
 from .models import Clinic, Department, Equipments,Event, Task, Employee, SubTask, ParameterValues, Parameters
 from .serializers import (
     ClinicSerializer,
@@ -747,6 +742,9 @@ class UserCreateAPIView(APIView):
             status=status.HTTP_201_CREATED
         )
     
+# -------------------------------------------------------------------
+# 18. Parameter Value Create and List API Views
+# -------------------------------------------------------------------
 
 class ParameterValueCreateAPIView(APIView):
 
@@ -778,6 +776,10 @@ class ParameterValueCreateAPIView(APIView):
             ParameterValueCreateSerializer(value).data,
             status=status.HTTP_201_CREATED
         )
+
+# -------------------------------------------------------------------
+# 19. Parameter Value List API View (GET)
+# -------------------------------------------------------------------
 
 class ParameterValueListAPIView(APIView):
 
@@ -822,3 +824,50 @@ class ParameterValueListAPIView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+# -------------------------------------------------------------------
+# 20. Activate Equipment API View (POST)
+# -------------------------------------------------------------------
+
+class ActivateEquipmentAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Activate Equipment",
+        operation_description=(
+            "Activate a previously inactivated equipment.\n\n"
+            "This API sets is_active = true for the given equipment ID.\n"
+            "No other equipment data (details, parameters, config history) is modified."
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                name="equipment_id",
+                in_=openapi.IN_PATH,
+                type=openapi.TYPE_INTEGER,
+                required=True,
+                description="Equipment ID to activate"
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Equipment activated successfully"
+            ),
+            404: "Equipment not found",
+            500: "Internal Server Error"
+        },
+        tags=["Equipment"]
+    )
+    def post(self, request, equipment_id):
+        equipment = get_object_or_404(
+            Equipments,
+            id=equipment_id,
+            is_deleted=False
+        )
+
+        # Activate equipment
+        equipment.is_active = True
+        equipment.save(update_fields=["is_active"])
+
+        return Response(
+            {"message": "Equipment activated successfully"},
+            status=status.HTTP_200_OK
+        )
+    
