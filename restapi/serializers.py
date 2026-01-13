@@ -29,14 +29,18 @@ from .models import (
 # Equipment Details Serializer
 # =====================================================
 class EquipmentDetailSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
+
     class Meta:
         model = EquipmentDetails
         fields = [
+            "id",              # ✅ MUST BE HERE
             "equipment_num",
             "make",
             "model",
             "is_active",
         ]
+
 
 
 # =====================================================
@@ -64,16 +68,16 @@ class ParameterValueSerializer(serializers.ModelSerializer):
 # =====================================================
 class ParameterSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(required=False)
-    config = serializers.JSONField(required=False, allow_null=True)
 
     class Meta:
         model = Parameters
         fields = [
-            "id",
+            "id",                 # ✅ REQUIRED
             "parameter_name",
             "is_active",
             "config",
         ]
+
 
 
 # =====================================================
@@ -150,14 +154,11 @@ class ParameterValueCreateSerializer(serializers.ModelSerializer):
 # - Handling equipment active/inactive state
 # - Managing nested equipment details and parameters
 class EquipmentSerializer(serializers.ModelSerializer):
+    # 🔑 equipment_name OPTIONAL for PUT
+    equipment_name = serializers.CharField(required=False)
+
     equipment_details = EquipmentDetailSerializer(many=True, required=False)
     parameters = ParameterSerializer(many=True, required=False)
-
-    def __init__(self, *args, **kwargs):
-        # replace_mode=True  → clinic / department PUT
-        # replace_mode=False → equipment PUT
-        self.replace_mode = kwargs.pop("replace_mode", False)
-        super().__init__(*args, **kwargs)
 
     class Meta:
         model = Equipments
@@ -170,7 +171,7 @@ class EquipmentSerializer(serializers.ModelSerializer):
         ]
 
     # ==================================================
-    # CREATE
+    # CREATE (POST)
     # ==================================================
     @transaction.atomic
     def create(self, validated_data):
@@ -183,113 +184,112 @@ class EquipmentSerializer(serializers.ModelSerializer):
             **validated_data
         )
 
-        # Create equipment details
-        for equipment_detail_data in equipment_details_data:
+        for detail in equipment_details_data:
             EquipmentDetails.objects.create(
                 equipment=equipment,
-                **equipment_detail_data
+                **detail
             )
 
-        # Create parameters
-        for parameter_data in parameters_data:
+        for param in parameters_data:
             Parameters.objects.create(
                 equipment=equipment,
-                parameter_name=parameter_data["parameter_name"],
-                is_active=parameter_data.get("is_active", True),
-                config=parameter_data.get("config"),
+                parameter_name=param["parameter_name"],
+                is_active=param.get("is_active", True),
+                config=param.get("config"),
             )
 
+        equipment.refresh_from_db()
         return equipment
 
     # ==================================================
-    # UPDATE
+    # UPDATE (PUT ONLY – CONTROLLED)
     # ==================================================
     @transaction.atomic
     def update(self, instance, validated_data):
         equipment_details_data = validated_data.pop("equipment_details", [])
         parameters_data = validated_data.pop("parameters", [])
 
-        instance.equipment_name = validated_data.get(
-            "equipment_name", instance.equipment_name
-        )
+        # ----------------------------
+        # Update Equipment (ONLY IF SENT)
+        # ----------------------------
+        if "equipment_name" in validated_data:
+            instance.equipment_name = validated_data["equipment_name"]
 
-        # Equipment active / inactive handled here
-        instance.is_active = validated_data.get(
-            "is_active", instance.is_active
-        )
+        if "is_active" in validated_data:
+            instance.is_active = validated_data["is_active"]
+
         instance.save()
 
-        # ----------------------------------------------
-        # Equipment Details Update
-        # ----------------------------------------------
-        for equipment_detail_data in equipment_details_data:
-            equipment_detail_id = equipment_detail_data.get("id")
+        # ==================================================
+        # EquipmentDetails (STRICT)
+        # ==================================================
+        for detail in equipment_details_data:
+            detail_id = detail.get("id")
 
-            if equipment_detail_id:
-                equipment_detail_instance = EquipmentDetails.objects.get(
-                    id=equipment_detail_id,
-                    equipment=instance
-                )
+            if detail_id is not None:
+                try:
+                    detail_instance = EquipmentDetails.objects.get(
+                        id=detail_id,
+                        equipment=instance
+                    )
+                except EquipmentDetails.DoesNotExist:
+                    raise ValidationError(
+                        f"Invalid equipment_details id {detail_id} for this equipment"
+                    )
 
-                for field_name, field_value in equipment_detail_data.items():
-                    if field_name != "id":
-                        setattr(
-                            equipment_detail_instance,
-                            field_name,
-                            field_value
-                        )
+                for field, value in detail.items():
+                    if field != "id":
+                        setattr(detail_instance, field, value)
 
-                equipment_detail_instance.save()
+                detail_instance.save()
+
             else:
                 EquipmentDetails.objects.create(
                     equipment=instance,
-                    **equipment_detail_data
+                    **detail
                 )
 
-        # ----------------------------------------------
-        # Parameters Update
-        # ----------------------------------------------
-        for parameter_data in parameters_data:
-            parameter_id = parameter_data.get("id")
-            if not parameter_id:
-                raise ValidationError("Parameter ID is required")
+        # ==================================================
+        # Parameters (STRICT)
+        # ==================================================
+        for param in parameters_data:
+            param_id = param.get("id")
 
-            parameter_instance = Parameters.objects.get(
-                id=parameter_id,
-                equipment=instance
-            )
+            if param_id is not None:
+                try:
+                    param_instance = Parameters.objects.get(
+                        id=param_id,
+                        equipment=instance
+                    )
+                except Parameters.DoesNotExist:
+                    raise ValidationError(
+                        f"Invalid parameter id {param_id} for this equipment"
+                    )
 
-            # ==========================================================
-            #  CONFIG UPDATE (NO HISTORY)
-            # ==========================================================
-            # Old behavior:
-            # - Config was appended to history
-            #
-            # New requirement:
-            # - Config is directly overwritten
-            # - No history maintained
-            # ==========================================================
-            if "config" in parameter_data:
-                parameter_instance.config = parameter_data["config"]
+                param_instance.parameter_name = param.get(
+                    "parameter_name",
+                    param_instance.parameter_name
+                )
+                param_instance.is_active = param.get(
+                    "is_active",
+                    param_instance.is_active
+                )
 
-            parameter_instance.parameter_name = parameter_data.get(
-                "parameter_name",
-                parameter_instance.parameter_name
-            )
+                if "config" in param:
+                    param_instance.config = param["config"]
 
-            parameter_instance.is_active = parameter_data.get(
-                "is_active",
-                parameter_instance.is_active
-            )
+                param_instance.save()
 
-            parameter_instance.save()
+            else:
+                Parameters.objects.create(
+                    equipment=instance,
+                    parameter_name=param["parameter_name"],
+                    is_active=param.get("is_active", True),
+                    config=param.get("config"),
+                )
 
+        instance.refresh_from_db()
         return instance
-
-
-
-
-
 
 
 # =====================================================
@@ -576,6 +576,37 @@ class ParameterValueCreateSerializer(serializers.ModelSerializer):
             "content",
         ]
 
+# =========================
+# Parameter Soft Delete Serializer
+# =========================
+class ParameterSoftDeleteSerializer(serializers.Serializer):
+    parameter_id = serializers.IntegerField()
+
+    def validate(self, attrs):
+        try:
+            parameter = Parameters.objects.get(
+                id=attrs["parameter_id"],
+                is_deleted=False
+            )
+        except Parameters.DoesNotExist:
+            raise ValidationError("Invalid or already deleted parameter")
+
+        attrs["parameter"] = parameter
+        return attrs
+
+    def save(self):
+        parameter = self.validated_data["parameter"]
+
+        parameter.is_deleted = True
+        parameter.is_active = False
+        parameter.deleted_at = timezone.now()
+
+        parameter.save(
+            update_fields=["is_deleted", "is_active", "deleted_at"]
+        )
+
+        return parameter
+
 
 
 # =====================================================
@@ -793,7 +824,8 @@ class EventReadSerializer(serializers.ModelSerializer):
             .select_related("parameter")
             .values(
                 "parameter__id",
-                "parameter__parameter_name"
+                "parameter__parameter_name",
+                #"parameter__config"
             )
         )
 
@@ -1118,10 +1150,6 @@ class TaskSerializer(serializers.ModelSerializer):
                 existing_document_instance.delete()
 
         return instance
-
-
-
-
 
 
 

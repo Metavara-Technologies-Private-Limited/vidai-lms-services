@@ -870,4 +870,58 @@ class ActivateEquipmentAPIView(APIView):
             {"message": "Equipment activated successfully"},
             status=status.HTTP_200_OK
         )
-    
+
+
+# -------------------------------------------------------------------
+# 21. Soft Delete Parameter API View (PATCH)
+# -------------------------------------------------------------------
+class SoftDeleteParameterAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Soft Delete Parameter",
+        operation_description=(
+            "Soft delete a parameter using parameter ID.\n\n"
+            "This API performs a soft delete by setting:\n"
+            "- is_deleted = true\n"
+            "- is_active = false\n"
+            "- deleted_at = current timestamp\n\n"
+            "No equipment or other parameters are affected."
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                name="parameter_id",
+                in_=openapi.IN_PATH,
+                type=openapi.TYPE_INTEGER,
+                required=True,
+                description="Parameter ID to soft delete"
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Parameter soft deleted successfully"
+            ),
+            404: "Parameter not found or already deleted",
+            500: "Internal Server Error"
+        },
+        tags=["Parameter"]
+    )
+    def patch(self, request, parameter_id):
+        parameter = get_object_or_404(
+            Parameters,
+            id=parameter_id,
+            is_deleted=False
+        )
+
+        # 🔒 Soft delete parameter
+        parameter.is_deleted = True
+        parameter.is_active = False
+        parameter.deleted_at = timezone.now()
+
+        parameter.save(
+            update_fields=["is_deleted", "is_active", "deleted_at"]
+        )
+
+        return Response(
+            {"message": "Parameter soft deleted successfully"},
+            status=status.HTTP_200_OK
+        )

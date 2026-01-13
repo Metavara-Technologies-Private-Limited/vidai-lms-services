@@ -4,7 +4,7 @@ from .views import (
     ClinicUpdateAPIView,
     GetClinicView,ActivateEquipmentAPIView,
     DepartmentEquipmentCreateAPIView,
-    DepartmentEquipmentUpdateAPIView,
+    DepartmentEquipmentUpdateAPIView,SoftDeleteParameterAPIView,
     EquipmentInactiveAPIView,TaskGetAPIView, TaskSoftDeleteAPIView, SubTaskSoftDeleteAPIView,
     EquipmentSoftDeleteAPIView,ParameterValueCreateAPIView, ParameterValueListAPIView,
     EventAPIView, UserCreateAPIView,
@@ -83,5 +83,10 @@ urlpatterns = [
    # Activate Equipment API View (POST)
    path("equipment/<int:equipment_id>/activate/", ActivateEquipmentAPIView.as_view(), name="activate-equipment"),
    
+
+   # Soft delete parameter
+   path('parameters/<int:parameter_id>/soft-delete', SoftDeleteParameterAPIView.as_view(), 
+        name='parameter-soft-delete'),
+
    
 ]
