@@ -69,15 +69,19 @@ class Parameters(models.Model):
     )
     parameter_name = models.CharField(max_length=200)
 
-    # ✅ JSONB config (limits, unit, metadata)
     config = models.JSONField(null=True, blank=True)
 
+    # ✅ Soft delete fields (REQUIRED)
     is_active = models.BooleanField(default=True)
+    is_deleted = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.parameter_name
+
 
 
 
