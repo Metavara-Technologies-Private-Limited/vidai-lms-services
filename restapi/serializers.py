@@ -91,7 +91,7 @@ class SubTaskSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "due_date",
-            "description",
+            "name",     # ✅ payload must send name
             "status",
         ]
 
@@ -112,23 +112,29 @@ class DocumentSerializer(serializers.ModelSerializer):
 
 
 # =====================================================
-# Task Serializer
+# Task WRITE Serializer
 # =====================================================
 class TaskSerializer(serializers.ModelSerializer):
     sub_tasks = SubTaskSerializer(many=True, required=False)
     documents = DocumentSerializer(many=True, required=False)
+
+    assignment = serializers.PrimaryKeyRelatedField(
+        queryset=Employee.objects.all()
+    )
 
     class Meta:
         model = Task
         fields = [
             "event",
             "assignment",
+            "name",          # ✅ REQUIRED IN PAYLOAD
+            "description",   # optional / separate
             "due_date",
-            "description",
             "status",
             "sub_tasks",
             "documents",
         ]
+
 
 
 # =====================================================
@@ -722,10 +728,11 @@ class SubTaskReadSerializer(serializers.ModelSerializer):
             "id",
             "assignment",
             "due_date",
-            "description",
+            "name",
             "status",
-            "created_at"
+            "created_at",
         ]
+
 
 class DocumentReadSerializer(serializers.ModelSerializer):
     class Meta:
@@ -755,13 +762,14 @@ class TaskReadSerializer(serializers.ModelSerializer):
             "id",
             "event",
             "assignment",
-            "due_date",
+            "name",          # ✅ returned to FE
             "description",
+            "due_date",
             "status",
             "sub_tasks",
             "documents",
             "created_at",
-            "modified_at"
+            "modified_at",
         ]
 
 class EmployeeReadSerializer(serializers.ModelSerializer):
@@ -965,18 +973,15 @@ class EventCreateSerializer(serializers.Serializer):
 # =========================
 class SubTaskSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(required=False)
-    sub_task_due_date = serializers.DateTimeField(source="due_date")
 
     class Meta:
         model = SubTask
         fields = [
             "id",
-            "sub_task_due_date",
-            "description",
-            "status"
+            "due_date",
+            "name",     # payload MUST send name
+            "status",
         ]
-
-
 
 
 # =========================
@@ -990,12 +995,11 @@ class DocumentSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "document_name",
-            "data"
+            "data",
         ]
         extra_kwargs = {
-            "data": {"required": False}  # data optional in UPDATE
+            "data": {"required": False}  # optional on update
         }
-
 
 
 # =========================
@@ -1014,11 +1018,12 @@ class TaskSerializer(serializers.ModelSerializer):
         fields = [
             "event",
             "assignment",
+            "name",          # payload MUST send name
             "due_date",
             "description",
             "status",
             "sub_tasks",
-            "documents"
+            "documents",
         ]
 
     # =========================
@@ -1053,23 +1058,23 @@ class TaskSerializer(serializers.ModelSerializer):
     # =========================
     @transaction.atomic
     def update(self, instance, validated_data):
-        # 🔒 assignment is immutable
+        # assignment is immutable
         validated_data.pop("assignment", None)
 
         sub_tasks_data = validated_data.pop("sub_tasks", [])
-        documents_data = validated_data.pop("documents", [])
+        documents_data = validatedated_data = validated_data.pop("documents", [])
 
         # ---- update task fields ----
         for field_name, field_value in validated_data.items():
             setattr(instance, field_name, field_value)
         instance.save()
 
-        # =================================================
+        # =========================
         # SUB TASKS (ID SAFE)
-        # =================================================
+        # =========================
         existing_subtasks = {
-            existing_subtask_instance.id: existing_subtask_instance
-            for existing_subtask_instance in instance.subtask_set.all()
+            subtask.id: subtask
+            for subtask in instance.subtask_set.all()
         }
 
         received_subtask_ids = []
@@ -1088,7 +1093,7 @@ class TaskSerializer(serializers.ModelSerializer):
                     })
 
                 sub_task_instance.due_date = sub_task_data["due_date"]
-                sub_task_instance.description = sub_task_data["description"]
+                sub_task_instance.name = sub_task_data["name"]   # ✅ FIXED
                 sub_task_instance.status = sub_task_data.get(
                     "status",
                     sub_task_instance.status
@@ -1096,28 +1101,27 @@ class TaskSerializer(serializers.ModelSerializer):
                 sub_task_instance.save()
 
                 received_subtask_ids.append(sub_task_id)
+
             else:
                 # CREATE new sub-task
-                sub_task_instance = SubTask.objects.create(
+                new_subtask = SubTask.objects.create(
                     task=instance,
                     assignment=instance.assignment,
                     **sub_task_data
                 )
-                received_subtask_ids.append(sub_task_instance.id)
+                received_subtask_ids.append(new_subtask.id)
 
         # DELETE removed sub-tasks
-        for existing_subtask_id, existing_subtask_instance in (
-            existing_subtasks.items()
-        ):
-            if existing_subtask_id not in received_subtask_ids:
-                existing_subtask_instance.delete()
+        for subtask_id, subtask in existing_subtasks.items():
+            if subtask_id not in received_subtask_ids:
+                subtask.delete()
 
-        # =================================================
+        # =========================
         # DOCUMENTS (ID SAFE)
-        # =================================================
+        # =========================
         existing_documents = {
-            existing_document_instance.id: existing_document_instance
-            for existing_document_instance in instance.document_set.all()
+            doc.id: doc
+            for doc in instance.document_set.all()
         }
 
         received_document_ids = []
@@ -1145,21 +1149,19 @@ class TaskSerializer(serializers.ModelSerializer):
 
                 document_instance.save()
                 received_document_ids.append(document_id)
+
             else:
                 # CREATE new document
-                document_instance = Document.objects.create(
+                new_document = Document.objects.create(
                     task=instance,
-                    document_name=document_data["document_name"],
-                    data=document_data["data"]
+                    **document_data
                 )
-                received_document_ids.append(document_instance.id)
+                received_document_ids.append(new_document.id)
 
         # DELETE removed documents
-        for existing_document_id, existing_document_instance in (
-            existing_documents.items()
-        ):
-            if existing_document_id not in received_document_ids:
-                existing_document_instance.delete()
+        for doc_id, document in existing_documents.items():
+            if doc_id not in received_document_ids:
+                document.delete()
 
         return instance
 

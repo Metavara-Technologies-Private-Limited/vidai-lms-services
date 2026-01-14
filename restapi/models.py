@@ -233,8 +233,10 @@ class Task(models.Model):
         (COMPLETED, "Completed"),
     )
 
+    name = models.CharField(max_length=255)  # ✅ NEW COLUMN
+
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
-    assignment = models.ForeignKey(  # assignment_id
+    assignment = models.ForeignKey(
         Employee,
         on_delete=models.CASCADE
     )
@@ -247,21 +249,28 @@ class Task(models.Model):
 
 
 
+
 # =========================
 # Sub Task
 # =========================
 class SubTask(models.Model):
     task = models.ForeignKey(Task, on_delete=models.CASCADE)
-    assignment = models.ForeignKey(  # assignment_id
+    assignment = models.ForeignKey(
         Employee,
         on_delete=models.CASCADE
     )
     is_deleted = models.BooleanField(default=False)
     due_date = models.DateTimeField()
-    description = models.CharField(max_length=500)
-    status = models.IntegerField(choices=Task.STATUS_CHOICES, default=Task.TODO)
+
+    name = models.CharField(max_length=500)  # ✅ RENAMED from description
+
+    status = models.IntegerField(
+        choices=Task.STATUS_CHOICES,
+        default=Task.TODO
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+
 
 
 
