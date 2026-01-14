@@ -618,9 +618,21 @@ class EquipmentDetailReadSerializer(serializers.ModelSerializer):
         fields = ['id', 'equipment_num', 'make', 'model', 'is_active']
 
 class ParameterValueReadSerializer(serializers.ModelSerializer):
+    equipment_details_id = serializers.IntegerField(
+        source="equipment_details.id",
+        read_only=True
+    )
+
     class Meta:
         model = ParameterValues
-        fields = ["id", "content", "created_at", "is_deleted"]
+        fields = [
+            "id",
+            "content",
+            "created_at",
+            "is_deleted",
+            "equipment_details_id",
+        ]
+
 
 # =====================================================
 # Parameter READ Serializer (NO parameter_values)
