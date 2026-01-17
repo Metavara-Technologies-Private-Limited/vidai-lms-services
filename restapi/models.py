@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 
@@ -233,17 +234,42 @@ class Task(models.Model):
         (COMPLETED, "Completed"),
     )
 
-    name = models.CharField(max_length=255)  # ✅ NEW COLUMN
+    TIMER_IDLE = "IDLE"
+    TIMER_RUNNING = "RUNNING"
+    TIMER_PAUSED = "PAUSED"
+    TIMER_STOPPED = "STOPPED"
+
+    TIMER_STATUS_CHOICES = (
+        (TIMER_IDLE, "Idle"),
+        (TIMER_RUNNING, "Running"),
+        (TIMER_PAUSED, "Paused"),
+        (TIMER_STOPPED, "Stopped"),
+    )
+
+    name = models.CharField(max_length=255)
 
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
-    assignment = models.ForeignKey(
-        Employee,
-        on_delete=models.CASCADE
-    )
+    assignment = models.ForeignKey(Employee, on_delete=models.CASCADE)
+
     is_deleted = models.BooleanField(default=False)
+
     due_date = models.DateTimeField()
     description = models.CharField(max_length=500)
-    status = models.IntegerField(choices=STATUS_CHOICES, default=TODO)
+
+    status = models.IntegerField(
+        choices=STATUS_CHOICES,
+        default=TODO
+    )
+
+    # ⏱ TIMER FIELDS
+    timer_status = models.CharField(
+        max_length=20,
+        choices=TIMER_STATUS_CHOICES,
+        default=TIMER_IDLE
+    )
+    total_tracked_sec = models.IntegerField(default=0)
+    timer_started_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 

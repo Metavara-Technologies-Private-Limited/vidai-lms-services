@@ -127,13 +127,25 @@ class TaskSerializer(serializers.ModelSerializer):
         fields = [
             "event",
             "assignment",
-            "name",          # ✅ REQUIRED IN PAYLOAD
-            "description",   # optional / separate
+            "name",
             "due_date",
+            "description",
             "status",
+
+            # ⏱️ SAFE ADD (READ ONLY)
+            "timer_status",
+            "total_tracked_sec",
+            "timer_started_at",
+
             "sub_tasks",
             "documents",
         ]
+        read_only_fields = [
+            "timer_status",
+            "total_tracked_sec",
+            "timer_started_at",
+        ]
+
 
 
 
@@ -762,15 +774,22 @@ class TaskReadSerializer(serializers.ModelSerializer):
             "id",
             "event",
             "assignment",
-            "name",          # ✅ returned to FE
+            "name",
             "description",
             "due_date",
             "status",
+
+            # ⏱️ ADDED — TASK TIMER FIELDS
+            "timer_status",
+            "total_tracked_sec",
+            "timer_started_at",
+
             "sub_tasks",
             "documents",
             "created_at",
             "modified_at",
         ]
+
 
 class EmployeeReadSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source="dep.name", read_only=True)

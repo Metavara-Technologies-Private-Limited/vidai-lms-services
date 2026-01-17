@@ -597,6 +597,36 @@ class TaskGetAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
+# -------------------------------------------------------------------
+# Task Get By Event ID API View
+# -------------------------------------------------------------------
+class TaskGetByEventAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Get Tasks By Event ID",
+        operation_description="Retrieve all tasks associated with a given event ID",
+        responses={
+            200: TaskReadSerializer(many=True),
+            401: openapi.Response(description="Unauthorized"),
+            404: openapi.Response(description="No Tasks Found"),
+        },
+        tags=["Task"]
+    )
+    def get(self, request, event_id):
+        tasks = Task.objects.filter(
+            event_id=event_id,
+            is_deleted=False
+        ).order_by("-created_at")
+
+        if not tasks.exists():
+            raise NotFound("No tasks found for this event")
+
+        return Response(
+            TaskReadSerializer(tasks, many=True).data,
+            status=status.HTTP_200_OK
+        )
+
+
 
 # -------------------------------------------------------------------
 # 13. Clinic Employees API View (GET)
@@ -925,3 +955,189 @@ class SoftDeleteParameterAPIView(APIView):
             {"message": "Parameter soft deleted successfully"},
             status=status.HTTP_200_OK
         )
+    
+# -------------------------------------------------------------------
+# 22. Task Timer Start API View (POST)
+# -------------------------------------------------------------------
+class TaskTimerStartAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Start Task Timer",
+        operation_description=(
+            "Start timer for a task.\n\n"
+            "Behavior:\n"
+            "- If timer is already RUNNING → no operation\n"
+            "- If timer was PAUSED:\n"
+            "  - resumes timer without losing previously tracked time\n"
+            "- Else:\n"
+            "  - timer_status = RUNNING\n"
+            "  - timer_started_at = current timestamp\n\n"
+            "Previously tracked time is preserved and new tracking "
+            "starts from the current timestamp."
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                name="id",
+                in_=openapi.IN_PATH,
+                type=openapi.TYPE_INTEGER,
+                required=True,
+                description="Task ID"
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Timer started successfully or already running"
+            ),
+            404: "Task not found",
+            500: "Internal Server Error"
+        },
+        tags=["Task Timer"]
+    )
+    def post(self, request, id):
+        task = get_object_or_404(Task, id=id, is_deleted=False)
+
+        # ⏱ No-op if already running
+        if task.timer_status == Task.TIMER_RUNNING:
+            return Response(
+                {"message": "Timer already running"},
+                status=status.HTTP_200_OK
+            )
+
+        # ▶ Resume or fresh start — timestamp is always reset
+        task.timer_status = Task.TIMER_RUNNING
+        task.timer_started_at = timezone.now()
+
+        task.save(
+            update_fields=[
+                "timer_status",
+                "timer_started_at"
+            ]
+        )
+
+        return Response(
+            {"message": "Timer started successfully"},
+            status=status.HTTP_200_OK
+        )
+
+
+# -------------------------------------------------------------------
+# 23. Task Timer Pause API View (POST)
+# -------------------------------------------------------------------
+class TaskTimerPauseAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Pause Task Timer",
+        operation_description=(
+            "Pause timer for a task.\n\n"
+            "Behavior:\n"
+            "- If timer is RUNNING:\n"
+            "  - elapsed time (now - timer_started_at) is added to total_tracked_sec\n"
+            "- timer_status is set to PAUSED\n"
+            "- timer_started_at is cleared\n\n"
+            "Safe to call even if timer is not running."
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                name="id",
+                in_=openapi.IN_PATH,
+                type=openapi.TYPE_INTEGER,
+                required=True,
+                description="Task ID"
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Timer paused successfully"
+            ),
+            404: "Task not found",
+            500: "Internal Server Error"
+        },
+        tags=["Task Timer"]
+    )
+    def post(self, request, id):
+        task = get_object_or_404(Task, id=id, is_deleted=False)
+
+        if task.timer_status == Task.TIMER_RUNNING and task.timer_started_at:
+            elapsed = int(
+                (timezone.now() - task.timer_started_at).total_seconds()
+            )
+            task.total_tracked_sec += elapsed
+
+        task.timer_status = Task.TIMER_PAUSED
+        task.timer_started_at = None
+
+        task.save(
+            update_fields=[
+                "timer_status",
+                "timer_started_at",
+                "total_tracked_sec"
+            ]
+        )
+
+        return Response(
+            {"message": "Timer paused successfully"},
+            status=status.HTTP_200_OK
+        )
+
+# -------------------------------------------------------------------
+# 24. Task Timer Stop API View (POST)
+# -------------------------------------------------------------------   
+class TaskTimerStopAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Stop Task Timer",
+        operation_description=(
+            "Stop timer for a task and mark task as completed.\n\n"
+            "Behavior:\n"
+            "- If timer is RUNNING:\n"
+            "  - elapsed time (now - timer_started_at) is added to total_tracked_sec\n"
+            "- timer_status is set to STOPPED\n"
+            "- timer_started_at is cleared\n"
+            "- task status is set to COMPLETED (2)\n\n"
+            "This is a terminal operation for task timing."
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                name="id",
+                in_=openapi.IN_PATH,
+                type=openapi.TYPE_INTEGER,
+                required=True,
+                description="Task ID"
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Timer stopped and task completed successfully"
+            ),
+            404: "Task not found",
+            500: "Internal Server Error"
+        },
+        tags=["Task Timer"]
+    )
+    def post(self, request, id):
+        task = get_object_or_404(Task, id=id, is_deleted=False)
+
+        if task.timer_status == Task.TIMER_RUNNING and task.timer_started_at:
+            elapsed = int(
+                (timezone.now() - task.timer_started_at).total_seconds()
+            )
+            task.total_tracked_sec += elapsed
+
+        task.timer_status = Task.TIMER_STOPPED
+        task.timer_started_at = None
+        task.status = Task.COMPLETED
+
+        task.save(
+            update_fields=[
+                "timer_status",
+                "timer_started_at",
+                "total_tracked_sec",
+                "status"
+            ]
+        )
+
+        return Response(
+            {"message": "Timer stopped and task marked as completed"},
+            status=status.HTTP_200_OK
+        )
+
