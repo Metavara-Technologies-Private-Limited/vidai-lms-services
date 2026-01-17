@@ -434,34 +434,58 @@ class EventAPIView(APIView):
 # 8. Event API View (GET)
 # -------------------------------------------------------------------
 
+# -------------------------------------------------------------------
+# Clinic Event List API View (GET – No Pagination)
+# -------------------------------------------------------------------
 class ClinicEventListAPIView(APIView):
-    
 
+    @swagger_auto_schema(
+        operation_summary="Get All Events by Clinic",
+        operation_description=(
+            "Retrieve all events associated with a given clinic.\n\n"
+            "Behavior:\n"
+            "- Validates the clinic ID\n"
+            "- Fetches all events linked to the clinic via departments\n"
+            "- Returns events ordered by latest created first\n\n"
+            "Note:\n"
+            "- This API does NOT use pagination\n"
+            "- All events are returned in a single response"
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                name="clinic_id",
+                in_=openapi.IN_PATH,
+                type=openapi.TYPE_INTEGER,
+                required=True,
+                description="Clinic ID to fetch all events"
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Events fetched successfully",
+                schema=EventReadSerializer(many=True)
+            ),
+            404: "Clinic not found",
+            500: "Internal Server Error"
+        },
+        tags=["Event"]
+    )
     def get(self, request, clinic_id):
-        #  Validate clinic
+        # ✅ Validate clinic
         get_object_or_404(Clinic, id=clinic_id)
 
+        # ✅ Fetch all events for the clinic (no pagination)
         queryset = Event.objects.filter(
             department__clinic_id=clinic_id
         ).order_by("-created_at")
 
-        paginator = PageNumberPagination()
-        paginator.page_size = 10
+        serializer = EventReadSerializer(queryset, many=True)
 
-        page = paginator.paginate_queryset(
-            queryset=queryset,
-            request=request,
-            view=self
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
         )
 
-        # 🔑 THIS CHECK IS MANDATORY
-        if page is not None:
-            serializer = EventReadSerializer(page, many=True)
-            return paginator.get_paginated_response(serializer.data)
-
-        # fallback (never errors)
-        serializer = EventReadSerializer(queryset, many=True)
-        return Response(serializer.data)
     
 # -------------------------------------------------------------------
 # 9. Task Create and Update API Views
