@@ -1,13 +1,13 @@
 from django.urls import path
 from .views import (
     ClinicCreateAPIView,
-    ClinicUpdateAPIView,
+    ClinicUpdateAPIView,TaskTimerStartAPIView,TaskTimerPauseAPIView,TaskTimerStopAPIView,
     GetClinicView,ActivateEquipmentAPIView,
     DepartmentEquipmentCreateAPIView,
     DepartmentEquipmentUpdateAPIView,SoftDeleteParameterAPIView,
     EquipmentInactiveAPIView,TaskGetAPIView, TaskSoftDeleteAPIView, SubTaskSoftDeleteAPIView,
     EquipmentSoftDeleteAPIView,ParameterValueCreateAPIView, ParameterValueListAPIView,
-    EventAPIView, UserCreateAPIView,
+    EventAPIView, UserCreateAPIView,TaskGetByEventAPIView,
     ClinicEventListAPIView, ClinicEmployeesAPIView, EmployeeCreateAPIView,
     TaskCreateAPIView, TaskUpdateAPIView
    
@@ -87,6 +87,25 @@ urlpatterns = [
    # Soft delete parameter
    path('parameters/<int:parameter_id>/soft-delete', SoftDeleteParameterAPIView.as_view(), 
         name='parameter-soft-delete'),
+
+    # Get all tasks by event
+   path('tasks/event/<int:event_id>', TaskGetByEventAPIView.as_view(), name='task-get-by-event'),
+
+    path(
+    "tasks/<int:id>/timer/start",
+    TaskTimerStartAPIView.as_view(),
+    name="task-timer-start"
+),
+path(
+    "tasks/<int:id>/timer/pause",
+    TaskTimerPauseAPIView.as_view(),
+    name="task-timer-pause"
+),
+path(
+    "tasks/<int:id>/timer/stop",
+    TaskTimerStopAPIView.as_view(),
+    name="task-timer-stop"
+),
 
    
 ]
