@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     ClinicCreateAPIView,
     ClinicUpdateAPIView,TaskTimerStartAPIView,TaskTimerPauseAPIView,TaskTimerStopAPIView,
-    GetClinicView,ActivateEquipmentAPIView,
+    GetClinicView,ActivateEquipmentAPIView,TaskGetByClinicAPIView,
     DepartmentEquipmentCreateAPIView,
     DepartmentEquipmentUpdateAPIView,SoftDeleteParameterAPIView,
     EquipmentInactiveAPIView,TaskGetAPIView, TaskSoftDeleteAPIView, SubTaskSoftDeleteAPIView,
@@ -107,5 +107,10 @@ path(
     name="task-timer-stop"
 ),
 
+path(
+    "clinics/<int:clinic_id>/tasks/",
+    TaskGetByClinicAPIView.as_view(),
+    name="task-get-by-clinic"
+),
    
 ]

@@ -1165,3 +1165,45 @@ class TaskTimerStopAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
+# -------------------------------------------------------------------
+# Task Get By Clinic ID API View
+# -------------------------------------------------------------------
+class TaskGetByClinicAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Get Tasks By Clinic ID",
+        operation_description=(
+            "Retrieve all tasks under a clinic.\n\n"
+            "Tasks are resolved via:\n"
+            "Task → Event → Department → Clinic"
+        ),
+        responses={
+            200: TaskReadSerializer(many=True),
+            404: openapi.Response(description="No Tasks Found"),
+        },
+        tags=["Task"]
+    )
+    def get(self, request, clinic_id):
+        # Validate clinic exists
+        get_object_or_404(Clinic, id=clinic_id)
+
+        tasks = (
+            Task.objects
+            .filter(
+                event__department__clinic_id=clinic_id,
+                is_deleted=False
+            )
+            .select_related(
+                "event",
+                "event__department"
+            )
+            .order_by("-created_at")
+        )
+
+        if not tasks.exists():
+            raise NotFound("No tasks found for this clinic")
+
+        return Response(
+            TaskReadSerializer(tasks, many=True).data,
+            status=status.HTTP_200_OK
+        )
