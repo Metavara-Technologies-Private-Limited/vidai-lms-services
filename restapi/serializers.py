@@ -13,6 +13,11 @@ from .models import (
     Task,
     SubTask, 
     Document,
+    Task_Event,
+    Department,
+    Environment,
+    Environment_Parameter,
+    Environment_Parameter_Value, 
 )
 
 from rest_framework import serializers
@@ -161,6 +166,8 @@ class ParameterValueCreateSerializer(serializers.ModelSerializer):
             "equipment_details",
             "content",
         ]
+
+
 
 
 # =====================================================
@@ -482,7 +489,7 @@ class ClinicSerializer(serializers.ModelSerializer):
             )
 
     # =========================
-    # HELPER: UPDATE OR CREATE EQUIPMENT
+    # UPDATE OR CREATE EQUIPMENT
     # =========================
     def _update_or_create_equipment(
         self,
@@ -730,7 +737,7 @@ class EventScheduleReadSerializer(serializers.ModelSerializer):
             "end_date",
             "months",
             "days",
-            "recurring_duration"
+            "recurring_duration",
         ]
 
 class SubTaskReadSerializer(serializers.ModelSerializer):
@@ -811,6 +818,7 @@ class EventReadSerializer(serializers.ModelSerializer):
     schedule = serializers.SerializerMethodField()
     equipments = serializers.SerializerMethodField()
     parameters = serializers.SerializerMethodField()
+
     assignment = serializers.CharField(
         source="assignment.emp_name",
         read_only=True
@@ -828,32 +836,31 @@ class EventReadSerializer(serializers.ModelSerializer):
             "description",
             "department",
             "assignment",
-            "schedule",      # ✅ now works
+            "schedule",
             "equipments",
             "parameters",
             "created_at",
         ]
 
-    # ✅ FIXED SCHEDULE READ
     def get_schedule(self, event_instance):
-        schedule_instance = (
+        schedule = (
             event_instance.eventschedule_set
             .order_by("-created_at")
             .first()
         )
-
-        if not schedule_instance:
+        if not schedule:
             return None
-
-        return EventScheduleReadSerializer(schedule_instance).data
+        return EventScheduleReadSerializer(schedule).data
 
     def get_equipments(self, event_instance):
         return list(
             event_instance.eventequipment_set
-            .select_related("equipment")
+            .select_related("equipment_details__equipment")
             .values(
-                "equipment__id",
-                "equipment__equipment_name"
+                "equipment_details__id",
+                "equipment_details__equipment_num",
+                "equipment_details__equipment__id",
+                "equipment_details__equipment__equipment_name",
             )
         )
 
@@ -864,9 +871,63 @@ class EventReadSerializer(serializers.ModelSerializer):
             .values(
                 "parameter__id",
                 "parameter__parameter_name",
-                #"parameter__config"
             )
         )
+
+
+    
+# =====================================================
+# Environment Parameter READ Serializer
+# =====================================================
+class EnvironmentParameterReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Environment_Parameter
+        fields = [
+            "id",
+            "env_parameter_name",
+            "is_active",
+            "config",
+        ]
+
+# =====================================================
+# Environment READ Serializer
+# =====================================================
+class EnvironmentReadSerializer(serializers.ModelSerializer):
+    parameters = EnvironmentParameterReadSerializer(
+        many=True,
+        source="parameters"
+    )
+
+    class Meta:
+        model = Environment
+        fields = [
+            "id",
+            "environment_name",
+            "is_active",
+            "created_at",
+            "parameters",
+        ]
+
+# =====================================================
+# Environment Parameter Value READ Serializer
+# =====================================================
+class EnvironmentParameterValueReadSerializer(serializers.ModelSerializer):
+    environment_parameter_id = serializers.IntegerField(
+        source="environment_parameter.id",
+        read_only=True
+    )
+
+    class Meta:
+        model = Environment_Parameter_Value
+        fields = [
+            "id",
+            "content",
+            "created_at",
+            "is_deleted",
+            "environment_parameter_id",
+        ]
+
+
 
 
 # =========================
@@ -886,6 +947,7 @@ class EventScheduleCreateSerializer(serializers.Serializer):
     recurring_duration = serializers.IntegerField(required=False, allow_null=True)
 
 
+
 # =========================
 # Event Create Serializer
 # =========================
@@ -895,70 +957,80 @@ class EventCreateSerializer(serializers.Serializer):
     event_name = serializers.CharField()
     description = serializers.CharField()
 
-    # List of equipment IDs selected for the event
-    equipment_ids = serializers.ListField(
-        child=serializers.IntegerField(), required=False
+    # ✅ CHANGED
+    equipment_details_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False
     )
 
-    # List of parameter IDs selected for the event
     parameter_ids = serializers.ListField(
-        child=serializers.IntegerField(), required=False
+        child=serializers.IntegerField(),
+        required=False
     )
 
-    # Event scheduling information
     schedule = EventScheduleCreateSerializer()
 
     # ---------------- VALIDATION ----------------
     def validate(self, attrs):
-        # Validate department existence
+        # Department
         department = Department.objects.get(id=attrs["department_id"])
 
-        # Validate assignment (employee)
+        # Assignment
         assignment = (
             Employee.objects.get(id=attrs["assignment_id"])
             if attrs.get("assignment_id")
             else self.context["request"].user.employee
         )
 
-        equipment_ids = attrs.get("equipment_ids", [])
+        equipment_details_ids = attrs.get("equipment_details_ids", [])
         parameter_ids = attrs.get("parameter_ids", [])
 
-        # ACTIVE / INACTIVE VALIDATION:
-        # Only active, non-deleted equipment can be linked to event
+        # =========================
+        # VALIDATE EQUIPMENT DETAILS
+        # =========================
+        equipment_details = EquipmentDetails.objects.filter(
+            id__in=equipment_details_ids,
+            equipment__dep=department,
+            is_active=True
+        )
+
+        if equipment_details.count() != len(set(equipment_details_ids)):
+            raise ValidationError("Invalid equipment details selection")
+
+        # =========================
+        # DERIVE EQUIPMENTS (MASTER)
+        # =========================
         equipments = Equipments.objects.filter(
-            id__in=equipment_ids,
-            dep=department,
-            is_active=True,      #  inactive equipment blocked here
+            id__in=equipment_details.values_list("equipment_id", flat=True),
+            is_active=True,
             is_deleted=False
         )
 
-        if equipments.count() != len(set(equipment_ids)):
-            raise ValidationError("Invalid equipment selection")
-
-        # Only active parameters are allowed
+        # =========================
+        # VALIDATE PARAMETERS
+        # =========================
         parameters = Parameters.objects.filter(
             id__in=parameter_ids,
             is_active=True
         )
 
-        # Ensure parameters belong to selected equipment
         invalid = parameters.exclude(equipment__in=equipments)
         if invalid.exists():
             raise ValidationError(
                 "Parameters must belong to selected equipments"
             )
 
-        # Store validated objects for create()
+        # Store validated objects
         attrs["department"] = department
         attrs["assignment"] = assignment
-        attrs["equipments"] = equipments
+        attrs["equipment_details"] = equipment_details
         attrs["parameters"] = parameters
+
         return attrs
 
     # ---------------- CREATE ----------------
     @transaction.atomic
     def create(self, validated_data):
-        # Create event
         event = Event.objects.create(
             department=validated_data["department"],
             assignment=validated_data["assignment"],
@@ -966,21 +1038,25 @@ class EventCreateSerializer(serializers.Serializer):
             description=validated_data["description"]
         )
 
-        # Create event schedule
+        # Create schedule
         EventSchedule.objects.create(
             event=event,
             **validated_data["schedule"]
         )
 
-        # Link equipments to event
-        # eq = one equipment object
-        for eq in validated_data["equipments"]:
-            EventEquipment.objects.create(event=event, equipment=eq)
+        # Link equipment details
+        for ed in validated_data["equipment_details"]:
+            EventEquipment.objects.create(
+                event=event,
+                equipment_details=ed
+            )
 
-        # Link parameters to event
-        # p = one parameter object
+        # Link parameters
         for p in validated_data["parameters"]:
-            EventParameter.objects.create(event=event, parameter=p)
+            EventParameter.objects.create(
+                event=event,
+                parameter=p
+            )
 
         return event
 
@@ -1294,3 +1370,205 @@ class EquipmentActivateSerializer(serializers.Serializer):
         equipment.is_active = True
         equipment.save(update_fields=["is_active"])
         return equipment
+
+# =====================================================
+# Environment Parameter Serializer (WRITE)
+# =====================================================
+class EnvironmentParameterSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
+
+    class Meta:
+        model = Environment_Parameter
+        fields = [
+            "id",                   # ✅ IMPORTANT (ID MUST NOT CHANGE)
+            "env_parameter_name",
+            "is_active",
+            "config",
+        ]
+
+# =====================================================
+# Environment Parameter PATCH Serializer (ID SAFE)
+# =====================================================
+class EnvironmentParameterPatchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Environment_Parameter
+        fields = [
+            "env_parameter_name",
+            "is_active",
+            "config",
+        ]
+
+    def update(self, instance, validated_data):
+        # Update only provided fields (ID never changes)
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+
+        instance.save()
+        return instance
+
+
+# =====================================================
+# Environment Serializer
+# - Create Environment + Parameters
+# - Update Environment + Parameters
+# =====================================================
+class EnvironmentSerializer(serializers.ModelSerializer):
+    environment_name = serializers.CharField(required=False)
+
+    parameters = EnvironmentParameterSerializer(
+        many=True,
+        required=False
+    )
+
+    class Meta:
+        model = Environment
+        fields = [
+            "id",
+            "environment_name",
+            "is_active",
+            "parameters",
+        ]
+
+    # ==================================================
+    # CREATE (POST)
+    # ==================================================
+    @transaction.atomic
+    def create(self, validated_data):
+        parameters_data = validated_data.pop("parameters", [])
+        department = validated_data.pop("dep")
+
+        environment = Environment.objects.create(
+            dep=department,
+            **validated_data
+        )
+
+        for param in parameters_data:
+            Environment_Parameter.objects.create(
+                environment=environment,
+                env_parameter_name=param["env_parameter_name"],
+                is_active=param.get("is_active", True),
+                config=param.get("config"),
+            )
+
+        environment.refresh_from_db()
+        return environment
+
+    # ==================================================
+    # UPDATE (PUT / PATCH – STRICT, ID SAFE)
+    # ==================================================
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        parameters_data = validated_data.pop("parameters", [])
+
+        # ----------------------------
+        # Update Environment fields
+        # ----------------------------
+        if "environment_name" in validated_data:
+            instance.environment_name = validated_data["environment_name"]
+
+        if "is_active" in validated_data:
+            instance.is_active = validated_data["is_active"]
+
+        instance.save()
+
+        # ==================================================
+        # Parameters (STRICT — SAME AS EQUIPMENT)
+        # ==================================================
+        for param in parameters_data:
+            param_id = param.get("id")
+
+            if param_id:
+                # 🔒 Update existing parameter ONLY
+                try:
+                    param_instance = Environment_Parameter.objects.get(
+                        id=param_id,
+                        environment=instance
+                    )
+                except Environment_Parameter.DoesNotExist:
+                    raise ValidationError(
+                        f"Invalid environment parameter id {param_id}"
+                    )
+
+                param_instance.env_parameter_name = param.get(
+                    "env_parameter_name",
+                    param_instance.env_parameter_name
+                )
+                param_instance.is_active = param.get(
+                    "is_active",
+                    param_instance.is_active
+                )
+
+                if "config" in param:
+                    param_instance.config = param["config"]
+
+                param_instance.save()
+
+            else:
+                # 🆕 Create new parameter
+                Environment_Parameter.objects.create(
+                    environment=instance,
+                    env_parameter_name=param["env_parameter_name"],
+                    is_active=param.get("is_active", True),
+                    config=param.get("config"),
+                )
+
+        instance.refresh_from_db()
+        return instance
+
+# =====================================================
+# Environment Parameter Value Create Serializer
+# =====================================================
+class EnvironmentParameterValueSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Environment_Parameter_Value
+        fields = [
+            "id",
+            "environment",
+            "environment_parameter",
+            "content",
+        ]
+
+    def validate(self, attrs):
+        if (
+            attrs["environment_parameter"].environment_id
+            != attrs["environment"].id
+        ):
+            raise ValidationError(
+                "Parameter does not belong to this environment"
+            )
+        return attrs
+    
+    # =========================
+# WRITE Serializer
+# =========================
+class TaskEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Task_Event
+        fields = [
+            "id",
+            "name",
+            "dep",
+            "is_deleted",
+            "created_at",
+            "modified_at"
+        ]
+        read_only_fields = ("created_at", "modified_at")
+
+
+# =========================
+# READ Serializer (optional but recommended)
+# =========================
+class TaskEventReadSerializer(serializers.ModelSerializer):
+    dep_name = serializers.CharField(source="dep.name", read_only=True)
+
+    class Meta:
+        model = Task_Event
+        fields = [
+            "id",
+            "name",
+            "dep",
+            "dep_name",
+            "is_deleted",
+            "created_at",
+            "modified_at"
+        ]

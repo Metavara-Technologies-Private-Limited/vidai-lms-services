@@ -1,16 +1,74 @@
 from django.urls import path
 from .views import (
+
+    # =========================
+    # Clinic
+    # =========================
     ClinicCreateAPIView,
-    ClinicUpdateAPIView,TaskTimerStartAPIView,TaskTimerPauseAPIView,TaskTimerStopAPIView,
-    GetClinicView,ActivateEquipmentAPIView,TaskGetByClinicAPIView,
+    ClinicUpdateAPIView,
+    GetClinicView,
+
+    # =========================
+    # Department / Equipment
+    # =========================
     DepartmentEquipmentCreateAPIView,
-    DepartmentEquipmentUpdateAPIView,SoftDeleteParameterAPIView,
-    EquipmentInactiveAPIView,TaskGetAPIView, TaskSoftDeleteAPIView, SubTaskSoftDeleteAPIView,
-    EquipmentSoftDeleteAPIView,ParameterValueCreateAPIView, ParameterValueListAPIView,
-    EventAPIView, UserCreateAPIView,TaskGetByEventAPIView,
-    ClinicEventListAPIView, ClinicEmployeesAPIView, EmployeeCreateAPIView,
-    TaskCreateAPIView, TaskUpdateAPIView
-   
+    DepartmentEquipmentUpdateAPIView,
+    EquipmentInactiveAPIView,
+    EquipmentSoftDeleteAPIView,
+    ActivateEquipmentAPIView,
+
+    # =========================
+    # Event
+    # =========================
+    EventAPIView,
+    ClinicEventListAPIView,
+
+    # =========================
+    # Task
+    # =========================
+    TaskCreateAPIView,
+    TaskUpdateAPIView,
+    TaskGetAPIView,
+    TaskGetByEventAPIView,
+    TaskGetByClinicAPIView,
+    TaskSoftDeleteAPIView,
+    SubTaskSoftDeleteAPIView,
+    TaskTimerStartAPIView,
+    TaskTimerPauseAPIView,
+    TaskTimerStopAPIView,
+
+    # =========================
+    # Employee / User
+    # =========================
+    ClinicEmployeesAPIView,
+    EmployeeCreateAPIView,
+    UserCreateAPIView,
+
+    # =========================
+    # Parameters
+    # =========================
+    ParameterValueCreateAPIView,
+    ParameterValueListAPIView,
+    SoftDeleteParameterAPIView,
+
+    # =========================
+    # Environment
+    # =========================
+    EnvironmentCreateAPIView,
+    EnvironmentUpdateAPIView,
+    EnvironmentGetAPIView,
+    EnvironmentParameterPatchAPIView,
+    EnvironmentParameterValueCreateAPIView,
+    EnvironmentParameterValueListAPIView,
+    EnvironmentActivateAPIView,
+    EnvironmentInactivateAPIView,
+    EnvironmentSoftDeleteAPIView,
+    EnvironmentParameterSoftDeleteAPIView,
+    # =========================
+    # Task Events
+    # =========================
+    TaskEventListAPIView,
+    TaskEventCreateAPIView,
 )
 
 urlpatterns = [
@@ -90,27 +148,109 @@ urlpatterns = [
 
     # Get all tasks by event
    path('tasks/event/<int:event_id>', TaskGetByEventAPIView.as_view(), name='task-get-by-event'),
-
+    
+    # Task Timer Management
     path(
     "tasks/<int:id>/timer/start",
     TaskTimerStartAPIView.as_view(),
     name="task-timer-start"
 ),
-path(
+    
+    # Pause Task Timer
+    path(
     "tasks/<int:id>/timer/pause",
     TaskTimerPauseAPIView.as_view(),
     name="task-timer-pause"
 ),
-path(
+    # Stop Task Timer
+    path(
     "tasks/<int:id>/timer/stop",
     TaskTimerStopAPIView.as_view(),
     name="task-timer-stop"
 ),
-
-path(
+    # Get all tasks by clinic
+    path(
     "clinics/<int:clinic_id>/tasks/",
     TaskGetByClinicAPIView.as_view(),
     name="task-get-by-clinic"
 ),
    
+ # ==================================================
+    # Environment
+    # ==================================================
+    path(
+        "departments/<int:department_id>/environments/",
+        EnvironmentCreateAPIView.as_view(),
+        name="environment-create"
+    ),
+    path(
+        "environments/<int:environment_id>/",
+        EnvironmentUpdateAPIView.as_view(),
+        name="environment-update"
+    ),
+    path(
+        "environments/<int:environment_id>/get/",
+        EnvironmentGetAPIView.as_view(),
+        name="environment-get"
+    ),
+
+    # Environment Parameters
+    path(
+        "environment-parameters/<int:parameter_id>/",
+        EnvironmentParameterPatchAPIView.as_view(),
+        name="environment-parameter-patch"
+    ),
+
+    # Create Environment Parameter Value (POST)
+path(
+    "environment-parameter-values/",
+    EnvironmentParameterValueCreateAPIView.as_view(),
+    name="environment-parameter-value-create"
+),
+
+# List Environment Parameter Values by parameter_id (GET)
+path(
+    "environment-parameter-values/<int:value_id>/",
+    EnvironmentParameterValueListAPIView.as_view(),
+    name="environment-parameter-value-get"
+),
+
+# ==================================================
+    # Environment active/inactive/delete
+    # ==================================================
+    path(
+        "environments/<int:environment_id>/activate/",
+        EnvironmentActivateAPIView.as_view(),
+        name="environment-activate"
+    ),
+
+    path(
+        "environments/<int:environment_id>/inactivate/",
+        EnvironmentInactivateAPIView.as_view(),
+        name="environment-inactivate"
+    ),
+
+    path(
+        "environments/<int:environment_id>/delete/",
+        EnvironmentSoftDeleteAPIView.as_view(),
+        name="environment-soft-delete"
+    ),
+
+    # ==================================================
+    # Environment Parameter soft delete
+    # ==================================================
+    path(
+        "environment-parameters/<int:parameter_id>/delete/",
+        EnvironmentParameterSoftDeleteAPIView.as_view(),
+        name="environment-parameter-soft-delete"
+    ),
+
+    # ==================================================
+    # Task Events
+    # ==================================================
+    
+    path("task-events/", TaskEventListAPIView.as_view(), name="task-event-list"),
+    path("task-events/create/", TaskEventCreateAPIView.as_view(), name="task-event-create"),
+    path("task-events/<int:task_event_id>/", TaskEventListAPIView.as_view(), name="task-event-get"),
+
 ]
