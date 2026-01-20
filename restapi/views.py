@@ -12,7 +12,8 @@ import logging
 from django.utils import timezone
 from .pagination import StandardResultsPagination
 from rest_framework.pagination import PageNumberPagination
-from .models import Clinic, Department, Equipments,Event, Task, Employee, SubTask, ParameterValues, Parameters
+from .models import (Clinic, Department, Environment_Parameter_Value, Equipments,Event, Task, Employee, SubTask, ParameterValues,Department,
+Environment, Environment_Parameter, Environment_Parameter_Value, Task_Event)
 from .serializers import (
     ClinicSerializer,
     ClinicReadSerializer,
@@ -21,11 +22,16 @@ from .serializers import (
     EventCreateSerializer,
     EventReadSerializer,
     TaskSerializer, TaskReadSerializer,
+    TaskEventReadSerializer, 
+    TaskEventSerializer,
     EmployeeReadSerializer,
     UserCreateSerializer,
     EmployeeCreateSerializer,
     ParameterValueCreateSerializer,
     ParameterValueReadSerializer,
+    EnvironmentSerializer,
+    EnvironmentParameterPatchSerializer,
+    EnvironmentParameterValueSerializer, 
     
 )
 
@@ -430,9 +436,7 @@ class EventAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-# -------------------------------------------------------------------
-# 8. Event API View (GET)
-# -------------------------------------------------------------------
+
 
 # -------------------------------------------------------------------
 # Clinic Event List API View (GET – No Pagination)
@@ -1207,3 +1211,389 @@ class TaskGetByClinicAPIView(APIView):
             TaskReadSerializer(tasks, many=True).data,
             status=status.HTTP_200_OK
         )
+    
+
+# -------------------------------------------------------------------
+# 1. POST → Create Environment + Parameters
+# -------------------------------------------------------------------
+class EnvironmentCreateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Create environment with parameters (nested)",
+        request_body=EnvironmentSerializer,
+        responses={201: EnvironmentSerializer},
+        tags=["Environment"]
+    )
+    def post(self, request, department_id):
+        try:
+            department = Department.objects.get(id=department_id)
+
+            serializer = EnvironmentSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            environment = serializer.save(dep=department)
+
+            return Response(
+                EnvironmentSerializer(environment).data,
+                status=status.HTTP_201_CREATED
+            )
+
+        except Department.DoesNotExist:
+            raise NotFound("Department not found")
+
+        except Exception:
+            logger.error(traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=500
+            )
+
+
+# -------------------------------------------------------------------
+# 2. GET → Environment + Parameters
+# -------------------------------------------------------------------
+class EnvironmentGetAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Get environment with parameters",
+        responses={200: EnvironmentSerializer},
+        tags=["Environment"]
+    )
+    def get(self, request, environment_id):
+        environment = get_object_or_404(
+            Environment,
+            id=environment_id,
+            is_deleted=False
+        )
+
+        return Response(
+            EnvironmentSerializer(environment).data,
+            status=status.HTTP_200_OK
+        )
+    
+
+# -------------------------------------------------------------------
+# UPDATE Environment (PUT / PATCH)
+# -------------------------------------------------------------------
+class EnvironmentUpdateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Update environment",
+        request_body=EnvironmentSerializer,
+        responses={200: EnvironmentSerializer},
+        tags=["Environment"]
+    )
+    def put(self, request, environment_id):
+        environment = get_object_or_404(
+            Environment,
+            id=environment_id,
+            is_deleted=False
+        )
+
+        serializer = EnvironmentSerializer(
+            environment,
+            data=request.data
+        )
+        serializer.is_valid(raise_exception=True)
+        environment = serializer.save()
+
+        return Response(
+            EnvironmentSerializer(environment).data,
+            status=status.HTTP_200_OK
+        )
+
+    def patch(self, request, environment_id):
+        environment = get_object_or_404(
+            Environment,
+            id=environment_id,
+            is_deleted=False
+        )
+
+        serializer = EnvironmentSerializer(
+            environment,
+            data=request.data,
+            partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        environment = serializer.save()
+
+        return Response(
+            EnvironmentSerializer(environment).data,
+            status=status.HTTP_200_OK
+        )
+
+
+
+# -------------------------------------------------------------------
+# 3. PATCH → Update Environment Parameter
+# -------------------------------------------------------------------
+class EnvironmentParameterPatchAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Update environment parameter",
+        request_body=EnvironmentParameterPatchSerializer,
+        responses={200: EnvironmentParameterPatchSerializer},
+        tags=["Environment Parameter"]
+    )
+    def patch(self, request, parameter_id):
+        parameter = get_object_or_404(
+            Environment_Parameter,
+            id=parameter_id,
+            is_deleted=False
+        )
+
+        serializer = EnvironmentParameterPatchSerializer(
+            parameter,
+            data=request.data,
+            partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
+
+
+# -------------------------------------------------------------------
+# 4. POST → Create Environment Parameter Value
+# -------------------------------------------------------------------
+class EnvironmentParameterValueCreateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Create environment parameter value (runtime)",
+        request_body=EnvironmentParameterValueSerializer,
+        responses={201: EnvironmentParameterValueSerializer},
+        tags=["Environment Parameter Value"]
+    )
+    def post(self, request):
+        serializer = EnvironmentParameterValueSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        value = serializer.save()
+
+        return Response(
+            EnvironmentParameterValueSerializer(value).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+# -------------------------------------------------------------------
+# 5. GET → List Environment Parameter Values
+# -------------------------------------------------------------------
+class EnvironmentParameterValueListAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Get environment parameter value by value ID",
+        responses={200: EnvironmentParameterValueSerializer},
+        tags=["Environment Parameter Value"]
+    )
+    def get(self, request, value_id):
+        try:
+            value = Environment_Parameter_Value.objects.get(
+                id=value_id,
+                is_deleted=False
+            )
+
+            return Response(
+                EnvironmentParameterValueSerializer(value).data,
+                status=status.HTTP_200_OK
+            )
+
+        except Environment_Parameter_Value.DoesNotExist:
+            raise NotFound({
+                "error": {
+                    "code": "ENV_PARAMETER_VALUE_NOT_FOUND",
+                    "message": f"Environment parameter value with id {value_id} does not exist"
+                }
+            })  
+        
+# ==================================================
+# ENVIRONMENT – ACTIVATE (POST)
+# ==================================================
+class EnvironmentActivateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Activate an environment",
+        tags=["Environment"]
+    )
+    def post(self, request, environment_id):
+        try:
+            environment = Environment.objects.get(
+                id=environment_id,
+                is_deleted=False
+            )
+
+            environment.is_active = True
+            environment.save(update_fields=["is_active"])
+
+            return Response(
+                {"message": "Environment activated successfully"},
+                status=status.HTTP_200_OK
+            )
+
+        except Environment.DoesNotExist:
+            raise NotFound({
+                "code": "ENVIRONMENT_NOT_FOUND",
+                "message": f"Environment with id {environment_id} does not exist"
+            })
+
+
+# ==================================================
+# ENVIRONMENT – INACTIVATE (PATCH)
+# ==================================================
+class EnvironmentInactivateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Inactivate an environment",
+        tags=["Environment"]
+    )
+    def patch(self, request, environment_id):
+        try:
+            environment = Environment.objects.get(
+                id=environment_id,
+                is_deleted=False
+            )
+
+            environment.is_active = False
+            environment.save(update_fields=["is_active"])
+
+            return Response(
+                {"message": "Environment inactivated successfully"},
+                status=status.HTTP_200_OK
+            )
+
+        except Environment.DoesNotExist:
+            raise NotFound({
+                "code": "ENVIRONMENT_NOT_FOUND",
+                "message": f"Environment with id {environment_id} does not exist"
+            })
+
+
+
+# -------------------------------------------------------------------
+# PATCH → Soft Delete Environment
+# -------------------------------------------------------------------
+class EnvironmentSoftDeleteAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Soft delete an environment",
+        tags=["Environment"]
+    )
+    def patch(self, request, environment_id):
+        try:
+            environment = Environment.objects.get(
+                id=environment_id,
+                is_deleted=False
+            )
+
+            environment.is_deleted = True
+            environment.is_active = False
+
+            environment.save(update_fields=["is_deleted", "is_active"])
+
+            return Response(
+                {"message": "Environment soft deleted successfully"},
+                status=status.HTTP_200_OK
+            )
+
+        except Environment.DoesNotExist:
+            raise NotFound({
+                "code": "ENVIRONMENT_NOT_FOUND",
+                "message": f"Environment with id {environment_id} does not exist"
+            })
+
+# ==================================================
+# ENVIRONMENT PARAMETER – SOFT DELETE (PATCH)
+# ==================================================
+class EnvironmentParameterSoftDeleteAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Soft delete an environment parameter",
+        tags=["Environment Parameter"]
+    )
+    def patch(self, request, parameter_id):
+        try:
+            parameter = Environment_Parameter.objects.get(
+                id=parameter_id,
+                is_deleted=False
+            )
+
+            # ✅ SOFT DELETE (NO deleted_at)
+            parameter.is_deleted = True
+            parameter.is_active = False
+
+            parameter.save(update_fields=["is_deleted", "is_active"])
+
+            return Response(
+                {
+                    "message": "Environment parameter soft deleted successfully",
+                    "parameter_id": parameter_id
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Environment_Parameter.DoesNotExist:
+            raise NotFound({
+                "code": "ENV_PARAMETER_NOT_FOUND",
+                "message": f"Environment parameter with id {parameter_id} does not exist"
+            })
+        
+class TaskEventCreateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Create a Task Event",
+        request_body=TaskEventSerializer,
+        responses={
+            201: TaskEventReadSerializer,
+            400: "Validation Error"
+        }
+    )
+    def post(self, request):
+        serializer = TaskEventSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        task_event = serializer.save()
+
+        return Response(
+            TaskEventReadSerializer(task_event).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+class TaskEventListAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Get all Task Events OR Get Task Event by ID",
+        manual_parameters=[
+            openapi.Parameter(
+                "dep_id",
+                openapi.IN_QUERY,
+                description="Filter by Department ID",
+                type=openapi.TYPE_INTEGER
+            )
+        ],
+        responses={200: TaskEventReadSerializer(many=True)}
+    )
+    def get(self, request, task_event_id=None):
+
+        # 🔹 Case 1: Get by ID
+        if task_event_id:
+            task_event = get_object_or_404(
+                Task_Event,
+                id=task_event_id,
+                is_deleted=False
+            )
+            serializer = TaskEventReadSerializer(task_event)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        # 🔹 Case 2: List all
+        queryset = Task_Event.objects.filter(is_deleted=False)
+
+        dep_id = request.query_params.get("dep_id")
+        if dep_id:
+            queryset = queryset.filter(dep_id=dep_id)
+
+        serializer = TaskEventReadSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)

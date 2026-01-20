@@ -149,13 +149,18 @@ class Event(models.Model):
 # Event ↔ Equipment
 # =========================
 class EventEquipment(models.Model):
-    event = models.ForeignKey(Event, on_delete=models.CASCADE)
-    equipment = models.ForeignKey(Equipments, on_delete=models.CASCADE)
+    event = models.ForeignKey("Event", on_delete=models.CASCADE)
+    equipment_details = models.ForeignKey(
+        "EquipmentDetails",
+        on_delete=models.CASCADE,
+        related_name="event_equipments",
+        null=True  # keep for now (safe for existing rows)
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ("event", "equipment")
+        unique_together = ("event", "equipment_details")
 
 
 # =========================
@@ -309,3 +314,101 @@ class Document(models.Model):
     data = models.BinaryField()
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+
+class Task_Event(models.Model):
+    name = models.CharField(max_length=255)
+    dep = models.ForeignKey(
+        Department,
+        on_delete=models.CASCADE,
+        related_name="task_events"
+    )
+
+    is_deleted = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "task_event"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.name
+
+# =========================
+# Environment
+# =========================
+class Environment(models.Model):
+    environment_name = models.CharField(max_length=255)
+
+    # FK → Department
+    dep = models.ForeignKey(
+        "Department",
+        on_delete=models.CASCADE,
+        related_name="environments"
+    )
+
+    is_active = models.BooleanField(default=True)
+    is_deleted = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "environment"
+
+    def __str__(self):
+        return self.environment_name
+    
+# =========================
+# Environment Parameter
+# =========================
+class Environment_Parameter(models.Model):
+    environment = models.ForeignKey(
+        Environment,
+        on_delete=models.CASCADE,
+        related_name="parameters"
+    )
+
+    env_parameter_name = models.CharField(max_length=255)
+
+    # Flexible config (thresholds, units, limits, etc.)
+    config = models.JSONField(null=True, blank=True)
+
+    is_active = models.BooleanField(default=True)
+    is_deleted = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "environment_parameter"
+
+    def __str__(self):
+        return self.env_parameter_name
+
+# =========================
+# Environment Parameter Value
+# =========================
+class Environment_Parameter_Value(models.Model):
+    environment_parameter = models.ForeignKey(
+        Environment_Parameter,
+        on_delete=models.CASCADE,
+        related_name="values"
+    )
+
+    environment = models.ForeignKey(
+        Environment,
+        on_delete=models.CASCADE,
+        related_name="parameter_values"
+    )
+
+    content = models.CharField(max_length=255)
+
+    is_deleted = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "environment_parameter_value"
