@@ -13,7 +13,7 @@ from django.utils import timezone
 from .pagination import StandardResultsPagination
 from rest_framework.pagination import PageNumberPagination
 from .models import (Clinic, Department, Environment_Parameter_Value, Equipments,Event, Task, Employee, SubTask, ParameterValues,Department,
-Environment, Environment_Parameter, Environment_Parameter_Value, Task_Event)
+Environment, Environment_Parameter, Environment_Parameter_Value, Task_Event, Parameters)
 from .serializers import (
     ClinicSerializer,
     ClinicReadSerializer,
@@ -31,7 +31,10 @@ from .serializers import (
     ParameterValueReadSerializer,
     EnvironmentSerializer,
     EnvironmentParameterPatchSerializer,
-    EnvironmentParameterValueSerializer, 
+    EnvironmentParameterValueSerializer,
+    ClinicFullHierarchyReadSerializer,
+    EnvironmentParameterValueReadSerializer,
+    
     
 )
 
@@ -1270,7 +1273,31 @@ class EnvironmentGetAPIView(APIView):
             EnvironmentSerializer(environment).data,
             status=status.HTTP_200_OK
         )
-    
+ # -------------------------------------------------------------------
+# 3. GET → Full Hierarchy by Environment ID
+# -------------------------------------------------------------------   
+class EnvironmentFullHierarchyAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Get full hierarchy by Environment ID",
+        responses={200: ClinicFullHierarchyReadSerializer},
+        tags=["Environment"]
+    )
+    def get(self, request, environment_id):
+        environment = get_object_or_404(
+            Environment,
+            id=environment_id,
+            is_deleted=False
+        )
+
+        department = environment.dep
+        clinic = department.clinic
+
+        return Response(
+            ClinicFullHierarchyReadSerializer(clinic).data,
+            status=status.HTTP_200_OK
+        )
+
 
 # -------------------------------------------------------------------
 # UPDATE Environment (PUT / PATCH)
@@ -1385,30 +1412,28 @@ class EnvironmentParameterValueCreateAPIView(APIView):
 class EnvironmentParameterValueListAPIView(APIView):
 
     @swagger_auto_schema(
-        operation_description="Get environment parameter value by value ID",
-        responses={200: EnvironmentParameterValueSerializer},
+        operation_description="Get all values for an environment parameter",
+        responses={200: EnvironmentParameterValueReadSerializer(many=True)},
         tags=["Environment Parameter Value"]
     )
-    def get(self, request, value_id):
-        try:
-            value = Environment_Parameter_Value.objects.get(
-                id=value_id,
+    def get(self, request, env_parameter_id):
+        queryset = (
+            Environment_Parameter_Value.objects
+            .filter(
+                environment_parameter_id=env_parameter_id,
                 is_deleted=False
             )
+            .order_by("-log_time", "-created_at")
+        )
 
-            return Response(
-                EnvironmentParameterValueSerializer(value).data,
-                status=status.HTTP_200_OK
-            )
+        return Response(
+            EnvironmentParameterValueReadSerializer(queryset, many=True).data,
+            status=status.HTTP_200_OK
+        )
 
-        except Environment_Parameter_Value.DoesNotExist:
-            raise NotFound({
-                "error": {
-                    "code": "ENV_PARAMETER_VALUE_NOT_FOUND",
-                    "message": f"Environment parameter value with id {value_id} does not exist"
-                }
-            })  
-        
+
+
+  
 # ==================================================
 # ENVIRONMENT – ACTIVATE (POST)
 # ==================================================
