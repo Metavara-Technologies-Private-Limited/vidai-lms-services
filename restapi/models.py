@@ -96,7 +96,6 @@ class ParameterValues(models.Model):
         related_name="parameter_values"
     )
 
-    # ✅ TEMPORARILY NULLABLE (REQUIRED)
     equipment_details = models.ForeignKey(
         EquipmentDetails,
         on_delete=models.CASCADE,
@@ -106,6 +105,10 @@ class ParameterValues(models.Model):
     )
 
     content = models.TextField()
+
+    # ✅ NEW FIELD
+    log_time = models.DateTimeField(null=True, blank=True)
+
     is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
@@ -253,7 +256,12 @@ class Task(models.Model):
 
     name = models.CharField(max_length=255)
 
-    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    task_event = models.ForeignKey(
+        "Task_Event",   # ✅ FIXED
+        on_delete=models.CASCADE,
+        related_name="tasks"
+    )
+
     assignment = models.ForeignKey(Employee, on_delete=models.CASCADE)
 
     is_deleted = models.BooleanField(default=False)
@@ -277,6 +285,8 @@ class Task(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+
+
 
 
 
@@ -317,6 +327,13 @@ class Document(models.Model):
 
 class Task_Event(models.Model):
     name = models.CharField(max_length=255)
+
+    event = models.ForeignKey(
+        Event,
+        on_delete=models.CASCADE,
+        related_name="task_events"
+    )
+
     dep = models.ForeignKey(
         Department,
         on_delete=models.CASCADE,
@@ -334,6 +351,7 @@ class Task_Event(models.Model):
 
     def __str__(self):
         return self.name
+
 
 # =========================
 # Environment
@@ -404,6 +422,9 @@ class Environment_Parameter_Value(models.Model):
     )
 
     content = models.CharField(max_length=255)
+
+    # ✅ NEW FIELD
+    log_time = models.DateTimeField(null=True, blank=True)
 
     is_deleted = models.BooleanField(default=False)
 

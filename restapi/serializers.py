@@ -3,22 +3,26 @@ from rest_framework.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 from .models import (
-    Clinic, Department, Equipments,
-    EquipmentDetails, EventParameter, Parameters, ParameterValues, Event,
+    Clinic,
+    Department,
+    Equipments,
+    EquipmentDetails,
+    Parameters,
+    ParameterValues,
+    Event,
     EventSchedule,
     EventEquipment,
-    Department,
+    EventParameter,
     Employee,
-    Equipments,
     Task,
-    SubTask, 
+    SubTask,
     Document,
     Task_Event,
-    Department,
     Environment,
     Environment_Parameter,
-    Environment_Parameter_Value, 
+    Environment_Parameter_Value,
 )
+
 
 from rest_framework import serializers
 from .models import (
@@ -123,6 +127,10 @@ class TaskSerializer(serializers.ModelSerializer):
     sub_tasks = SubTaskSerializer(many=True, required=False)
     documents = DocumentSerializer(many=True, required=False)
 
+    task_event = serializers.PrimaryKeyRelatedField(
+        queryset=Task_Event.objects.all()
+    )
+
     assignment = serializers.PrimaryKeyRelatedField(
         queryset=Employee.objects.all()
     )
@@ -130,14 +138,16 @@ class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         fields = [
-            "event",
+            # ✅ FIXED
+            "task_event",
+
             "assignment",
             "name",
             "due_date",
             "description",
             "status",
 
-            # ⏱️ SAFE ADD (READ ONLY)
+            # ⏱️ READ ONLY
             "timer_status",
             "total_tracked_sec",
             "timer_started_at",
@@ -145,11 +155,13 @@ class TaskSerializer(serializers.ModelSerializer):
             "sub_tasks",
             "documents",
         ]
+
         read_only_fields = [
             "timer_status",
             "total_tracked_sec",
             "timer_started_at",
         ]
+
 
 
 
@@ -162,6 +174,7 @@ class ParameterValueCreateSerializer(serializers.ModelSerializer):
         model = ParameterValues
         fields = [
             "id",
+            
             "parameter",
             "equipment_details",
             "content",
@@ -596,6 +609,7 @@ class ParameterValueCreateSerializer(serializers.ModelSerializer):
         model = ParameterValues
         fields = [
             "id",
+            "log_time",
             "parameter",
             "equipment_details",
             "content",
@@ -653,6 +667,7 @@ class ParameterValueReadSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "content",
+            "log_time", 
             "created_at",
             "is_deleted",
             "equipment_details_id",
@@ -775,18 +790,33 @@ class TaskReadSerializer(serializers.ModelSerializer):
         many=True
     )
 
+    # ✅ Derived event (READ ONLY)
+    event = serializers.IntegerField(
+        source="task_event.event.id",
+        read_only=True
+    )
+
+    task_event = serializers.IntegerField(
+        source="task_event.id",
+        read_only=True
+    )
+
     class Meta:
         model = Task
         fields = [
             "id",
+
+            # ✅ FIXED
             "event",
+            "task_event",
+
             "assignment",
             "name",
             "description",
             "due_date",
             "status",
 
-            # ⏱️ ADDED — TASK TIMER FIELDS
+            # ⏱️ TASK TIMER FIELDS
             "timer_status",
             "total_tracked_sec",
             "timer_started_at",
@@ -796,6 +826,7 @@ class TaskReadSerializer(serializers.ModelSerializer):
             "created_at",
             "modified_at",
         ]
+
 
 
 class EmployeeReadSerializer(serializers.ModelSerializer):
@@ -893,10 +924,7 @@ class EnvironmentParameterReadSerializer(serializers.ModelSerializer):
 # Environment READ Serializer
 # =====================================================
 class EnvironmentReadSerializer(serializers.ModelSerializer):
-    parameters = EnvironmentParameterReadSerializer(
-        many=True,
-        source="parameters"
-    )
+    parameters = EnvironmentParameterReadSerializer(many=True)
 
     class Meta:
         model = Environment
@@ -907,6 +935,7 @@ class EnvironmentReadSerializer(serializers.ModelSerializer):
             "created_at",
             "parameters",
         ]
+
 
 # =====================================================
 # Environment Parameter Value READ Serializer
@@ -922,10 +951,75 @@ class EnvironmentParameterValueReadSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "content",
+            "log_time", 
             "created_at",
             "is_deleted",
             "environment_parameter_id",
         ]
+
+class DepartmentWithEnvironmentReadSerializer(serializers.ModelSerializer):
+    equipments = serializers.SerializerMethodField()
+    environment = serializers.SerializerMethodField()  # ✅ FIX
+
+    class Meta:
+        model = Department
+        fields = [
+            "id",
+            "name",
+            "is_active",
+            "equipments",
+            "environment",
+        ]
+
+    def get_equipments(self, obj):
+        qs = (
+            obj.equipments_set
+            .filter(is_deleted=False)
+            .prefetch_related(
+                "equipmentdetails_set",
+                "parameters"
+            )
+        )
+        return EquipmentReadSerializer(qs, many=True).data
+
+    def get_environment(self, obj):
+        environment = (
+            Environment.objects
+            .filter(dep=obj)          # ✅ correct relation
+            .prefetch_related("parameters")
+            .first()
+        )
+
+        if not environment:
+            return None
+
+        return EnvironmentReadSerializer(environment).data
+
+class ClinicFullHierarchyReadSerializer(serializers.ModelSerializer):
+    department = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Clinic
+        fields = [
+            "id",
+            "name",
+            "department",
+        ]
+
+    def get_department(self, obj):
+        departments = (
+            obj.department_set
+            .filter(is_active=True)  # ✅ FIX HERE
+            .prefetch_related(
+                "equipments_set__equipmentdetails_set",
+                "equipments_set__parameters",
+                "environments__parameters",
+            )
+        )
+
+        return DepartmentWithEnvironmentReadSerializer(
+            departments, many=True
+        ).data
 
 
 
@@ -1104,6 +1198,10 @@ class TaskSerializer(serializers.ModelSerializer):
     sub_tasks = SubTaskSerializer(many=True, required=False)
     documents = DocumentSerializer(many=True, required=False)
 
+    task_event = serializers.PrimaryKeyRelatedField(
+        queryset=Task_Event.objects.all()
+    )
+
     assignment = serializers.PrimaryKeyRelatedField(
         queryset=Employee.objects.all()
     )
@@ -1111,9 +1209,9 @@ class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         fields = [
-            "event",
+            "task_event",     # ✅ FIXED
             "assignment",
-            "name",          # payload MUST send name
+            "name",
             "due_date",
             "description",
             "status",
@@ -1153,11 +1251,11 @@ class TaskSerializer(serializers.ModelSerializer):
     # =========================
     @transaction.atomic
     def update(self, instance, validated_data):
-        # assignment is immutable
         validated_data.pop("assignment", None)
+        validated_data.pop("task_event", None)  # ❗ optional: prevent reassignment
 
         sub_tasks_data = validated_data.pop("sub_tasks", [])
-        documents_data = validatedated_data = validated_data.pop("documents", [])
+        documents_data = validated_data.pop("documents", [])
 
         # ---- update task fields ----
         for field_name, field_value in validated_data.items():
@@ -1165,7 +1263,7 @@ class TaskSerializer(serializers.ModelSerializer):
         instance.save()
 
         # =========================
-        # SUB TASKS (ID SAFE)
+        # SUB TASKS
         # =========================
         existing_subtasks = {
             subtask.id: subtask
@@ -1178,17 +1276,14 @@ class TaskSerializer(serializers.ModelSerializer):
             sub_task_id = sub_task_data.get("id")
 
             if sub_task_id:
-                # UPDATE existing sub-task
                 sub_task_instance = existing_subtasks.get(sub_task_id)
                 if not sub_task_instance:
                     raise serializers.ValidationError({
-                        "sub_tasks": (
-                            f"SubTask {sub_task_id} does not belong to this task"
-                        )
+                        "sub_tasks": f"SubTask {sub_task_id} does not belong to this task"
                     })
 
                 sub_task_instance.due_date = sub_task_data["due_date"]
-                sub_task_instance.name = sub_task_data["name"]   # ✅ FIXED
+                sub_task_instance.name = sub_task_data["name"]
                 sub_task_instance.status = sub_task_data.get(
                     "status",
                     sub_task_instance.status
@@ -1196,9 +1291,7 @@ class TaskSerializer(serializers.ModelSerializer):
                 sub_task_instance.save()
 
                 received_subtask_ids.append(sub_task_id)
-
             else:
-                # CREATE new sub-task
                 new_subtask = SubTask.objects.create(
                     task=instance,
                     assignment=instance.assignment,
@@ -1206,13 +1299,12 @@ class TaskSerializer(serializers.ModelSerializer):
                 )
                 received_subtask_ids.append(new_subtask.id)
 
-        # DELETE removed sub-tasks
         for subtask_id, subtask in existing_subtasks.items():
             if subtask_id not in received_subtask_ids:
                 subtask.delete()
 
         # =========================
-        # DOCUMENTS (ID SAFE)
+        # DOCUMENTS
         # =========================
         existing_documents = {
             doc.id: doc
@@ -1225,13 +1317,10 @@ class TaskSerializer(serializers.ModelSerializer):
             document_id = document_data.get("id")
 
             if document_id:
-                # UPDATE existing document
                 document_instance = existing_documents.get(document_id)
                 if not document_instance:
                     raise serializers.ValidationError({
-                        "documents": (
-                            f"Document {document_id} does not belong to this task"
-                        )
+                        "documents": f"Document {document_id} does not belong to this task"
                     })
 
                 document_instance.document_name = document_data.get(
@@ -1244,16 +1333,13 @@ class TaskSerializer(serializers.ModelSerializer):
 
                 document_instance.save()
                 received_document_ids.append(document_id)
-
             else:
-                # CREATE new document
                 new_document = Document.objects.create(
                     task=instance,
                     **document_data
                 )
                 received_document_ids.append(new_document.id)
 
-        # DELETE removed documents
         for doc_id, document in existing_documents.items():
             if doc_id not in received_document_ids:
                 document.delete()
@@ -1386,6 +1472,8 @@ class EnvironmentParameterSerializer(serializers.ModelSerializer):
             "config",
         ]
 
+
+
 # =====================================================
 # Environment Parameter PATCH Serializer (ID SAFE)
 # =====================================================
@@ -1405,6 +1493,7 @@ class EnvironmentParameterPatchSerializer(serializers.ModelSerializer):
 
         instance.save()
         return instance
+
 
 
 # =====================================================
@@ -1523,6 +1612,7 @@ class EnvironmentParameterValueSerializer(serializers.ModelSerializer):
         model = Environment_Parameter_Value
         fields = [
             "id",
+            "log_time", 
             "environment",
             "environment_parameter",
             "content",
@@ -1538,7 +1628,7 @@ class EnvironmentParameterValueSerializer(serializers.ModelSerializer):
             )
         return attrs
     
-    # =========================
+# =========================
 # WRITE Serializer
 # =========================
 class TaskEventSerializer(serializers.ModelSerializer):
@@ -1547,6 +1637,7 @@ class TaskEventSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
+            "event",        # ✅ ADDED
             "dep",
             "is_deleted",
             "created_at",
@@ -1555,17 +1646,24 @@ class TaskEventSerializer(serializers.ModelSerializer):
         read_only_fields = ("created_at", "modified_at")
 
 
+
 # =========================
 # READ Serializer (optional but recommended)
 # =========================
 class TaskEventReadSerializer(serializers.ModelSerializer):
     dep_name = serializers.CharField(source="dep.name", read_only=True)
+    event_name = serializers.CharField(
+        source="event.event_name",
+        read_only=True
+    )
 
     class Meta:
         model = Task_Event
         fields = [
             "id",
             "name",
+            "event",        # ✅ ADDED
+            "event_name",   # ✅ ADDED
             "dep",
             "dep_name",
             "is_deleted",

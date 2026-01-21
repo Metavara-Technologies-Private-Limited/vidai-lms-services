@@ -57,6 +57,7 @@ from .views import (
     EnvironmentCreateAPIView,
     EnvironmentUpdateAPIView,
     EnvironmentGetAPIView,
+    EnvironmentFullHierarchyAPIView,
     EnvironmentParameterPatchAPIView,
     EnvironmentParameterValueCreateAPIView,
     EnvironmentParameterValueListAPIView,
@@ -150,107 +151,92 @@ urlpatterns = [
    path('tasks/event/<int:event_id>', TaskGetByEventAPIView.as_view(), name='task-get-by-event'),
     
     # Task Timer Management
-    path(
-    "tasks/<int:id>/timer/start",
-    TaskTimerStartAPIView.as_view(),
-    name="task-timer-start"
-),
+    path( "tasks/<int:id>/timer/start", TaskTimerStartAPIView.as_view(),
+    name="task-timer-start"),
     
     # Pause Task Timer
-    path(
-    "tasks/<int:id>/timer/pause",
-    TaskTimerPauseAPIView.as_view(),
-    name="task-timer-pause"
-),
+    path("tasks/<int:id>/timer/pause", TaskTimerPauseAPIView.as_view(),
+    name="task-timer-pause"),
+
     # Stop Task Timer
-    path(
-    "tasks/<int:id>/timer/stop",
-    TaskTimerStopAPIView.as_view(),
-    name="task-timer-stop"
-),
+    path( "tasks/<int:id>/timer/stop", TaskTimerStopAPIView.as_view(),
+    name="task-timer-stop"),
+
     # Get all tasks by clinic
-    path(
-    "clinics/<int:clinic_id>/tasks/",
-    TaskGetByClinicAPIView.as_view(),
-    name="task-get-by-clinic"
-),
+    path( "clinics/<int:clinic_id>/tasks/", TaskGetByClinicAPIView.as_view(),
+    name="task-get-by-clinic"),
    
  # ==================================================
-    # Environment
-    # ==================================================
-    path(
-        "departments/<int:department_id>/environments/",
-        EnvironmentCreateAPIView.as_view(),
-        name="environment-create"
-    ),
-    path(
-        "environments/<int:environment_id>/",
-        EnvironmentUpdateAPIView.as_view(),
-        name="environment-update"
-    ),
-    path(
-        "environments/<int:environment_id>/get/",
-        EnvironmentGetAPIView.as_view(),
-        name="environment-get"
-    ),
+ # Environment
+ # ==================================================
 
-    # Environment Parameters
-    path(
-        "environment-parameters/<int:parameter_id>/",
-        EnvironmentParameterPatchAPIView.as_view(),
-        name="environment-parameter-patch"
-    ),
+    # Create Environment under Department
+    path("departments/<int:department_id>/environments/", EnvironmentCreateAPIView.as_view(), 
+         name="environment-create"
+    ),  
+
+    # Update Environment (PUT)
+    path( "environments/<int:environment_id>/", EnvironmentUpdateAPIView.as_view(),
+        name="environment-update"),
+
+    # Get Environment by ID (GET)
+    path( "environments/<int:environment_id>/get/", EnvironmentGetAPIView.as_view(),
+        name="environment-get"),
+    
+    # Get Full Hierarchy by Environment ID (GET)
+    path("environments/<int:environment_id>/full/", EnvironmentFullHierarchyAPIView.as_view(),
+    name="environment-full-hierarchy"),
+
+    
+ # ==================================================
+ # Environment
+ # ==================================================
+   
+    # Patch Environment Parameter (PATCH)
+    path( "environment-parameters/<int:parameter_id>/", EnvironmentParameterPatchAPIView.as_view(),
+        name="environment-parameter-patch"),
 
     # Create Environment Parameter Value (POST)
-path(
-    "environment-parameter-values/",
-    EnvironmentParameterValueCreateAPIView.as_view(),
-    name="environment-parameter-value-create"
-),
+    path( "environment-parameter-values/", EnvironmentParameterValueCreateAPIView.as_view(),
+    name="environment-parameter-value-create"),
 
-# List Environment Parameter Values by parameter_id (GET)
-path(
-    "environment-parameter-values/<int:value_id>/",
-    EnvironmentParameterValueListAPIView.as_view(),
-    name="environment-parameter-value-get"
-),
+   # List Environment Parameter Values by parameter_id (GET)
+    path( "environment-parameters/<int:env_parameter_id>/values/", EnvironmentParameterValueListAPIView.as_view(),
+    name="environment-parameter-values"),
+
 
 # ==================================================
-    # Environment active/inactive/delete
-    # ==================================================
-    path(
-        "environments/<int:environment_id>/activate/",
-        EnvironmentActivateAPIView.as_view(),
-        name="environment-activate"
-    ),
+# Environment active/inactive/delete
+# ==================================================
 
-    path(
-        "environments/<int:environment_id>/inactivate/",
-        EnvironmentInactivateAPIView.as_view(),
-        name="environment-inactivate"
-    ),
+    # Activate Environment
+    path("environments/<int:environment_id>/activate/", EnvironmentActivateAPIView.as_view(),
+         name="environment-activate"),
 
-    path(
-        "environments/<int:environment_id>/delete/",
-        EnvironmentSoftDeleteAPIView.as_view(),
-        name="environment-soft-delete"
-    ),
+    # Inactivate Environment
+    path("environments/<int:environment_id>/inactivate/", EnvironmentInactivateAPIView.as_view(),
+        name="environment-inactivate"),
 
-    # ==================================================
-    # Environment Parameter soft delete
-    # ==================================================
-    path(
-        "environment-parameters/<int:parameter_id>/delete/",
-        EnvironmentParameterSoftDeleteAPIView.as_view(),
-        name="environment-parameter-soft-delete"
-    ),
+    # Soft Delete Environment
+    path("environments/<int:environment_id>/delete/", EnvironmentSoftDeleteAPIView.as_view(),
+        name="environment-soft-delete"),
 
-    # ==================================================
-    # Task Events
-    # ==================================================
-    
+# ==================================================
+# Environment Parameter soft delete
+# ==================================================
+    path("environment-parameters/<int:parameter_id>/delete/", EnvironmentParameterSoftDeleteAPIView.as_view(),
+        name="environment-parameter-soft-delete"),
+
+# ==================================================
+# Task Events
+# ==================================================
+    # Get all task events
     path("task-events/", TaskEventListAPIView.as_view(), name="task-event-list"),
+
+    # Create Task Event
     path("task-events/create/", TaskEventCreateAPIView.as_view(), name="task-event-create"),
+
+    # Get Task Event by ID
     path("task-events/<int:task_event_id>/", TaskEventListAPIView.as_view(), name="task-event-get"),
 
 ]
