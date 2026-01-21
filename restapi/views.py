@@ -146,13 +146,11 @@ class ClinicUpdateAPIView(APIView):
 # 3. Get Clinic by ID (GET)
 # -------------------------------------------------------------------
 class GetClinicView(APIView):
-    
-
 
     @swagger_auto_schema(
-        operation_description="Retrieve clinic details by ID",
+        operation_description="Retrieve clinic details with departments, equipments and environment",
         responses={
-            200: ClinicReadSerializer,
+            200: ClinicFullHierarchyReadSerializer,
             404: "Clinic not found",
             500: "Internal Server Error"
         }
@@ -160,17 +158,23 @@ class GetClinicView(APIView):
     def get(self, request, clinic_id):
         try:
             clinic = Clinic.objects.get(id=clinic_id)
-            serializer = ClinicReadSerializer(clinic)
+
+            # 🔑 USE FULL HIERARCHY SERIALIZER
+            serializer = ClinicFullHierarchyReadSerializer(clinic)
 
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         except Clinic.DoesNotExist:
-            logger.warning("Clinic not found")
             raise NotFound("Clinic not found")
 
         except Exception:
-            logger.error("Unhandled Clinic Fetch Error:\n" + traceback.format_exc())
-            return Response({"error": "Internal Server Error"}, status=500)
+            logger.error(
+                "Unhandled Clinic Fetch Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # -------------------------------------------------------------------

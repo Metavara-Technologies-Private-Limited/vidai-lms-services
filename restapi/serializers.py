@@ -924,7 +924,7 @@ class EnvironmentParameterReadSerializer(serializers.ModelSerializer):
 # Environment READ Serializer
 # =====================================================
 class EnvironmentReadSerializer(serializers.ModelSerializer):
-    parameters = EnvironmentParameterReadSerializer(many=True)
+    parameters = serializers.SerializerMethodField()
 
     class Meta:
         model = Environment
@@ -936,6 +936,13 @@ class EnvironmentReadSerializer(serializers.ModelSerializer):
             "parameters",
         ]
 
+    def get_parameters(self, obj):
+        qs = (
+            obj.parameters
+            .filter(is_deleted=False)   # ✅ removed is_active filter
+            .order_by("id")
+        )
+        return EnvironmentParameterReadSerializer(qs, many=True).data
 
 # =====================================================
 # Environment Parameter Value READ Serializer
@@ -959,7 +966,7 @@ class EnvironmentParameterValueReadSerializer(serializers.ModelSerializer):
 
 class DepartmentWithEnvironmentReadSerializer(serializers.ModelSerializer):
     equipments = serializers.SerializerMethodField()
-    environment = serializers.SerializerMethodField()  # ✅ FIX
+    environments = serializers.SerializerMethodField()  # ✅ CHANGED
 
     class Meta:
         model = Department
@@ -968,7 +975,7 @@ class DepartmentWithEnvironmentReadSerializer(serializers.ModelSerializer):
             "name",
             "is_active",
             "equipments",
-            "environment",
+            "environments",   # ✅ CHANGED
         ]
 
     def get_equipments(self, obj):
@@ -982,18 +989,18 @@ class DepartmentWithEnvironmentReadSerializer(serializers.ModelSerializer):
         )
         return EquipmentReadSerializer(qs, many=True).data
 
-    def get_environment(self, obj):
-        environment = (
+    def get_environments(self, obj):
+        environments = (
             Environment.objects
-            .filter(dep=obj)          # ✅ correct relation
+            .filter(
+                dep=obj,
+                is_deleted=False
+            )
+            .order_by("-created_at")        # latest first
             .prefetch_related("parameters")
-            .first()
         )
 
-        if not environment:
-            return None
-
-        return EnvironmentReadSerializer(environment).data
+        return EnvironmentReadSerializer(environments, many=True).data
 
 class ClinicFullHierarchyReadSerializer(serializers.ModelSerializer):
     department = serializers.SerializerMethodField()
@@ -1009,7 +1016,7 @@ class ClinicFullHierarchyReadSerializer(serializers.ModelSerializer):
     def get_department(self, obj):
         departments = (
             obj.department_set
-            .filter(is_active=True)  # ✅ FIX HERE
+            .filter(is_active=True)
             .prefetch_related(
                 "equipments_set__equipmentdetails_set",
                 "equipments_set__parameters",
@@ -1020,7 +1027,6 @@ class ClinicFullHierarchyReadSerializer(serializers.ModelSerializer):
         return DepartmentWithEnvironmentReadSerializer(
             departments, many=True
         ).data
-
 
 
 
@@ -1637,7 +1643,6 @@ class TaskEventSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
-            "event",        # ✅ ADDED
             "dep",
             "is_deleted",
             "created_at",
@@ -1647,23 +1652,18 @@ class TaskEventSerializer(serializers.ModelSerializer):
 
 
 
+
 # =========================
 # READ Serializer (optional but recommended)
 # =========================
 class TaskEventReadSerializer(serializers.ModelSerializer):
     dep_name = serializers.CharField(source="dep.name", read_only=True)
-    event_name = serializers.CharField(
-        source="event.event_name",
-        read_only=True
-    )
 
     class Meta:
         model = Task_Event
         fields = [
             "id",
             "name",
-            "event",        # ✅ ADDED
-            "event_name",   # ✅ ADDED
             "dep",
             "dep_name",
             "is_deleted",
