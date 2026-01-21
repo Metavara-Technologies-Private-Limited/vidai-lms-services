@@ -328,12 +328,6 @@ class Document(models.Model):
 class Task_Event(models.Model):
     name = models.CharField(max_length=255)
 
-    event = models.ForeignKey(
-        Event,
-        on_delete=models.CASCADE,
-        related_name="task_events"
-    )
-
     dep = models.ForeignKey(
         Department,
         on_delete=models.CASCADE,
