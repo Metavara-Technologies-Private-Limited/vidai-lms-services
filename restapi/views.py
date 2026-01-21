@@ -1201,12 +1201,12 @@ class TaskGetByClinicAPIView(APIView):
         tasks = (
             Task.objects
             .filter(
-                event__department__clinic_id=clinic_id,
+                task_event_dep_clinic_id=clinic_id,
                 is_deleted=False
             )
             .select_related(
-                "event",
-                "event__department"
+                "task_event",
+                "task_event__dep"
             )
             .order_by("-created_at")
         )
@@ -1218,7 +1218,6 @@ class TaskGetByClinicAPIView(APIView):
             TaskReadSerializer(tasks, many=True).data,
             status=status.HTTP_200_OK
         )
-    
 
 # -------------------------------------------------------------------
 # 1. POST → Create Environment + Parameters
