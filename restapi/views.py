@@ -1185,8 +1185,8 @@ class TaskGetByClinicAPIView(APIView):
         operation_summary="Get Tasks By Clinic ID",
         operation_description=(
             "Retrieve all tasks under a clinic.\n\n"
-            "Tasks are resolved via:\n"
-            "Task → Event → Department → Clinic"
+            "Resolution path:\n"
+            "Task → Task_Event → Department → Clinic"
         ),
         responses={
             200: TaskReadSerializer(many=True),
@@ -1195,13 +1195,15 @@ class TaskGetByClinicAPIView(APIView):
         tags=["Task"]
     )
     def get(self, request, clinic_id):
-        # Validate clinic exists
+
+        # 1️⃣ Ensure clinic exists
         get_object_or_404(Clinic, id=clinic_id)
 
+        # 2️⃣ Correct ORM traversal
         tasks = (
             Task.objects
             .filter(
-                task_event_dep_clinic_id=clinic_id,
+                task_event__dep__clinic_id=clinic_id,
                 is_deleted=False
             )
             .select_related(
@@ -1218,7 +1220,6 @@ class TaskGetByClinicAPIView(APIView):
             TaskReadSerializer(tasks, many=True).data,
             status=status.HTTP_200_OK
         )
-
 # -------------------------------------------------------------------
 # 1. POST → Create Environment + Parameters
 # -------------------------------------------------------------------
