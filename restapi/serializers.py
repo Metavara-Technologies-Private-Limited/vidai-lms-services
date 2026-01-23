@@ -661,16 +661,21 @@ class ParameterValueReadSerializer(serializers.ModelSerializer):
         source="equipment_details.id",
         read_only=True
     )
+    parameter_id = serializers.IntegerField(
+        source="parameter.id",
+        read_only=True
+    )
 
     class Meta:
         model = ParameterValues
         fields = [
             "id",
             "content",
-            "log_time", 
+            "log_time",
             "created_at",
             "is_deleted",
             "equipment_details_id",
+            "parameter_id",
         ]
 
 
