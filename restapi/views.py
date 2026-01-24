@@ -34,6 +34,7 @@ from .serializers import (
     EnvironmentParameterValueSerializer,
     ClinicFullHierarchyReadSerializer,
     EnvironmentParameterValueReadSerializer,
+    ParameterValueToggleSerializer,
     
     
 )
@@ -1626,3 +1627,80 @@ class TaskEventListAPIView(APIView):
 
         serializer = TaskEventReadSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+# =====================================================
+# ACTIVATE PARAMETER VALUE API
+# =====================================================
+class ActivateParameterValueAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Activate Parameter Value",
+        request_body=ParameterValueToggleSerializer,
+        tags=["Parameter Value"]
+    )
+    def post(self, request):
+        serializer = ParameterValueToggleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        param_type = serializer.validated_data["type"]
+        parameter_id = serializer.validated_data["parameter_id"]
+
+        if param_type == "equipment":
+            updated = ParameterValues.objects.filter(
+                parameter_id=parameter_id,
+                is_deleted=False
+            ).update(is_active=True)
+
+        else:  # environment
+            updated = Environment_Parameter_Value.objects.filter(
+                environment_parameter_id=parameter_id,
+                is_deleted=False
+            ).update(is_active=True)
+
+        if updated == 0:
+            raise NotFound("Parameter value not found")
+
+        return Response(
+            {"message": "Parameter value activated successfully"},
+            status=status.HTTP_200_OK
+        )
+
+
+
+
+# =====================================================
+# INACTIVATE PARAMETER VALUE API
+# =====================================================
+class InactivateParameterValueAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Inactivate Parameter Value",
+        request_body=ParameterValueToggleSerializer,
+        tags=["Parameter Value"]
+    )
+    def patch(self, request):
+        serializer = ParameterValueToggleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        param_type = serializer.validated_data["type"]
+        parameter_id = serializer.validated_data["parameter_id"]
+
+        if param_type == "equipment":
+            updated = ParameterValues.objects.filter(
+                parameter_id=parameter_id,
+                is_deleted=False
+            ).update(is_active=False)
+
+        else:  # environment
+            updated = Environment_Parameter_Value.objects.filter(
+                environment_parameter_id=parameter_id,
+                is_deleted=False
+            ).update(is_active=False)
+
+        if updated == 0:
+            raise NotFound("Parameter value not found")
+
+        return Response(
+            {"message": "Parameter value inactivated successfully"},
+            status=status.HTTP_200_OK
+        )

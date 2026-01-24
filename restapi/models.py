@@ -105,14 +105,16 @@ class ParameterValues(models.Model):
     )
 
     content = models.TextField()
-
-    # ✅ NEW FIELD
     log_time = models.DateTimeField(null=True, blank=True)
 
+    # ✅ runtime toggle
+    is_active = models.BooleanField(default=True)
+
+    # ✅ soft delete
     is_deleted = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
-
 
 
 
@@ -416,14 +418,13 @@ class Environment_Parameter_Value(models.Model):
     )
 
     content = models.CharField(max_length=255)
-
-    # ✅ NEW FIELD
     log_time = models.DateTimeField(null=True, blank=True)
 
+    # ✅ ADD THIS
+    is_active = models.BooleanField(default=True)
+
+    #  optional: keep is_deleted ONLY for hard removal
     is_deleted = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = "environment_parameter_value"

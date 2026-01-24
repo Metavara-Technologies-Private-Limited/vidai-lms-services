@@ -646,6 +646,13 @@ class ParameterSoftDeleteSerializer(serializers.Serializer):
 
         return parameter
 
+# =====================================================
+# Parameter Value Toggle Serializer
+# =====================================================
+class ParameterValueToggleSerializer(serializers.Serializer):
+    type = serializers.ChoiceField(choices=["equipment", "environment"])
+    parameter_id = serializers.IntegerField()
+
 
 
 # =====================================================
@@ -966,6 +973,7 @@ class EnvironmentParameterValueReadSerializer(serializers.ModelSerializer):
             "log_time", 
             "created_at",
             "is_deleted",
+            "is_active",
             "environment_parameter_id",
         ]
 

@@ -4,6 +4,7 @@ from .views import (
     # =========================
     # Clinic
     # =========================
+    ActivateParameterValueAPIView,
     ClinicCreateAPIView,
     ClinicUpdateAPIView,
     GetClinicView,
@@ -22,6 +23,7 @@ from .views import (
     # =========================
     EventAPIView,
     ClinicEventListAPIView,
+    InactivateParameterValueAPIView,
 
     # =========================
     # Task
@@ -238,5 +240,17 @@ urlpatterns = [
 
     # Get Task Event by ID
     path("task-events/<int:task_event_id>/", TaskEventListAPIView.as_view(), name="task-event-get"),
+
+# ==================================================
+# Parameter Value Activation/Inactivation for Equipment / Environment
+# ==================================================
+# Activate Parameter Value (Equipment / Environment)
+    path(
+        "parameter-values/activate/", ActivateParameterValueAPIView.as_view(),
+        name="parameter-value-activate"),
+
+    # Inactivate Parameter Value (Equipment / Environment)
+    path( "parameter-values/inactivate/", InactivateParameterValueAPIView.as_view(),
+        name="parameter-value-inactivate"),
 
 ]
