@@ -647,11 +647,12 @@ class ParameterSoftDeleteSerializer(serializers.Serializer):
         return parameter
 
 # =====================================================
-# Parameter Value Toggle Serializer
+# Parameter Toggle Serializer
 # =====================================================
-class ParameterValueToggleSerializer(serializers.Serializer):
+class ParameterToggleSerializer(serializers.Serializer):
     type = serializers.ChoiceField(choices=["equipment", "environment"])
     parameter_id = serializers.IntegerField()
+
 
 
 

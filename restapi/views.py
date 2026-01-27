@@ -1,3 +1,4 @@
+from inspect import Parameter
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -34,7 +35,7 @@ from .serializers import (
     EnvironmentParameterValueSerializer,
     ClinicFullHierarchyReadSerializer,
     EnvironmentParameterValueReadSerializer,
-    ParameterValueToggleSerializer,
+    ParameterToggleSerializer,
     
     
 )
@@ -1628,79 +1629,80 @@ class TaskEventListAPIView(APIView):
         serializer = TaskEventReadSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+
 # =====================================================
-# ACTIVATE PARAMETER VALUE API
+# ACTIVATE PARAMETER API
 # =====================================================
-class ActivateParameterValueAPIView(APIView):
+class ActivateParameterAPIView(APIView):
 
     @swagger_auto_schema(
-        operation_summary="Activate Parameter Value",
-        request_body=ParameterValueToggleSerializer,
-        tags=["Parameter Value"]
+        operation_summary="Activate Parameter",
+        request_body=ParameterToggleSerializer,
+        tags=["Parameter"]
     )
     def post(self, request):
-        serializer = ParameterValueToggleSerializer(data=request.data)
+        serializer = ParameterToggleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         param_type = serializer.validated_data["type"]
         parameter_id = serializer.validated_data["parameter_id"]
 
         if param_type == "equipment":
-            updated = ParameterValues.objects.filter(
-                parameter_id=parameter_id,
+            updated = Parameters.objects.filter(
+                id=parameter_id,
                 is_deleted=False
             ).update(is_active=True)
-
         else:  # environment
-            updated = Environment_Parameter_Value.objects.filter(
-                environment_parameter_id=parameter_id,
+            updated = Environment_Parameter.objects.filter(
+                id=parameter_id,
                 is_deleted=False
             ).update(is_active=True)
 
         if updated == 0:
-            raise NotFound("Parameter value not found")
+            raise NotFound("Parameter not found")
 
         return Response(
-            {"message": "Parameter value activated successfully"},
+            {"message": "Parameter activated successfully"},
             status=status.HTTP_200_OK
         )
 
 
 
 
+
+
 # =====================================================
-# INACTIVATE PARAMETER VALUE API
+# INACTIVATE PARAMETER API
 # =====================================================
-class InactivateParameterValueAPIView(APIView):
+class InactivateParameterAPIView(APIView):
 
     @swagger_auto_schema(
-        operation_summary="Inactivate Parameter Value",
-        request_body=ParameterValueToggleSerializer,
-        tags=["Parameter Value"]
+        operation_summary="Inactivate Parameter",
+        request_body=ParameterToggleSerializer,
+        tags=["Parameter"]
     )
     def patch(self, request):
-        serializer = ParameterValueToggleSerializer(data=request.data)
+        serializer = ParameterToggleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         param_type = serializer.validated_data["type"]
         parameter_id = serializer.validated_data["parameter_id"]
 
         if param_type == "equipment":
-            updated = ParameterValues.objects.filter(
-                parameter_id=parameter_id,
+            updated = Parameters.objects.filter(
+                id=parameter_id,
                 is_deleted=False
             ).update(is_active=False)
-
         else:  # environment
-            updated = Environment_Parameter_Value.objects.filter(
-                environment_parameter_id=parameter_id,
+            updated = Environment_Parameter.objects.filter(
+                id=parameter_id,
                 is_deleted=False
             ).update(is_active=False)
 
         if updated == 0:
-            raise NotFound("Parameter value not found")
+            raise NotFound("Parameter not found")
 
         return Response(
-            {"message": "Parameter value inactivated successfully"},
+            {"message": "Parameter inactivated successfully"},
             status=status.HTTP_200_OK
         )
