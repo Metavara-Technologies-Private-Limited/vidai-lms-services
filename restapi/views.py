@@ -1,49 +1,80 @@
 from inspect import Parameter
+import traceback
+import requests
+import logging
+
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .serializers import TaskSerializer
-from django.shortcuts import get_object_or_404
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.pagination import PageNumberPagination
+
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-import traceback
-import logging
-from django.utils import timezone
+
 from .pagination import StandardResultsPagination
-from rest_framework.pagination import PageNumberPagination
-from .models import (Clinic, Department, Environment_Parameter_Value, Equipments,Event, Task, Employee, SubTask, ParameterValues,Department,
-Environment, Environment_Parameter, Environment_Parameter_Value, Task_Event, Parameters)
+
+from .models import (
+    Clinic,
+    Department,
+    Equipments,
+    Event,
+    Task,
+    Employee,
+    SubTask,
+    ParameterValues,
+    Environment,
+    Environment_Parameter,
+    Environment_Parameter_Value,
+    Task_Event,
+    Parameters,
+)
+
 from .serializers import (
     ClinicSerializer,
     ClinicReadSerializer,
-    EquipmentSerializer,
+    ClinicFullHierarchyReadSerializer,
+
     DepartmentSerializer,
+    DepartmentReadSerializer,
+
+    EquipmentSerializer,
+
     EventCreateSerializer,
     EventReadSerializer,
-    TaskSerializer, TaskReadSerializer,
-    TaskEventReadSerializer, 
+
+    TaskSerializer,
+    TaskReadSerializer,
+
     TaskEventSerializer,
+    TaskEventReadSerializer,
+
     EmployeeReadSerializer,
-    UserCreateSerializer,
     EmployeeCreateSerializer,
+
+    UserCreateSerializer,
+
     ParameterValueCreateSerializer,
     ParameterValueReadSerializer,
+    ParameterToggleSerializer,
+
     EnvironmentSerializer,
     EnvironmentParameterPatchSerializer,
     EnvironmentParameterValueSerializer,
-    ClinicFullHierarchyReadSerializer,
     EnvironmentParameterValueReadSerializer,
-    ParameterToggleSerializer,
-    
-    
 )
 
 logger = logging.getLogger(__name__)
 
+# VIDAI_LOGIN_URL = "https://stage-api.vidaisolutions.com/api/login/"
+# VIDAI_GET_CLINICS_URL = "https://stage-api.vidaisolutions.com/api/clinics"
+
+
 # -------------------------------------------------------------------
-# 1. Create Clinic (POST)
+# Create Clinic (POST)
 # -------------------------------------------------------------------
 class ClinicCreateAPIView(APIView):
     
@@ -85,7 +116,7 @@ class ClinicCreateAPIView(APIView):
 
 
 # -------------------------------------------------------------------
-# 2. Update Clinic (PUT)
+# Update Clinic (PUT)
 # -------------------------------------------------------------------
 class ClinicUpdateAPIView(APIView):
 
@@ -145,7 +176,7 @@ class ClinicUpdateAPIView(APIView):
 
 
 # -------------------------------------------------------------------
-# 3. Get Clinic by ID (GET)
+# Get Clinic by ID (GET)
 # -------------------------------------------------------------------
 class GetClinicView(APIView):
 
@@ -178,9 +209,54 @@ class GetClinicView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+# -------------------------------------------------------------------
+# Get Departments by Clinic ID (GET)
+# -------------------------------------------------------------------
+
+class ClinicDepartmentsAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Get Departments & Equipments by Clinic",
+        operation_description=(
+            "Fetch all departments under a clinic.\n\n"
+            "Clinic → Departments → Equipments"
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                name="clinic_id",
+                in_=openapi.IN_PATH,
+                description="Clinic ID",
+                type=openapi.TYPE_INTEGER,
+                required=True,
+            )
+        ],
+        tags=["Clinic"]
+    )
+    def get(self, request, clinic_id):
+        clinic = get_object_or_404(Clinic, id=clinic_id)
+
+        departments = (
+            Department.objects
+            .filter(clinic=clinic)
+            .prefetch_related(
+                "equipments_set__equipmentdetails_set",
+                "equipments_set__parameters"
+            )
+        )
+
+        serializer = DepartmentReadSerializer(departments, many=True)
+
+        return Response(
+            {
+                "clinic_id": clinic.id,
+                "clinic_name": clinic.name,
+                "departments": serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
 
 # -------------------------------------------------------------------
-# 4. Create Equipment under Department (POST)
+# Create Equipment under Department (POST)
 # -------------------------------------------------------------------
 class DepartmentEquipmentCreateAPIView(APIView):
     
@@ -225,7 +301,7 @@ class DepartmentEquipmentCreateAPIView(APIView):
 
 
 # -------------------------------------------------------------------
-# 5. Update Equipment under Department (PUT)
+# Update Equipment under Department (PUT)
 # -------------------------------------------------------------------
 class DepartmentEquipmentUpdateAPIView(APIView):
 
@@ -241,7 +317,7 @@ class DepartmentEquipmentUpdateAPIView(APIView):
     )
     def put(self, request, department_id, equipment_id):
         try:
-            # 1️⃣ Validate Department
+            # Validate Department
             try:
                 department = Department.objects.get(id=department_id)
             except Department.DoesNotExist:
@@ -250,7 +326,7 @@ class DepartmentEquipmentUpdateAPIView(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            # 2️⃣ Validate Equipment exists
+            # Validate Equipment exists
             try:
                 equipment = Equipments.objects.get(id=equipment_id)
             except Equipments.DoesNotExist:
@@ -259,7 +335,7 @@ class DepartmentEquipmentUpdateAPIView(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            # 3️⃣ Validate Equipment belongs to Department
+            # Validate Equipment belongs to Department
             if equipment.dep_id != department.id:
                 return Response(
                     {
@@ -268,7 +344,7 @@ class DepartmentEquipmentUpdateAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 4️⃣ Update Equipment
+            # Update Equipment
             serializer = EquipmentSerializer(
                 equipment,
                 data=request.data
@@ -303,7 +379,7 @@ class DepartmentEquipmentUpdateAPIView(APIView):
 
 
 # -------------------------------------------------------------------
-# 6. Inactivate Equipment (PATCH)
+# Inactivate Equipment (PATCH)
 # -------------------------------------------------------------------
 class EquipmentInactiveAPIView(APIView):
     
@@ -340,7 +416,54 @@ class EquipmentInactiveAPIView(APIView):
             return Response({"error": "Internal Server Error"}, status=500)
 
 # -------------------------------------------------------------------
-# 7. Soft Delete Equipment (PATCH/DELETE)
+# Activate Equipment API View (POST)
+# -------------------------------------------------------------------
+
+class ActivateEquipmentAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Activate Equipment",
+        operation_description=(
+            "Activate a previously inactivated equipment.\n\n"
+            "This API sets is_active = true for the given equipment ID.\n"
+            "No other equipment data (details, parameters, config history) is modified."
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                name="equipment_id",
+                in_=openapi.IN_PATH,
+                type=openapi.TYPE_INTEGER,
+                required=True,
+                description="Equipment ID to activate"
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Equipment activated successfully"
+            ),
+            404: "Equipment not found",
+            500: "Internal Server Error"
+        },
+        tags=["Equipment"]
+    )
+    def post(self, request, equipment_id):
+        equipment = get_object_or_404(
+            Equipments,
+            id=equipment_id,
+            is_deleted=False
+        )
+
+        # Activate equipment
+        equipment.is_active = True
+        equipment.save(update_fields=["is_active"])
+
+        return Response(
+            {"message": "Equipment activated successfully"},
+            status=status.HTTP_200_OK
+        )
+
+# -------------------------------------------------------------------
+# Soft Delete Equipment (PATCH/DELETE)
 # -------------------------------------------------------------------
 class EquipmentSoftDeleteAPIView(APIView):
     
@@ -390,7 +513,7 @@ class EquipmentSoftDeleteAPIView(APIView):
         return self.patch(request, department_id, equipment_id)
 
 # -------------------------------------------------------------------
-# 7. Event API View (POST)
+# Event API View (POST)
 # -------------------------------------------------------------------
 class EventAPIView(APIView):
     
@@ -501,7 +624,7 @@ class ClinicEventListAPIView(APIView):
 
     
 # -------------------------------------------------------------------
-# 9. Task Create and Update API Views
+# Task Create API View (POST)
 # -------------------------------------------------------------------
 
 
@@ -552,7 +675,7 @@ class TaskCreateAPIView(APIView):
             )
 
 # -------------------------------------------------------------------
-# 10. Task Update API View
+# Task Update API View
 # -------------------------------------------------------------------
 
 
@@ -607,7 +730,7 @@ class TaskUpdateAPIView(APIView):
             )
         
 # -------------------------------------------------------------------
-# 12. Task Get API View
+# Task Get API View
 # -------------------------------------------------------------------
 class TaskGetAPIView(APIView):
     
@@ -663,65 +786,8 @@ class TaskGetByEventAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
-
-
 # -------------------------------------------------------------------
-# 13. Clinic Employees API View (GET)
-# -------------------------------------------------------------------
-
-class ClinicEmployeesAPIView(APIView):
-    
-    @swagger_auto_schema(
-        operation_summary="Get Clinic Employees",
-        operation_description="Retrieve all employees under a specific clinic",
-        responses={
-            200: EmployeeReadSerializer(many=True),
-            401: "Unauthorized",
-            404: "Clinic not found",
-        },
-        tags=["Clinic"]
-    )
-    def get(self, request, clinic_id):
-        #  Validate clinic existence
-        get_object_or_404(Clinic, id=clinic_id)
-
-        #  Fetch employees for the clinic
-        employees = Employee.objects.filter(clinic_id=clinic_id)
-
-        serializer = EmployeeReadSerializer(employees, many=True)
-        return Response(serializer.data)
-
-# -------------------------------------------------------------------
-# 14. Employee Create API View (POST)
-# -------------------------------------------------------------------
-
-class EmployeeCreateAPIView(APIView):
-   
-
-    @swagger_auto_schema(
-        operation_summary="Create Employee",
-        operation_description="Create an employee under a clinic and department",
-        request_body=EmployeeCreateSerializer,
-        responses={
-            201: EmployeeReadSerializer,
-            400: "Validation Error",
-            401: "Unauthorized"
-        },
-        tags=["Employee"]
-    )
-    def post(self, request):
-        serializer = EmployeeCreateSerializer(data=request.data)
-
-        serializer.is_valid(raise_exception=True)
-        employee = serializer.save()
-
-        return Response(
-            EmployeeReadSerializer(employee).data,
-            status=status.HTTP_201_CREATED
-        )
-    
-# -------------------------------------------------------------------
-# 15. Task Soft Delete API
+# Task Soft Delete API
 # -------------------------------------------------------------------
 class TaskSoftDeleteAPIView(APIView):
     
@@ -789,212 +855,9 @@ class SubTaskSoftDeleteAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
-# -------------------------------------------------------------------
-# 17. User Create API View (POST)
-# -------------------------------------------------------------------
-
-
-class UserCreateAPIView(APIView):
-    
-    def post(self, request):
-        serializer = UserCreateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.save()
-
-        return Response(
-            {
-                "id": user.id,
-                "username": user.username
-            },
-            status=status.HTTP_201_CREATED
-        )
-    
-# -------------------------------------------------------------------
-# 18. Parameter Value Create and List API Views
-# -------------------------------------------------------------------
-
-class ParameterValueCreateAPIView(APIView):
-
-    @swagger_auto_schema(
-        operation_summary="Create Parameter Value",
-        operation_description=(
-            "Create a runtime reading for a parameter.\n\n"
-            "This API stores live readings (e.g., Oxygen level, BP, ECG) "
-            "and does NOT modify parameter config."
-        ),
-        request_body=ParameterValueCreateSerializer,
-        responses={
-            201: openapi.Response(
-                description="Parameter value created successfully",
-                schema=ParameterValueCreateSerializer
-            ),
-            400: "Validation Error",
-            500: "Internal Server Error"
-        },
-        tags=["Parameter Values"]
-    )
-    def post(self, request):
-        serializer = ParameterValueCreateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        value = serializer.save()
-
-        return Response(
-            ParameterValueCreateSerializer(value).data,
-            status=status.HTTP_201_CREATED
-        )
 
 # -------------------------------------------------------------------
-# 19. Parameter Value List API View (GET)
-# -------------------------------------------------------------------
-
-class ParameterValueListAPIView(APIView):
-
-    @swagger_auto_schema(
-        operation_summary="List Parameter Values",
-        operation_description=(
-            "Retrieve all runtime readings for a given parameter.\n\n"
-            "Results are ordered by latest first."
-        ),
-        manual_parameters=[
-            openapi.Parameter(
-                name="parameter_id",
-                in_=openapi.IN_PATH,
-                type=openapi.TYPE_INTEGER,
-                required=True,
-                description="Parameter ID"
-            )
-        ],
-        responses={
-            200: openapi.Response(
-                description="List of parameter values",
-                schema=ParameterValueReadSerializer(many=True)
-            ),
-            404: "Parameter not found",
-            500: "Internal Server Error"
-        },
-        tags=["Parameter Values"]
-    )
-    def get(self, request, parameter_id):
-        parameter = get_object_or_404(
-            Parameters,
-            id=parameter_id,
-            is_active=True
-        )
-
-        values = ParameterValues.objects.filter(
-            parameter=parameter,
-            is_deleted=False
-        ).order_by("-created_at")
-
-        serializer = ParameterValueReadSerializer(values, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-# -------------------------------------------------------------------
-# 20. Activate Equipment API View (POST)
-# -------------------------------------------------------------------
-
-class ActivateEquipmentAPIView(APIView):
-
-    @swagger_auto_schema(
-        operation_summary="Activate Equipment",
-        operation_description=(
-            "Activate a previously inactivated equipment.\n\n"
-            "This API sets is_active = true for the given equipment ID.\n"
-            "No other equipment data (details, parameters, config history) is modified."
-        ),
-        manual_parameters=[
-            openapi.Parameter(
-                name="equipment_id",
-                in_=openapi.IN_PATH,
-                type=openapi.TYPE_INTEGER,
-                required=True,
-                description="Equipment ID to activate"
-            )
-        ],
-        responses={
-            200: openapi.Response(
-                description="Equipment activated successfully"
-            ),
-            404: "Equipment not found",
-            500: "Internal Server Error"
-        },
-        tags=["Equipment"]
-    )
-    def post(self, request, equipment_id):
-        equipment = get_object_or_404(
-            Equipments,
-            id=equipment_id,
-            is_deleted=False
-        )
-
-        # Activate equipment
-        equipment.is_active = True
-        equipment.save(update_fields=["is_active"])
-
-        return Response(
-            {"message": "Equipment activated successfully"},
-            status=status.HTTP_200_OK
-        )
-
-
-# -------------------------------------------------------------------
-# 21. Soft Delete Parameter API View (PATCH)
-# -------------------------------------------------------------------
-class SoftDeleteParameterAPIView(APIView):
-
-    @swagger_auto_schema(
-        operation_summary="Soft Delete Parameter",
-        operation_description=(
-            "Soft delete a parameter using parameter ID.\n\n"
-            "This API performs a soft delete by setting:\n"
-            "- is_deleted = true\n"
-            "- is_active = false\n"
-            "- deleted_at = current timestamp\n\n"
-            "No equipment or other parameters are affected."
-        ),
-        manual_parameters=[
-            openapi.Parameter(
-                name="parameter_id",
-                in_=openapi.IN_PATH,
-                type=openapi.TYPE_INTEGER,
-                required=True,
-                description="Parameter ID to soft delete"
-            )
-        ],
-        responses={
-            200: openapi.Response(
-                description="Parameter soft deleted successfully"
-            ),
-            404: "Parameter not found or already deleted",
-            500: "Internal Server Error"
-        },
-        tags=["Parameter"]
-    )
-    def patch(self, request, parameter_id):
-        parameter = get_object_or_404(
-            Parameters,
-            id=parameter_id,
-            is_deleted=False
-        )
-
-        # 🔒 Soft delete parameter
-        parameter.is_deleted = True
-        parameter.is_active = False
-        parameter.deleted_at = timezone.now()
-
-        parameter.save(
-            update_fields=["is_deleted", "is_active", "deleted_at"]
-        )
-
-        return Response(
-            {"message": "Parameter soft deleted successfully"},
-            status=status.HTTP_200_OK
-        )
-    
-# -------------------------------------------------------------------
-# 22. Task Timer Start API View (POST)
+# Task Timer Start API View (POST)
 # -------------------------------------------------------------------
 class TaskTimerStartAPIView(APIView):
 
@@ -1058,7 +921,7 @@ class TaskTimerStartAPIView(APIView):
 
 
 # -------------------------------------------------------------------
-# 23. Task Timer Pause API View (POST)
+# Task Timer Pause API View (POST)
 # -------------------------------------------------------------------
 class TaskTimerPauseAPIView(APIView):
 
@@ -1117,7 +980,7 @@ class TaskTimerPauseAPIView(APIView):
         )
 
 # -------------------------------------------------------------------
-# 24. Task Timer Stop API View (POST)
+# Task Timer Stop API View (POST)
 # -------------------------------------------------------------------   
 class TaskTimerStopAPIView(APIView):
 
@@ -1222,8 +1085,10 @@ class TaskGetByClinicAPIView(APIView):
             TaskReadSerializer(tasks, many=True).data,
             status=status.HTTP_200_OK
         )
+    
+
 # -------------------------------------------------------------------
-# 1. POST → Create Environment + Parameters
+# POST → Create Environment + Parameters
 # -------------------------------------------------------------------
 class EnvironmentCreateAPIView(APIView):
 
@@ -1259,7 +1124,7 @@ class EnvironmentCreateAPIView(APIView):
 
 
 # -------------------------------------------------------------------
-# 2. GET → Environment + Parameters
+# GET → Environment + Parameters
 # -------------------------------------------------------------------
 class EnvironmentGetAPIView(APIView):
 
@@ -1279,8 +1144,8 @@ class EnvironmentGetAPIView(APIView):
             EnvironmentSerializer(environment).data,
             status=status.HTTP_200_OK
         )
- # -------------------------------------------------------------------
-# 3. GET → Full Hierarchy by Environment ID
+# -------------------------------------------------------------------
+# GET → Full Hierarchy by Environment ID
 # -------------------------------------------------------------------   
 class EnvironmentFullHierarchyAPIView(APIView):
 
@@ -1358,7 +1223,7 @@ class EnvironmentUpdateAPIView(APIView):
 
 
 # -------------------------------------------------------------------
-# 3. PATCH → Update Environment Parameter
+# PATCH → Update Environment Parameter
 # -------------------------------------------------------------------
 class EnvironmentParameterPatchAPIView(APIView):
 
@@ -1390,7 +1255,7 @@ class EnvironmentParameterPatchAPIView(APIView):
 
 
 # -------------------------------------------------------------------
-# 4. POST → Create Environment Parameter Value
+# POST → Create Environment Parameter Value
 # -------------------------------------------------------------------
 class EnvironmentParameterValueCreateAPIView(APIView):
 
@@ -1413,7 +1278,7 @@ class EnvironmentParameterValueCreateAPIView(APIView):
 
 
 # -------------------------------------------------------------------
-# 5. GET → List Environment Parameter Values
+# GET → List Environment Parameter Values
 # -------------------------------------------------------------------
 class EnvironmentParameterValueListAPIView(APIView):
 
@@ -1570,7 +1435,11 @@ class EnvironmentParameterSoftDeleteAPIView(APIView):
                 "code": "ENV_PARAMETER_NOT_FOUND",
                 "message": f"Environment parameter with id {parameter_id} does not exist"
             })
-        
+
+
+# =====================================================
+# TASK EVENT CREATE API VIEW (POST)
+# =====================================================        
 class TaskEventCreateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1593,6 +1462,9 @@ class TaskEventCreateAPIView(APIView):
         )
 
 
+# =====================================================
+# TASK EVENT LIST API VIEW (GET)
+# =====================================================
 class TaskEventListAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1631,7 +1503,7 @@ class TaskEventListAPIView(APIView):
 
 
 # =====================================================
-# ACTIVATE PARAMETER API
+# ACTIVATE PARAMETER API (EQUIPMENT + ENVIRONMENT)
 # =====================================================
 class ActivateParameterAPIView(APIView):
 
@@ -1668,16 +1540,21 @@ class ActivateParameterAPIView(APIView):
 
 
 
-
-
-
 # =====================================================
-# INACTIVATE PARAMETER API
+# INACTIVATE PARAMETER API (EQUIPMENT + ENVIRONMENT)
 # =====================================================
 class InactivateParameterAPIView(APIView):
 
     @swagger_auto_schema(
-        operation_summary="Inactivate Parameter",
+        operation_summary="Inactivate Parameter (Equipment / Environment)",
+        operation_description=(
+            "Inactivate a parameter at either equipment or environment level.\n\n"
+            "Behavior:\n"
+            "- Sets is_active = false\n"
+            "- Does NOT delete the parameter\n"
+            "- Does NOT modify is_deleted\n\n"
+            "Payload determines whether the parameter belongs to equipment or environment."
+        ),
         request_body=ParameterToggleSerializer,
         tags=["Parameter"]
     )
@@ -1688,21 +1565,364 @@ class InactivateParameterAPIView(APIView):
         param_type = serializer.validated_data["type"]
         parameter_id = serializer.validated_data["parameter_id"]
 
+        # -----------------------------
+        # Equipment Parameter
+        # -----------------------------
         if param_type == "equipment":
             updated = Parameters.objects.filter(
                 id=parameter_id,
                 is_deleted=False
-            ).update(is_active=False)
-        else:  # environment
+            ).update(
+                is_active=False   # ✅ ONLY INACTIVE
+            )
+
+        # -----------------------------
+        # Environment Parameter
+        # -----------------------------
+        else:
             updated = Environment_Parameter.objects.filter(
                 id=parameter_id,
                 is_deleted=False
-            ).update(is_active=False)
+            ).update(
+                is_active=False   # ✅ ONLY INACTIVE
+            )
 
         if updated == 0:
             raise NotFound("Parameter not found")
 
         return Response(
-            {"message": "Parameter inactivated successfully"},
+            {
+                "message": "Parameter inactivated successfully",
+                "parameter_id": parameter_id,
+                "type": param_type,
+                "is_active": False
+            },
             status=status.HTTP_200_OK
         )
+
+# -------------------------------------------------------------------
+# Soft Delete Parameter API View (PATCH)
+# -------------------------------------------------------------------
+class SoftDeleteParameterAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Soft Delete Parameter",
+        operation_description=(
+            "Soft delete a parameter using parameter ID.\n\n"
+            "This API performs a soft delete by setting:\n"
+            "- is_deleted = true\n"
+            "- is_active = false\n"
+            "- deleted_at = current timestamp\n\n"
+            "No equipment or other parameters are affected."
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                name="parameter_id",
+                in_=openapi.IN_PATH,
+                type=openapi.TYPE_INTEGER,
+                required=True,
+                description="Parameter ID to soft delete"
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Parameter soft deleted successfully"
+            ),
+            404: "Parameter not found or already deleted",
+            500: "Internal Server Error"
+        },
+        tags=["Parameter"]
+    )
+    def patch(self, request, parameter_id):
+        parameter = get_object_or_404(
+            Parameters,
+            id=parameter_id,
+            is_deleted=False
+        )
+
+        # 🔒 Soft delete parameter
+        parameter.is_deleted = True
+        parameter.is_active = False
+        parameter.deleted_at = timezone.now()
+
+        parameter.save(
+            update_fields=["is_deleted", "is_active", "deleted_at"]
+        )
+
+        return Response(
+            {"message": "Parameter soft deleted successfully"},
+            status=status.HTTP_200_OK
+        )
+    
+# -------------------------------------------------------------------
+# Parameter Value Create and List API Views
+# -------------------------------------------------------------------
+
+class ParameterValueCreateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Create Parameter Value",
+        operation_description=(
+            "Create a runtime reading for a parameter.\n\n"
+            "This API stores live readings (e.g., Oxygen level, BP, ECG) "
+            "and does NOT modify parameter config."
+        ),
+        request_body=ParameterValueCreateSerializer,
+        responses={
+            201: openapi.Response(
+                description="Parameter value created successfully",
+                schema=ParameterValueCreateSerializer
+            ),
+            400: "Validation Error",
+            500: "Internal Server Error"
+        },
+        tags=["Parameter Values"]
+    )
+    def post(self, request):
+        serializer = ParameterValueCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        value = serializer.save()
+
+        return Response(
+            ParameterValueCreateSerializer(value).data,
+            status=status.HTTP_201_CREATED
+        )
+
+# -------------------------------------------------------------------
+# Parameter Value List API View (GET)
+# -------------------------------------------------------------------
+
+class ParameterValueListAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="List Parameter Values",
+        operation_description=(
+            "Retrieve all runtime readings for a given parameter.\n\n"
+            "Results are ordered by latest first."
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                name="parameter_id",
+                in_=openapi.IN_PATH,
+                type=openapi.TYPE_INTEGER,
+                required=True,
+                description="Parameter ID"
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="List of parameter values",
+                schema=ParameterValueReadSerializer(many=True)
+            ),
+            404: "Parameter not found",
+            500: "Internal Server Error"
+        },
+        tags=["Parameter Values"]
+    )
+    def get(self, request, parameter_id):
+        parameter = get_object_or_404(
+            Parameters,
+            id=parameter_id,
+            is_active=True
+        )
+
+        values = ParameterValues.objects.filter(
+            parameter=parameter,
+            is_deleted=False
+        ).order_by("-created_at")
+
+        serializer = ParameterValueReadSerializer(values, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+    
+# -------------------------------------------------------------------
+# User Create API View (POST)
+# -------------------------------------------------------------------
+
+
+class UserCreateAPIView(APIView):
+    
+    def post(self, request):
+        serializer = UserCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        return Response(
+            {
+                "id": user.id,
+                "username": user.username
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+# -------------------------------------------------------------------
+# Clinic Employees API View (GET)
+# -------------------------------------------------------------------
+
+class ClinicEmployeesAPIView(APIView):
+    
+    @swagger_auto_schema(
+        operation_summary="Get Clinic Employees",
+        operation_description="Retrieve all employees under a specific clinic",
+        responses={
+            200: EmployeeReadSerializer(many=True),
+            401: "Unauthorized",
+            404: "Clinic not found",
+        },
+        tags=["Clinic"]
+    )
+    def get(self, request, clinic_id):
+        #  Validate clinic existence
+        get_object_or_404(Clinic, id=clinic_id)
+
+        #  Fetch employees for the clinic
+        employees = Employee.objects.filter(clinic_id=clinic_id)
+
+        serializer = EmployeeReadSerializer(employees, many=True)
+        return Response(serializer.data)
+
+# -------------------------------------------------------------------
+# Employee Create API View (POST)
+# -------------------------------------------------------------------
+
+class EmployeeCreateAPIView(APIView):
+   
+
+    @swagger_auto_schema(
+        operation_summary="Create Employee",
+        operation_description="Create an employee under a clinic and department",
+        request_body=EmployeeCreateSerializer,
+        responses={
+            201: EmployeeReadSerializer,
+            400: "Validation Error",
+            401: "Unauthorized"
+        },
+        tags=["Employee"]
+    )
+    def post(self, request):
+        serializer = EmployeeCreateSerializer(data=request.data)
+
+        serializer.is_valid(raise_exception=True)
+        employee = serializer.save()
+
+        return Response(
+            EmployeeReadSerializer(employee).data,
+            status=status.HTTP_201_CREATED
+        )
+  
+# class VidaiLoginAPIView(APIView):
+
+#     @swagger_auto_schema(
+#         operation_summary="Vidai Login (Backend Wrapper)",
+#         operation_description=(
+#             "This API acts as a backend wrapper over the Vidai Login API.\n\n"
+#             "Flow:\n"
+#             "Frontend → Our Backend → Vidai Login API → Our Backend → Frontend\n\n"
+#             "Returns an access token which will be used for subsequent Vidai APIs."
+#         ),
+#         request_body=openapi.Schema(
+#             type=openapi.TYPE_OBJECT,
+#             required=["username", "password"],
+#             properties={
+#                 "username": openapi.Schema(type=openapi.TYPE_STRING),
+#                 "password": openapi.Schema(type=openapi.TYPE_STRING),
+#             },
+#         ),
+#         responses={
+#             200: openapi.Schema(
+#                 type=openapi.TYPE_OBJECT,
+#                 properties={
+#                     "access_token": openapi.Schema(type=openapi.TYPE_STRING),
+#                 },
+#             ),
+#             401: "Invalid credentials",
+#             500: "Token not found in Vidai response",
+#         },
+#         tags=["Vidai Integration"],
+#     )
+#     def post(self, request):
+#         payload = {
+#             "username": request.data.get("username"),
+#             "password": request.data.get("password"),
+#         }
+
+#         response = requests.post(VIDAI_LOGIN_URL, json=payload)
+
+#         if response.status_code != 200:
+#             return Response(
+#                 {"message": "Vidai login failed"},
+#                 status=status.HTTP_401_UNAUTHORIZED,
+#             )
+
+#         data = response.json()
+#         print("VIDAI LOGIN RESPONSE:", data)  # TEMP: remove after confirmation
+
+#         access_token = (
+#             data.get("access_token")
+#             or data.get("token")
+#             or data.get("access")
+#         )
+
+#         if not access_token:
+#             return Response(
+#                 {
+#                     "message": "Token not found in Vidai response",
+#                     "vidai_response": data
+#                 },
+#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             )
+
+#         return Response(
+#             {"access_token": f"Bearer {access_token}"},
+#             status=status.HTTP_200_OK,
+#         )
+
+# class VidaiClinicsAPIView(APIView):
+
+#     @swagger_auto_schema(
+#         operation_summary="Get Clinics (Vidai via Backend)",
+#         operation_description=(
+#             "Fetches clinics associated with the logged-in user using Vidai APIs.\n\n"
+#             "This API is called from the backend using the access token received "
+#             "from the Vidai login API.\n\n"
+#             "Clinic switching is supported at UI level."
+#         ),
+#         manual_parameters=[
+#             openapi.Parameter(
+#                 name="Authorization",
+#                 in_=openapi.IN_HEADER,
+#                 type=openapi.TYPE_STRING,
+#                 required=True,
+#                 description="Bearer <access_token> received from Vidai login API",
+#             )
+#         ],
+#         responses={
+#             200: "Clinic list retrieved successfully",
+#             400: "Failed to fetch clinics",
+#         },
+#         tags=["Vidai Integration"],
+#     )
+#     def get(self, request):
+#         token = request.headers.get("Authorization")
+
+#         if not token:
+#             return Response(
+#                 {"message": "Access token required"},
+#                 status=status.HTTP_400_BAD_REQUEST,
+#             )
+
+#         headers = {
+#             "Authorization": token,
+#         }
+
+#         response = requests.get(VIDAI_GET_CLINICS_URL, headers=headers)
+
+#         if response.status_code != 200:
+#             return Response(
+#                 {"message": "Failed to fetch clinics"},
+#                 status=status.HTTP_400_BAD_REQUEST,
+#             )
+
+#         return Response(response.json(), status=status.HTTP_200_OK)
