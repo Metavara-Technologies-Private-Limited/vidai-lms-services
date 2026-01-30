@@ -1,0 +1,45 @@
+[ERROR] 2026-01-30 11:53:19 restapi.exception_handler:30 — [ERROR][2026-01-30 06:23:19.840358][ReqID: 9eb13fca286d][IP: 127.0.0.1]
+Path: /api/clinics/999/departments/
+Error: No Clinic matches the given query.
+[ERROR] 2026-01-30 11:53:19 restapi.exception_handler:30 — [ERROR][2026-01-30 06:23:19.933883][ReqID: 4b1b71661e02][IP: 127.0.0.1]
+Path: /api/get_clinic/999/
+Error: Clinic not found
+[ERROR] 2026-01-30 11:53:20 restapi.exception_handler:30 — [ERROR][2026-01-30 06:23:20.076150][ReqID: 6e3d27f8b96d][IP: 127.0.0.1]
+Path: /api/departments/999/environments/
+Error: Department not found
+[ERROR] 2026-01-30 11:53:20 restapi.exception_handler:30 — [ERROR][2026-01-30 06:23:20.101365][ReqID: befceba9b2c9][IP: 127.0.0.1]
+Path: /api/environments/999/get/
+Error: No Environment matches the given query.
+[ERROR] 2026-01-30 11:53:20 restapi.exception_handler:30 — [ERROR][2026-01-30 06:23:20.163880][ReqID: 5b88f7788e7d][IP: 127.0.0.1]
+Path: /api/departments/999/environments/
+Error: Department not found
+[ERROR] 2026-01-30 11:53:20 restapi.exception_handler:30 — [ERROR][2026-01-30 06:23:20.175618][ReqID: 3f69322bf4ea][IP: 127.0.0.1]
+Path: /api/environments/999/get/
+Error: No Environment matches the given query.
+[ERROR] 2026-01-30 11:53:20 restapi.exception_handler:30 — [ERROR][2026-01-30 06:23:20.293521][ReqID: d8da50e008ba][IP: 127.0.0.1]
+Path: /api/departments/999/equipments/
+Error: Department not found
+[ERROR] 2026-01-30 11:55:45 restapi.exception_handler:30 — [ERROR][2026-01-30 06:25:45.400233][ReqID: f29406076343][IP: 127.0.0.1]
+Path: /api/departments/999/equipments/
+Error: Department not found
+[ERROR] 2026-01-30 11:56:01 restapi.exception_handler:30 — [ERROR][2026-01-30 06:26:01.646191][ReqID: 960b045e1f19][IP: 127.0.0.1]
+Path: /api/departments/999/environments/
+Error: Department not found
+[ERROR] 2026-01-30 11:56:01 restapi.exception_handler:30 — [ERROR][2026-01-30 06:26:01.667215][ReqID: 87b6b220e8c0][IP: 127.0.0.1]
+Path: /api/environments/999/get/
+Error: No Environment matches the given query.
+[ERROR] 2026-01-30 11:56:01 restapi.exception_handler:30 — [ERROR][2026-01-30 06:26:01.722646][ReqID: c9ed507eb4c3][IP: 127.0.0.1]
+Path: /api/departments/999/environments/
+Error: Department not found
+[ERROR] 2026-01-30 11:56:01 restapi.exception_handler:30 — [ERROR][2026-01-30 06:26:01.734437][ReqID: a68ac046ba49][IP: 127.0.0.1]
+Path: /api/environments/999/get/
+Error: No Environment matches the given query.
+[ERROR] 2026-01-30 11:56:09 restapi.exception_handler:30 — [ERROR][2026-01-30 06:26:09.575083][ReqID: 67dba3e1cfa3][IP: 127.0.0.1]
+Path: /api/clinics/999/departments/
+Error: No Clinic matches the given query.
+[ERROR] 2026-01-30 11:56:09 restapi.exception_handler:30 — [ERROR][2026-01-30 06:26:09.633684][ReqID: f6969eac7717][IP: 127.0.0.1]
+Path: /api/get_clinic/999/
+Error: Clinic not found
+[ERROR] 2026-01-30 12:05:40 restapi.exception_handler:30 — [ERROR][2026-01-30 06:35:40.352655][ReqID: e016384540aa][IP: 127.0.0.1]
+Path: /api/parameters/activate/
+Error: Parameter not found
