@@ -33,4 +33,4 @@ def run():
                 }
             )
 
-    print("✅ Vidai clinics & departments migrated successfully")
+    print(" Vidai clinics & departments migrated successfully")
