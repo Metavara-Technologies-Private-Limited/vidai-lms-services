@@ -1,22 +1,11 @@
-# Logs
-*.log
-logs/
-log/
+# virtual environment
+.venv/
+venv/
 
-# Python
+# logs
+*.log
+restapi/log/*.log
+
+# python cache
 __pycache__/
 *.pyc
-
-# Env
-.env
-venv/
-env/
-
-# Django runtime
-db.sqlite3
-media/
-staticfiles/
-
-# IDE
-.vscode/
-.idea/

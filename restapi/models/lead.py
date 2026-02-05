@@ -146,3 +146,7 @@ class Lead(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        managed = False          # 🔐 VERY IMPORTANT
+        db_table = "restapi_lead"        # 👈 must match EXISTING DB table

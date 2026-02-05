@@ -99,6 +99,7 @@ class LeadSerializer(serializers.ModelSerializer):
     campaign_id = serializers.UUIDField(required=False, allow_null=True)
     document = serializers.FileField(required=False, allow_null=True)
     is_active = serializers.BooleanField(required=False)
+
     class Meta:
         model = Lead
         fields = [
@@ -134,34 +135,59 @@ class LeadSerializer(serializers.ModelSerializer):
             "remark",
             "is_active",
         ]
+        # 🔒 ID must NEVER be updated via payload
+        read_only_fields = ("id",)
 
-    # -------------------------
+    # =====================================================
     # GLOBAL VALIDATION
-    # -------------------------
+    # =====================================================
     def validate(self, attrs):
+        request = self.context.get("request")
+
+        # -------------------------------------------------
         # CREATE → require clinic & department
+        # -------------------------------------------------
         if self.instance is None:
             if "clinic_id" not in attrs:
                 raise ValidationError({"clinic_id": "This field is required."})
             if "department_id" not in attrs:
                 raise ValidationError({"department_id": "This field is required."})
 
-        # UPDATE → allow SAME IDs, block CHANGES
-        if self.instance is not None:
+        # -------------------------------------------------
+        # UPDATE → ID mismatch protection
+        # -------------------------------------------------
+        if self.instance is not None and request:
+            payload_id = request.data.get("id")
+            if payload_id and str(payload_id) != str(self.instance.id):
+                raise ValidationError({
+                    "id": "Lead ID is not matched"
+                })
+
             if "clinic_id" in attrs:
                 if attrs["clinic_id"] != self.instance.clinic_id:
-                    raise ValidationError({"clinic_id": "clinic_id cannot be changed"})
+                    raise ValidationError({
+                        "clinic_id": "clinic_id cannot be changed"
+                    })
                 attrs.pop("clinic_id")
 
+            #  department_id change not allowed
             if "department_id" in attrs:
                 if attrs["department_id"] != self.instance.department_id:
-                    raise ValidationError({"department_id": "department_id cannot be changed"})
+                    raise ValidationError({
+                        "department_id": "department_id cannot be changed"
+                    })
                 attrs.pop("department_id")
 
         return attrs
 
+    # =====================================================
+    # CREATE
+    # =====================================================
     def create(self, validated_data):
         return create_lead(validated_data)
 
+    # =====================================================
+    # UPDATE
+    # =====================================================
     def update(self, instance, validated_data):
         return update_lead(instance, validated_data)
