@@ -39,3 +39,8 @@ class Campaign(models.Model):
     is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        managed = False          # 🔐 VERY IMPORTANT
+        db_table = "restapi_campaign"        # 👈 must match EXISTING DB table
+
