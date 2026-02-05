@@ -1,16 +1,8 @@
 from django.contrib import admin
+from .models import Clinic, Department, Equipments, EquipmentDetails, Parameters
 
-from .models.campaign import Campaign
-from .models.campaign_email_config import CampaignEmailConfig
-from .models.campaign_social_media_config import CampaignSocialMediaConfig
-from .models.lead import Lead
-
-
-# -------------------------------------------------
-# Register LMS Models
-# -------------------------------------------------
-
-admin.site.register(Campaign)
-admin.site.register(CampaignEmailConfig)
-admin.site.register(CampaignSocialMediaConfig)
-admin.site.register(Lead)
+admin.site.register(Clinic)
+admin.site.register(Department)
+admin.site.register(Equipments)
+admin.site.register(EquipmentDetails)
+admin.site.register(Parameters)
