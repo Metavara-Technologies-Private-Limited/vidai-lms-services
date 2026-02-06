@@ -35,6 +35,6 @@ jobs:
 
       - name: Django system checks
         env:
-          DJANGO_SETTINGS_MODULE: django_rest_main.settings
+          DJANGO_SETTINGS_MODULE: lms_main.settings
         run: |
           python manage.py check
