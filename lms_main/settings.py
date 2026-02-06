@@ -60,7 +60,7 @@ MIDDLEWARE = [
 
 ]
 
-ROOT_URLCONF = 'django_rest_main.urls'
+ROOT_URLCONF = 'lms_main.urls'
 
 TEMPLATES = [
     {
@@ -77,7 +77,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'django_rest_main.wsgi.application'
+WSGI_APPLICATION = 'lms_main.wsgi.application'
 
 
 # Database
