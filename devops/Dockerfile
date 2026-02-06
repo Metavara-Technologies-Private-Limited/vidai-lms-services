@@ -33,4 +33,4 @@ RUN mkdir -p /app/restapi/log \
 EXPOSE 8000
 
 
-CMD ["gunicorn", "django_rest_main.wsgi:application", "--bind", "0.0.0.0:8000"]
+CMD ["gunicorn", "lms_main.wsgi:application", "--bind", "0.0.0.0:8000"]
