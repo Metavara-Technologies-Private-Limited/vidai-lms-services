@@ -41,6 +41,6 @@ class Campaign(models.Model):
     modified_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        managed = False          # 🔐 VERY IMPORTANT
+       #managed = False          # 🔐 VERY IMPORTANT
         db_table = "restapi_campaign"        # 👈 must match EXISTING DB table
 

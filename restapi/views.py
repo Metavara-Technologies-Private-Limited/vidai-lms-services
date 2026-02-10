@@ -4,6 +4,8 @@ import logging
 
 from django.shortcuts import get_object_or_404
 
+from drf_yasg import openapi
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -14,8 +16,28 @@ from drf_yasg.utils import swagger_auto_schema
 
 from restapi.services.zapier_service import send_to_zapier
 
+from restapi.models import Clinic
+from restapi.serializers.clinic import (
+    ClinicSerializer,
+    ClinicReadSerializer,
+)
+
+from restapi.models import employee
+from restapi.serializers.employee import (
+    EmployeeCreateSerializer,
+    EmployeeReadSerializer,
+    UserCreateSerializer,
+)
+
 from .models import Lead, Campaign
 
+from restapi.models import Pipeline, PipelineStage
+from restapi.services.pipeline_service import (
+    add_stage,
+    update_stage,
+    save_stage_rules,
+    save_stage_fields,
+)
 from restapi.serializers.lead_serializer import (
     LeadSerializer,
     LeadReadSerializer,
@@ -26,10 +48,221 @@ from restapi.serializers.campaign_serializer import (
     CampaignReadSerializer,
 )
 
+from restapi.serializers.pipeline_serializer import (
+    PipelineSerializer,
+    PipelineReadSerializer,
+)
+
 logger = logging.getLogger(__name__)
 
+# -------------------------------------------------------------------
+# Create Clinic (POST)
+# -------------------------------------------------------------------
+class ClinicCreateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Create a new clinic with departments",
+        request_body=ClinicSerializer,
+        responses={
+            201: ClinicReadSerializer,
+            400: "Validation Error",
+            500: "Internal Server Error",
+        },
+    )
+    def post(self, request):
+        try:
+            serializer = ClinicSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            clinic = serializer.save()
+
+            return Response(
+                ClinicReadSerializer(clinic).data,
+                status=status.HTTP_201_CREATED,
+            )
+
+        except ValidationError as ve:
+            logger.warning(f"Clinic validation failed: {ve.detail}")
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Clinic Create Error:\n" +
+                traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# -------------------------------------------------------------------
+# Update Clinic (PUT)
+# -------------------------------------------------------------------
+class ClinicUpdateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Update an existing clinic and its departments",
+        request_body=ClinicSerializer,
+        responses={
+            200: ClinicReadSerializer,
+            400: "Validation Error",
+            404: "Clinic not found",
+            500: "Internal Server Error",
+        },
+    )
+    def put(self, request, clinic_id):
+        try:
+            clinic = Clinic.objects.get(id=clinic_id)
+
+            serializer = ClinicSerializer(
+                clinic,
+                data=request.data  # PUT = full update
+            )
+            serializer.is_valid(raise_exception=True)
+
+            updated_clinic = serializer.save()
+
+            return Response(
+                ClinicReadSerializer(updated_clinic).data,
+                status=status.HTTP_200_OK,
+            )
+
+        except Clinic.DoesNotExist:
+            logger.warning("Clinic not found")
+            raise NotFound("Clinic not found")
+
+        except ValidationError as ve:
+            logger.warning(
+                f"Clinic update validation failed: {ve.detail}"
+            )
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Clinic Update Error:\n" +
+                traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+# -------------------------------------------------------------------
+# Get Clinic by ID (GET)
+# -------------------------------------------------------------------
+class GetClinicView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Retrieve clinic details with departments",
+        responses={
+            200: ClinicReadSerializer,
+            404: "Clinic not found",
+            500: "Internal Server Error",
+        },
+    )
+    def get(self, request, clinic_id):
+        try:
+            clinic = Clinic.objects.get(id=clinic_id)
+
+            serializer = ClinicReadSerializer(clinic)
+
+            return Response(
+                serializer.data,
+                status=status.HTTP_200_OK,
+            )
+
+        except Clinic.DoesNotExist:
+            raise NotFound("Clinic not found")
+
+        except Exception:
+            logger.error(
+                "Unhandled Clinic Fetch Error:\n" +
+                traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# -------------------------------------------------------------------
+# User Create API View (POST)
+# -------------------------------------------------------------------
 
 
+class UserCreateAPIView(APIView):
+    
+    def post(self, request):
+        serializer = UserCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        return Response(
+            {
+                "id": user.id,
+                "username": user.username
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+# -------------------------------------------------------------------
+# Clinic Employees API View (GET)
+# -------------------------------------------------------------------
+
+class ClinicEmployeesAPIView(APIView):
+    
+    @swagger_auto_schema(
+        operation_summary="Get Clinic Employees",
+        operation_description="Retrieve all employees under a specific clinic",
+        responses={
+            200: EmployeeReadSerializer(many=True),
+            401: "Unauthorized",
+            404: "Clinic not found",
+        },
+        tags=["Clinic"]
+    )
+    def get(self, request, clinic_id):
+        #  Validate clinic existence
+        get_object_or_404(Clinic, id=clinic_id)
+
+        #  Fetch employees for the clinic
+        employees = Employee.objects.filter(clinic_id=clinic_id)
+
+        serializer = EmployeeReadSerializer(employees, many=True)
+        return Response(serializer.data)
+
+# -------------------------------------------------------------------
+# Employee Create API View (POST)
+# -------------------------------------------------------------------
+
+class EmployeeCreateAPIView(APIView):
+   
+
+    @swagger_auto_schema(
+        operation_summary="Create Employee",
+        operation_description="Create an employee under a clinic and department",
+        request_body=EmployeeCreateSerializer,
+        responses={
+            201: EmployeeReadSerializer,
+            400: "Validation Error",
+            401: "Unauthorized"
+        },
+        tags=["Employee"]
+    )
+    def post(self, request):
+        serializer = EmployeeCreateSerializer(data=request.data)
+
+        serializer.is_valid(raise_exception=True)
+        employee = serializer.save()
+
+        return Response(
+            EmployeeReadSerializer(employee).data,
+            status=status.HTTP_201_CREATED
+        )
 
 # -------------------------------------------------------------------
 # Lead Create API View (POST)
@@ -39,6 +272,7 @@ class LeadCreateAPIView(APIView):
     """
     Create Lead API (Supports JSON + File Upload)
     """
+
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @swagger_auto_schema(
@@ -52,16 +286,30 @@ class LeadCreateAPIView(APIView):
         tags=["Leads"],
     )
     def post(self, request):
+        print("🚀 STEP 1: LeadCreateAPIView HIT")
+
         try:
+            print("📦 STEP 2: Incoming request data:")
+            print(request.data)
+
             serializer = LeadSerializer(
                 data=request.data,
-                context={"request": request}
+                context={"request": request},
             )
+
+            print("🧪 STEP 3: Serializer initialized")
+
             serializer.is_valid(raise_exception=True)
+            print("✅ STEP 4: Serializer validated successfully")
 
             lead = serializer.save()
+            print(f"💾 STEP 5: Lead saved successfully | ID = {lead.id}")
 
-            # 🔔 ZAPIER
+            # ===============================
+            # ZAPIER INTEGRATION
+            # ===============================
+            print("🔔 STEP 6: Sending data to Zapier")
+
             send_to_zapier({
                 "event": "lead_created",
                 "lead_id": str(lead.id),
@@ -76,22 +324,35 @@ class LeadCreateAPIView(APIView):
                 ),
             })
 
+            print("🚀 STEP 7: Zapier call completed")
+
+            response_data = LeadReadSerializer(lead).data
+            print("📤 STEP 8: Response prepared")
+
             return Response(
-                LeadReadSerializer(lead).data,
+                response_data,
                 status=status.HTTP_201_CREATED,
             )
 
         except ValidationError as ve:
+            print("❌ VALIDATION ERROR OCCURRED")
+            print(ve.detail)
+
             logger.warning(f"Lead validation failed: {ve.detail}")
+
             return Response(
                 {"error": ve.detail},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         except Exception:
+            print("🔥 UNHANDLED EXCEPTION OCCURRED 🔥")
+            print(traceback.format_exc())
+
             logger.error(
                 "Unhandled Lead Create Error:\n" + traceback.format_exc()
             )
+
             return Response(
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -325,6 +586,16 @@ class CampaignCreateAPIView(APIView):
 
             campaign = serializer.save()
 
+            channels = []
+
+            if campaign.social_configs.filter(is_active=True).exists():
+                channels.append("facebook")
+
+            if campaign.email_configs.filter(is_active=True).exists():
+                channels.append("email")
+
+            print("ZAPIER CHANNELS →", channels)  # debug (optional)
+
             # 🔔 ZAPIER
             send_to_zapier({
     "event": "campaign_created",
@@ -333,11 +604,12 @@ class CampaignCreateAPIView(APIView):
     "clinic_id": campaign.clinic.id,
     "campaign_mode": campaign.campaign_mode,
 
-    # ✅ FIXED (date → string)
+    # ✅ NOW DEFINED
+    "channels": channels,
+
     "start_date": campaign.start_date.isoformat() if campaign.start_date else None,
     "end_date": campaign.end_date.isoformat() if campaign.end_date else None,
 
-    # ✅ FIXED (datetime → string)
     "selected_start": (
         campaign.selected_start.isoformat()
         if campaign.selected_start else None
@@ -347,7 +619,6 @@ class CampaignCreateAPIView(APIView):
         if campaign.selected_end else None
     ),
 
-    # ✅ FIXED (time → string)
     "enter_time": (
         campaign.enter_time.strftime("%H:%M")
         if campaign.enter_time else None
@@ -355,6 +626,7 @@ class CampaignCreateAPIView(APIView):
 
     "is_active": campaign.is_active,
 })
+
 
             return Response(
                 CampaignReadSerializer(campaign).data,
@@ -587,3 +859,421 @@ class CampaignSoftDeleteAPIView(APIView):
 
     def delete(self, request, campaign_id):
         return self.patch(request, campaign_id)
+
+
+# -------------------------------------------------------------------
+# Pipeline Create API View (POST)
+# -------------------------------------------------------------------
+
+class PipelineCreateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Create a new sales pipeline",
+        request_body=PipelineSerializer,          # WRITE
+        responses={
+            201: PipelineReadSerializer,           # READ
+            400: "Validation Error",
+            500: "Internal Server Error",
+        },
+        tags=["Pipelines"],
+    )
+    def post(self, request):
+        try:
+            serializer = PipelineSerializer(
+                data=request.data,
+                context={"request": request},
+            )
+            serializer.is_valid(raise_exception=True)
+
+            pipeline = serializer.save()
+
+            return Response(
+                PipelineReadSerializer(pipeline).data,
+                status=status.HTTP_201_CREATED,
+            )
+
+        except ValidationError as ve:
+            logger.warning(f"Pipeline validation failed: {ve.detail}")
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Pipeline Create Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# -------------------------------------------------------------------
+# LIST PIPELINES (Left Sidebar) (GET)
+# -------------------------------------------------------------------
+
+class PipelineListAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="List all pipelines for a clinic",
+        responses={200: PipelineReadSerializer(many=True)},
+        tags=["Pipelines"],
+    )
+    def get(self, request):
+        try:
+            clinic_id = request.query_params.get("clinic_id")
+            if not clinic_id:
+                raise ValidationError({"clinic_id": "This field is required"})
+
+            pipelines = Pipeline.objects.filter(
+                clinic_id=clinic_id,
+                is_active=True
+            )
+
+            return Response(
+                PipelineReadSerializer(pipelines, many=True).data,
+                status=status.HTTP_200_OK,
+            )
+
+        except ValidationError as ve:
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Pipeline List Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# -------------------------------------------------------------------
+# GET SINGLE PIPELINE (Canvas Load) (GET)
+# -------------------------------------------------------------------
+
+
+class PipelineDetailAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Get pipeline with stages, rules, and fields",
+        responses={200: PipelineReadSerializer},
+        tags=["Pipelines"],
+    )
+    def get(self, request, pipeline_id):
+        try:
+            pipeline = Pipeline.objects.get(id=pipeline_id)
+
+            return Response(
+                PipelineReadSerializer(pipeline).data,
+                status=status.HTTP_200_OK,
+            )
+
+        except Pipeline.DoesNotExist:
+            return Response(
+                {"error": "Pipeline not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Pipeline Detail Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# -------------------------------------------------------------------
+# ADD STAGE TO PIPELINE (POST)
+# -------------------------------------------------------------------
+
+
+class PipelineStageCreateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Add a new stage to a pipeline",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "pipeline_id": openapi.Schema(type=openapi.TYPE_STRING),
+                "stage_name": openapi.Schema(type=openapi.TYPE_STRING),
+                "stage_type": openapi.Schema(type=openapi.TYPE_STRING),
+            },
+            required=["pipeline_id", "stage_name", "stage_type"],
+        ),
+        tags=["Pipeline Stages"],
+    )
+    def post(self, request):
+        try:
+            stage = add_stage(request.data)
+
+            return Response(
+                {"id": stage.id, "stage_name": stage.stage_name},
+                status=status.HTTP_201_CREATED,
+            )
+
+        except ValidationError as ve:
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Stage Create Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# -------------------------------------------------------------------
+# UPDATE STAGE (PUT)
+# -------------------------------------------------------------------
+
+class PipelineStageUpdateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Update pipeline stage",
+        tags=["Pipeline Stages"],
+    )
+    def put(self, request, stage_id):
+        try:
+            stage = PipelineStage.objects.get(id=stage_id)
+            updated = update_stage(stage, request.data)
+
+            return Response(
+                {"message": "Stage updated successfully"},
+                status=status.HTTP_200_OK,
+            )
+
+        except PipelineStage.DoesNotExist:
+            return Response(
+                {"error": "Stage not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        except ValidationError as ve:
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Stage Update Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# -------------------------------------------------------------------
+# SAVE STAGE RULES (POST)
+# -------------------------------------------------------------------
+
+class StageRuleSaveAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Save stage action rules",
+        tags=["Pipeline Stages"],
+    )
+    def post(self, request, stage_id):
+        try:
+            stage = PipelineStage.objects.get(id=stage_id)
+            save_stage_rules(stage, request.data.get("rules", []))
+
+            return Response(
+                {"message": "Stage rules saved"},
+                status=status.HTTP_200_OK,
+            )
+
+        except PipelineStage.DoesNotExist:
+            return Response(
+                {"error": "Stage not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        except ValidationError as ve:
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Stage Rule Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+
+# ------------------------------------------------------------------
+# ADD STAGE TO PIPELINE (POST)
+# -------------------------------------------------------------------
+
+class StageFieldSaveAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Save stage data capture fields",
+        tags=["Pipeline Stages"],
+    )
+    def post(self, request, stage_id):
+        try:
+            stage = PipelineStage.objects.get(id=stage_id)
+            save_stage_fields(stage, request.data.get("fields", []))
+
+            return Response(
+                {"message": "Stage fields saved"},
+                status=status.HTTP_200_OK,
+            )
+
+        except PipelineStage.DoesNotExist:
+            return Response(
+                {"error": "Stage not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        except ValidationError as ve:
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Stage Field Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        
+# ------------------------------------------------------------------
+# UPDATE STAGE (Right Panel Save) (PUT)
+# -------------------------------------------------------------------
+
+class PipelineStageUpdateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Update pipeline stage",
+        tags=["Pipeline Stages"],
+    )
+    def put(self, request, stage_id):
+        try:
+            stage = PipelineStage.objects.get(id=stage_id)
+            updated = update_stage(stage, request.data)
+
+            return Response(
+                {"message": "Stage updated successfully"},
+                status=status.HTTP_200_OK,
+            )
+
+        except PipelineStage.DoesNotExist:
+            return Response(
+                {"error": "Stage not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        except ValidationError as ve:
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Stage Update Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# ------------------------------------------------------------------
+# SAVE STAGE RULES (POST)
+# -------------------------------------------------------------------
+
+class StageRuleSaveAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Save stage action rules",
+        tags=["Pipeline Stages"],
+    )
+    def post(self, request, stage_id):
+        try:
+            stage = PipelineStage.objects.get(id=stage_id)
+            save_stage_rules(stage, request.data.get("rules", []))
+
+            return Response(
+                {"message": "Stage rules saved"},
+                status=status.HTTP_200_OK,
+            )
+
+        except PipelineStage.DoesNotExist:
+            return Response(
+                {"error": "Stage not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        except ValidationError as ve:
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Stage Rule Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# ------------------------------------------------------------------
+# SAVE STAGE FIELDS (POST)
+# -------------------------------------------------------------------
+
+class StageFieldSaveAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Save stage data capture fields",
+        tags=["Pipeline Stages"],
+    )
+    def post(self, request, stage_id):
+        try:
+            stage = PipelineStage.objects.get(id=stage_id)
+            save_stage_fields(stage, request.data.get("fields", []))
+
+            return Response(
+                {"message": "Stage fields saved"},
+                status=status.HTTP_200_OK,
+            )
+
+        except PipelineStage.DoesNotExist:
+            return Response(
+                {"error": "Stage not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        except ValidationError as ve:
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Stage Field Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
