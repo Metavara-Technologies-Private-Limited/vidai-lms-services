@@ -22,7 +22,7 @@ SECRET_KEY = 'django-insecure-b#--p%6fpdr-ub523h198vs!#-2%fvtv+at(_@tzr#kaazchp=
 DEBUG = True
 
 #  IMPORTANT FOR SERVER ACCESS
-ALLOWED_HOSTS = ["0.0.0.0", "127.0.0.1", "72.62.227.137"]  #  ADDED VPS IP
+ALLOWED_HOSTS = ["0.0.0.0", "127.0.0.1", "72.62.227.137","backend.metavaratechnologies.com"]  #  ADDED VPS IP
 
 
 # ================================
@@ -45,7 +45,7 @@ INSTALLED_APPS = [
     'restapi',
 ]
 
-ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/uei8m2c/"
+ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/uezdfh3/"
 
 MIDDLEWARE = [
     'restapi.middleware.RequestIDMiddleware',   # Custom middleware
@@ -85,7 +85,7 @@ WSGI_APPLICATION = 'lms_main.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'stage3_db',
+        'NAME': 'stage2_db',
         'USER': 'postgres',
         'PASSWORD': 'saimohan',
         'HOST': 'localhost',
