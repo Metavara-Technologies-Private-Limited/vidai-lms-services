@@ -64,6 +64,23 @@ class CampaignReadSerializer(serializers.ModelSerializer):
         model = Campaign
         fields = "__all__"
 
+class SocialMediaCampaignSerializer(serializers.Serializer):
+    clinic = serializers.IntegerField()
+    campaign_name = serializers.CharField()
+    campaign_description = serializers.CharField()
+    campaign_objective = serializers.CharField()
+    target_audience = serializers.CharField()
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    select_ad_accounts = serializers.ListField(
+        child=serializers.CharField()
+    )
+    campaign_mode = serializers.ListField(
+        child=serializers.CharField()
+    )
+    campaign_content = serializers.CharField()
+    schedule_date_range = serializers.CharField()
+    enter_time = serializers.TimeField()
 
 # =====================================================
 # Campaign WRITE Serializer

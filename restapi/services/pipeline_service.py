@@ -12,7 +12,10 @@ from restapi.models import (
 # create_pipeline
 @transaction.atomic
 def create_pipeline(validated_data):
-    clinic = Clinic.objects.get(id=validated_data.pop("clinic_id"))
+    try:
+        clinic = Clinic.objects.get(id=validated_data.pop("clinic_id"))
+    except Clinic.DoesNotExist:
+        raise ValidationError({"clinic_id": "Invalid clinic_id"})
 
     pipeline = Pipeline.objects.create(
         clinic=clinic,
@@ -38,7 +41,10 @@ def update_pipeline(instance, validated_data):
 # add_stage
 @transaction.atomic
 def add_stage(validated_data):
-    pipeline = Pipeline.objects.get(id=validated_data["pipeline_id"])
+    try:
+        pipeline = Pipeline.objects.get(id=validated_data["pipeline_id"])
+    except Pipeline.DoesNotExist:
+        raise ValidationError({"pipeline_id": "Invalid pipeline_id"})
 
     order = (
         PipelineStage.objects
