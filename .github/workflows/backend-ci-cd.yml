@@ -51,9 +51,13 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             docker pull ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
-            docker stop vidai-backend || true
-            docker rm vidai-backend || true
+
+            docker ps -aq --filter "name=vidai-backend" | xargs -r docker stop
+            docker ps -aq --filter "name=vidai-backend" | xargs -r docker rm
+
             docker run -d \
+              --restart always \
               --name vidai-backend \
               -p 8000:8000 \
               ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
+
