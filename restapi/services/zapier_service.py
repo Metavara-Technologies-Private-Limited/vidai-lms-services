@@ -1,11 +1,10 @@
 import requests
+from django.conf import settings
 
 def send_to_zapier(data):
-    zapier_url = "https://hooks.zapier.com/hooks/catch/26329346/ul7z2zo/"
-
     try:
         response = requests.post(
-            zapier_url,
+            settings.ZAPIER_WEBHOOK_URL,
             json=data,
             timeout=8
         )

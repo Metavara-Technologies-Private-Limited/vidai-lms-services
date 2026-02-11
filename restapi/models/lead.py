@@ -148,5 +148,5 @@ class Lead(models.Model):
     modified_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        managed = False          # 🔐 VERY IMPORTANT
+        #anaged = False          # 🔐 VERY IMPORTANT
         db_table = "restapi_lead"        # 👈 must match EXISTING DB table
