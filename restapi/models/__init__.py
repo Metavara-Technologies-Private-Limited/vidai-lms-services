@@ -16,3 +16,9 @@ from .pipeline import Pipeline
 from .pipeline_stage import PipelineStage
 from .stage_rule import StageRule
 from .stage_field import StageField
+
+# Ticketing Module
+from .lab import Lab
+from .ticket import Ticket
+from .document import Document
+from .ticket_timeline import TicketTimeline

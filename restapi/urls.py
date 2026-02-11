@@ -1,24 +1,38 @@
+"""
+Main API URL Configuration
+
+Structure:
+- Clinics
+- Employees / Users
+- Leads
+- Campaigns
+- Pipelines
+- Tickets
+
+Each section is grouped logically for clarity and maintainability.
+"""
+
 from django.urls import path
 
 from .views import (
 
-    # =========================
-    # Clinic
-    # =========================
+    # ==================================================
+    # Clinic APIs
+    # ==================================================
     ClinicCreateAPIView,
     ClinicUpdateAPIView,
     GetClinicView,
 
-    # =========================
-    # Employee / User
-    # =========================
+    # ==================================================
+    # Employee / User APIs
+    # ==================================================
     ClinicEmployeesAPIView,
     EmployeeCreateAPIView,
     UserCreateAPIView,
 
-    # =========================
-    # Leads
-    # =========================
+    # ==================================================
+    # Lead APIs
+    # ==================================================
     LeadCreateAPIView,
     LeadUpdateAPIView,
     LeadListAPIView,
@@ -27,10 +41,9 @@ from .views import (
     LeadInactivateAPIView,
     LeadSoftDeleteAPIView,
 
-
-    # =========================
-    # Campaigns
-    # =========================
+    # ==================================================
+    # Campaign APIs
+    # ==================================================
     CampaignCreateAPIView,
     CampaignUpdateAPIView,
     CampaignListAPIView,
@@ -40,229 +53,209 @@ from .views import (
     CampaignSoftDeleteAPIView,
     SocialMediaCampaignCreateAPIView,
 
+    # ==================================================
+    # Sales Pipeline APIs
+    # ==================================================
     PipelineCreateAPIView,
     PipelineListAPIView,
     PipelineDetailAPIView,
-
     PipelineStageCreateAPIView,
     PipelineStageUpdateAPIView,
-
     StageRuleSaveAPIView,
     StageFieldSaveAPIView,
+
+    # ==================================================
+    # Ticket APIs
+    # ==================================================
+    TicketListAPIView,
+    TicketDetailAPIView,
+    TicketCreateAPIView,
+    TicketUpdateAPIView,
+    TicketAssignAPIView,
+    TicketStatusUpdateAPIView,
+    TicketDocumentUploadAPIView,
+    TicketDeleteAPIView,
+    TicketDashboardCountAPIView,
+
     
-    
+    # ==================================================
+    # Lab APIs
+    # ==================================================
+
+    LabListAPIView,
+    LabCreateAPIView,
+    LabUpdateAPIView,
+    LabSoftDeleteAPIView,
 )
 
 urlpatterns = [
 
 # ==================================================
-# Clinic APIs
+# CLINIC APIs
 # ==================================================
 
-    # Create Clinic (POST)
-    path("clinics", ClinicCreateAPIView.as_view(), name="clinic-create"),
+    # Create a new clinic
+    path("clinics/", ClinicCreateAPIView.as_view(), name="clinic-create"),
 
-    # Update Clinic by ID (PUT)
+    # Update existing clinic (full update)
     path("clinics/<int:clinic_id>/", ClinicUpdateAPIView.as_view(), name="clinic-update"),
 
-    # Get Clinic by ID (GET)
-    path("get_clinic/<int:clinic_id>/", GetClinicView.as_view(), name="clinic-get"),
+    # Get clinic details by ID
+    path("clinics/<int:clinic_id>/detail/", GetClinicView.as_view(), name="clinic-get"),
+
 
 # ==================================================
-# Employee / User APIs
+# EMPLOYEE / USER APIs
 # ==================================================
 
-    # Get Employees under a Clinic (GET)
+    # Get all employees under a specific clinic
     path(
         "clinics/<int:clinic_id>/employees/",
         ClinicEmployeesAPIView.as_view(),
-        name="clinic-employees"
+        name="clinic-employees",
     ),
 
-    # Create Employee (POST)
+    # Create employee
     path("employees/", EmployeeCreateAPIView.as_view(), name="employee-create"),
 
-    # Create User (POST)
+    # Create system user
     path("users/", UserCreateAPIView.as_view(), name="user-create"),
 
+
 # ==================================================
-# Lead APIs
+# LEAD APIs
 # ==================================================
 
-    # Create Lead (POST)
-    path(
-        "leads/",
-        LeadCreateAPIView.as_view(),
-        name="lead-create"
-    ),
+    # Create lead
+    path("leads/", LeadCreateAPIView.as_view(), name="lead-create"),
 
-    # Update Lead (PUT)
-    path(
-        "leads/<uuid:lead_id>/update/",
-        LeadUpdateAPIView.as_view(),
-        name="lead-update"
-    ),
+    # Update lead (full update)
+    path("leads/<uuid:lead_id>/update/", LeadUpdateAPIView.as_view(), name="lead-update"),
 
-    # Get All Leads (GET)
-    path(
-        "leads/list/",
-        LeadListAPIView.as_view(),
-        name="lead-list"
-    ),
+    # List all leads
+    path("leads/list/", LeadListAPIView.as_view(), name="lead-list"),
 
-    # Get Lead by ID (GET)
-    path(
-        "leads/<uuid:lead_id>/",
-        LeadGetAPIView.as_view(),
-        name="lead-get"
-    ),
+    # Get single lead details
+    path("leads/<uuid:lead_id>/", LeadGetAPIView.as_view(), name="lead-get"),
 
-    # Activate Lead (POST)
-    path(
-        "leads/<uuid:lead_id>/activate/",
-        LeadActivateAPIView.as_view(),
-        name="lead-activate"
-    ),
+    # Activate lead
+    path("leads/<uuid:lead_id>/activate/", LeadActivateAPIView.as_view(), name="lead-activate"),
 
-    # Inactivate Lead (PATCH)
-    path(
-        "leads/<uuid:lead_id>/inactivate/",
-        LeadInactivateAPIView.as_view(),
-        name="lead-inactivate"
-    ),
+    # Inactivate lead
+    path("leads/<uuid:lead_id>/inactivate/", LeadInactivateAPIView.as_view(), name="lead-inactivate"),
 
-    # Soft Delete Lead (PATCH / DELETE)
-    path(
-        "leads/<uuid:lead_id>/delete/",
-        LeadSoftDeleteAPIView.as_view(),
-        name="lead-soft-delete"
-    ),
+    # Soft delete lead
+    path("leads/<uuid:lead_id>/delete/", LeadSoftDeleteAPIView.as_view(), name="lead-soft-delete"),
 
 
 # ==================================================
-# Campaign APIs
+# CAMPAIGN APIs
 # ==================================================
 
-    # Create Campaign (POST)
-    path(
-        "campaigns/",
-        CampaignCreateAPIView.as_view(),
-        name="campaign-create"
-    ),
+    # Create campaign
+    path("campaigns/", CampaignCreateAPIView.as_view(), name="campaign-create"),
 
-    # ✅ Update Campaign (PUT)
-    path(
-        "campaigns/<uuid:campaign_id>/update/",
-        CampaignUpdateAPIView.as_view(),
-        name="campaign-update"
-    ),
+    # Update campaign
+    path("campaigns/<uuid:campaign_id>/update/", CampaignUpdateAPIView.as_view(), name="campaign-update"),
 
+    # List campaigns
+    path("campaigns/list/", CampaignListAPIView.as_view(), name="campaign-list"),
 
-    # Get All Campaigns (GET)
-    path(
-        "campaigns/list/",
-        CampaignListAPIView.as_view(),
-        name="campaign-list"
-    ),
+    # Get campaign details
+    path("campaigns/<uuid:campaign_id>/", CampaignGetAPIView.as_view(), name="campaign-get"),
 
-    # Get Campaign by ID (GET)
-    path(
-        "campaigns/<uuid:campaign_id>/",
-        CampaignGetAPIView.as_view(),
-        name="campaign-get"
-    ),
+    # Activate campaign
+    path("campaigns/<uuid:campaign_id>/activate/", CampaignActivateAPIView.as_view(), name="campaign-activate"),
 
-    # Activate Campaign (POST)
-    path(
-        "campaigns/<uuid:campaign_id>/activate/",
-        CampaignActivateAPIView.as_view(),
-        name="campaign-activate"
-    ),
+    # Inactivate campaign
+    path("campaigns/<uuid:campaign_id>/inactivate/", CampaignInactivateAPIView.as_view(), name="campaign-inactivate"),
 
-    # Inactivate Campaign (PATCH)
-    path(
-        "campaigns/<uuid:campaign_id>/inactivate/",
-        CampaignInactivateAPIView.as_view(),
-        name="campaign-inactivate"
-    ),
+    # Soft delete campaign
+    path("campaigns/<uuid:campaign_id>/delete/", CampaignSoftDeleteAPIView.as_view(), name="campaign-soft-delete"),
 
-    # Soft Delete Campaign (PATCH / DELETE)
-    path(
-        "campaigns/<uuid:campaign_id>/delete/",
-        CampaignSoftDeleteAPIView.as_view(),
-        name="campaign-soft-delete"
-    ),
-
+    # Create social media campaign
     path(
         "social-media-campaign/create/",
         SocialMediaCampaignCreateAPIView.as_view(),
         name="social-media-campaign-create",
     ),
 
-    
-   # ============================
-    # PIPELINES
-    # ============================
 
-    # Create pipeline (popup save)
-    path(
-        "pipelines/create/",
-        PipelineCreateAPIView.as_view(),
-        name="pipeline-create",
-    ),
+# ==================================================
+# SALES PIPELINE APIs
+# ==================================================
 
-    # List pipelines (left sidebar)
-    path(
-        "pipelines/",
-        PipelineListAPIView.as_view(),
-        name="pipeline-list",
-    ),
+    # Create pipeline
+    path("pipelines/create/", PipelineCreateAPIView.as_view(), name="pipeline-create"),
 
-    # Get single pipeline with stages
-    path(
-        "pipelines/<uuid:pipeline_id>/",
-        PipelineDetailAPIView.as_view(),
-        name="pipeline-detail",
-    ),
+    # List pipelines
+    path("pipelines/", PipelineListAPIView.as_view(), name="pipeline-list"),
 
-    # ============================
-    # PIPELINE STAGES
-    # ============================
+    # Get pipeline with stages
+    path("pipelines/<uuid:pipeline_id>/", PipelineDetailAPIView.as_view(), name="pipeline-detail"),
 
-    # Add stage to pipeline
-    path(
-        "pipelines/stages/create/",
-        PipelineStageCreateAPIView.as_view(),
-        name="pipeline-stage-create",
-    ),
+    # Create pipeline stage
+    path("pipelines/stages/create/", PipelineStageCreateAPIView.as_view(), name="pipeline-stage-create"),
 
-    # Update stage (right panel save)
-    path(
-        "pipelines/stages/<uuid:stage_id>/update/",
-        PipelineStageUpdateAPIView.as_view(),
-        name="pipeline-stage-update",
-    ),
-
-    # ============================
-    # STAGE RULES (ACTIONS)
-    # ============================
+    # Update pipeline stage
+    path("pipelines/stages/<uuid:stage_id>/update/", PipelineStageUpdateAPIView.as_view(), name="pipeline-stage-update"),
 
     # Save stage rules
-    path(
-        "pipelines/stages/<uuid:stage_id>/rules/",
-        StageRuleSaveAPIView.as_view(),
-        name="pipeline-stage-rules-save",
-    ),
+    path("pipelines/stages/<uuid:stage_id>/rules/", StageRuleSaveAPIView.as_view(), name="pipeline-stage-rules-save"),
 
-    # ============================
-    # STAGE DATA CAPTURE
-    # ============================
+    # Save stage fields (data capture)
+    path("pipelines/stages/<uuid:stage_id>/fields/", StageFieldSaveAPIView.as_view(), name="pipeline-stage-fields-save"),
 
-    # Save stage fields
-    path(
-        "pipelines/stages/<uuid:stage_id>/fields/",
-        StageFieldSaveAPIView.as_view(),
-        name="pipeline-stage-fields-save",
-    ),
+
+# ==================================================
+# TICKET APIs
+# ==================================================
+
+    # List tickets (with filters + pagination)
+    path("tickets/", TicketListAPIView.as_view(), name="ticket-list"),
+
+    # Get single ticket details
+    path("tickets/<uuid:ticket_id>/", TicketDetailAPIView.as_view(), name="ticket-detail"),
+
+    # Create new ticket
+    path("tickets/create/", TicketCreateAPIView.as_view(), name="ticket-create"),
+
+    # Update ticket (full update)
+    path("tickets/<uuid:ticket_id>/update/", TicketUpdateAPIView.as_view(), name="ticket-update"),
+
+    # Assign ticket to employee
+    path("tickets/<uuid:ticket_id>/assign/", TicketAssignAPIView.as_view(), name="ticket-assign"),
+
+    # Update ticket status
+    path("tickets/<uuid:ticket_id>/status/", TicketStatusUpdateAPIView.as_view(), name="ticket-status-update"),
+
+    # Upload document to ticket
+    path("tickets/<uuid:ticket_id>/documents/", TicketDocumentUploadAPIView.as_view(), name="ticket-document-upload"),
+
+    # Soft delete ticket
+    path("tickets/<uuid:ticket_id>/delete/", TicketDeleteAPIView.as_view(), name="ticket-delete"),
+
+    # Dashboard count for tickets
+    path("tickets/dashboard-count/", TicketDashboardCountAPIView.as_view(), name="ticket-dashboard-count"),
+
+# ==================================================
+# LAB APIs
+# ==================================================
+
+# List all active labs (used for dropdown selection in ticket creation)
+path(
+    "labs/", LabListAPIView.as_view(), name="lab-list"),
+
+# Create a new lab under a clinic
+path(
+    "labs/create/", LabCreateAPIView.as_view(), name="lab-create"),
+
+# Update existing lab details (Full Update using PUT)
+path(
+    "labs/<uuid:lab_id>/update/", LabUpdateAPIView.as_view(), name="lab-update"),
+
+# Soft delete lab (marks lab as inactive and deleted)
+path(
+    "labs/<uuid:lab_id>/delete/", LabSoftDeleteAPIView.as_view(), name="lab-delete" ),
 
 ]
