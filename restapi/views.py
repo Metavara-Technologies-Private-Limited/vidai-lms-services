@@ -15,6 +15,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from drf_yasg.utils import swagger_auto_schema
 
 from restapi.services.zapier_service import send_to_zapier
+from restapi.models import CampaignSocialMediaConfig
 
 from restapi.models import Clinic
 from restapi.serializers.clinic import (
@@ -28,6 +29,7 @@ from restapi.serializers.employee import (
     EmployeeReadSerializer,
     UserCreateSerializer,
 )
+from django.db import transaction
 
 from .models import Lead, Campaign
 
@@ -43,9 +45,11 @@ from restapi.serializers.lead_serializer import (
     LeadReadSerializer,
 )
 
+
 from restapi.serializers.campaign_serializer import (
     CampaignSerializer,
     CampaignReadSerializer,
+    SocialMediaCampaignSerializer,
 )
 
 from restapi.serializers.pipeline_serializer import (
@@ -1272,6 +1276,103 @@ class StageFieldSaveAPIView(APIView):
         except Exception:
             logger.error(
                 "Unhandled Stage Field Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class SocialMediaCampaignCreateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Create Social Media Campaign Only",
+        request_body=SocialMediaCampaignSerializer,
+        responses={
+            201: "Campaign Created Successfully",
+            400: "Validation Error",
+            500: "Internal Server Error",
+        },
+        tags=["Social Media Campaign"],
+    )
+    @transaction.atomic
+    def post(self, request):
+        try:
+            serializer = SocialMediaCampaignSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            data = serializer.validated_data
+
+            mode_mapping = {
+                "organic_posting": Campaign.ORGANIC,
+                "paid_advertising": Campaign.PAID,
+            }
+
+            created_campaigns = []
+
+            for mode in data["campaign_mode"]:
+
+                campaign = Campaign.objects.create(
+                    clinic_id=data["clinic"],
+                    campaign_name=data["campaign_name"],
+                    campaign_description=data["campaign_description"],
+                    campaign_objective=data["campaign_objective"],
+                    target_audience=data["target_audience"],
+                    start_date=data["start_date"],
+                    end_date=data["end_date"],
+                    campaign_mode=mode_mapping.get(mode),
+                    campaign_content=data["campaign_content"],
+                    selected_start=data["start_date"],
+                    selected_end=data["end_date"],
+                    enter_time=data["enter_time"],
+                    is_active=True,
+                )
+
+                channels = []
+
+                for platform in data["select_ad_accounts"]:
+                    CampaignSocialMediaConfig.objects.create(
+                        campaign=campaign,
+                        platform_name=platform,
+                        is_active=True,
+                    )
+                    channels.append(platform)
+
+                # 🔥 UPDATED ZAPIER PAYLOAD (Boolean Flags)
+                send_to_zapier({
+                    "event": "social_media_campaign_created",
+                    "campaign_id": str(campaign.id),
+                    "campaign_name": campaign.campaign_name,
+                    "clinic_id": campaign.clinic.id,
+                    "campaign_mode": campaign.campaign_mode,
+
+                    "is_instagram": "instagram" in channels,
+                    "is_facebook": "facebook" in channels,
+                    "is_linkedin": "linkedin" in channels,
+
+                    "start_date": campaign.start_date.isoformat(),
+                    "end_date": campaign.end_date.isoformat(),
+                    "enter_time": campaign.enter_time.strftime("%H:%M"),
+                    "campaign_content": campaign.campaign_content,
+                })
+
+                created_campaigns.append({
+                    "campaign_id": campaign.id,
+                    "mode": mode,
+                    "platforms": channels,
+                })
+
+            return Response(
+                {
+                    "message": "Social media campaign(s) created successfully",
+                    "campaigns": created_campaigns,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        except Exception:
+            logger.error(
+                "Social Media Campaign Error:\n" + traceback.format_exc()
             )
             return Response(
                 {"error": "Internal Server Error"},

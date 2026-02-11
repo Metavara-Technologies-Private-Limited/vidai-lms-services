@@ -38,6 +38,7 @@ from .views import (
     CampaignActivateAPIView,
     CampaignInactivateAPIView,
     CampaignSoftDeleteAPIView,
+    SocialMediaCampaignCreateAPIView,
 
     PipelineCreateAPIView,
     PipelineListAPIView,
@@ -190,6 +191,12 @@ urlpatterns = [
         "campaigns/<uuid:campaign_id>/delete/",
         CampaignSoftDeleteAPIView.as_view(),
         name="campaign-soft-delete"
+    ),
+
+    path(
+        "social-media-campaign/create/",
+        SocialMediaCampaignCreateAPIView.as_view(),
+        name="social-media-campaign-create",
     ),
 
     

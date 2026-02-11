@@ -15,8 +15,18 @@ from restapi.models import (
 # =====================================================
 @transaction.atomic
 def create_lead(validated_data):
-    clinic = Clinic.objects.get(id=validated_data.pop("clinic_id"))
-    department = Department.objects.get(id=validated_data.pop("department_id"))
+    try:
+        clinic = Clinic.objects.get(id=validated_data.pop("clinic_id"))
+    except Clinic.DoesNotExist:
+        raise ValidationError({"clinic_id": "Invalid clinic_id"})
+
+    try:
+        department = Department.objects.get(
+            id=validated_data.pop("department_id"),
+            clinic=clinic
+        )
+    except Department.DoesNotExist:
+        raise ValidationError({"department_id": "Invalid department_id for this clinic"})
 
     # ------------------------
     # Campaign
