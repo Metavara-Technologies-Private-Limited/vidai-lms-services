@@ -1,10 +1,16 @@
-import traceback
+
+# Python Standard Library
+
 import logging
+import traceback
 
+# Django Imports
 
+from django.utils import timezone
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 
-from drf_yasg import openapi
+# Third-Party Imports (DRF + Swagger)
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -12,39 +18,49 @@ from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
+from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 
-from restapi.services.zapier_service import send_to_zapier
-from restapi.models import CampaignSocialMediaConfig
+# Project Imports – Models
 
-from restapi.models import Clinic
+from restapi.models import (
+    Clinic,
+    Ticket,
+    Document,
+    TicketTimeline,
+    CampaignSocialMediaConfig,
+    Pipeline,
+    PipelineStage,
+)
+
+from .models import Lead, Campaign, Lab
+
+# Project Imports – Serializers
+
+from restapi.serializers.ticket_serializer import (
+    TicketListSerializer,
+    TicketDetailSerializer,
+    TicketWriteSerializer,
+    LabReadSerializer,
+    LabWriteSerializer,
+    
+)
+
 from restapi.serializers.clinic import (
     ClinicSerializer,
     ClinicReadSerializer,
 )
 
-from restapi.models import employee
 from restapi.serializers.employee import (
     EmployeeCreateSerializer,
     EmployeeReadSerializer,
     UserCreateSerializer,
 )
-from django.db import transaction
 
-from .models import Lead, Campaign
-
-from restapi.models import Pipeline, PipelineStage
-from restapi.services.pipeline_service import (
-    add_stage,
-    update_stage,
-    save_stage_rules,
-    save_stage_fields,
-)
 from restapi.serializers.lead_serializer import (
     LeadSerializer,
     LeadReadSerializer,
 )
-
 
 from restapi.serializers.campaign_serializer import (
     CampaignSerializer,
@@ -56,6 +72,17 @@ from restapi.serializers.pipeline_serializer import (
     PipelineSerializer,
     PipelineReadSerializer,
 )
+
+# Project Imports – Services
+
+from restapi.services.zapier_service import send_to_zapier
+from restapi.services.pipeline_service import (
+    add_stage,
+    update_stage,
+    save_stage_rules,
+    save_stage_fields,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -1282,6 +1309,9 @@ class StageFieldSaveAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+# ------------------------------------------------------------------
+# Social Media Campaign Create API View (POST)
+# -------------------------------------------------------------------
 
 class SocialMediaCampaignCreateAPIView(APIView):
 
@@ -1378,3 +1408,625 @@ class SocialMediaCampaignCreateAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+# ------------------------------------------------------------------
+# Ticketcreate API View (POST)
+# -------------------------------------------------------------------
+
+
+class TicketCreateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Create a new support ticket",
+        request_body=TicketWriteSerializer,
+        responses={
+            201: TicketDetailSerializer,
+            400: "Validation Error",
+            500: "Internal Server Error",
+        },
+        tags=["Tickets"],
+    )
+    def post(self, request):
+        try:
+            serializer = TicketWriteSerializer(
+                data=request.data,
+                context={"request": request},
+            )
+
+            serializer.is_valid(raise_exception=True)
+
+            ticket = serializer.save()
+
+            return Response(
+                TicketDetailSerializer(ticket).data,
+                status=status.HTTP_201_CREATED,
+            )
+
+        except ValidationError as validation_error:
+            logger.warning(f"Ticket creation validation failed: {validation_error.detail}")
+            return Response(
+                {"error": validation_error.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error("Ticket Create API Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# ------------------------------------------------------------------
+# Ticket Update API View (PUT)
+# -------------------------------------------------------------------
+
+class TicketUpdateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Update an existing ticket (Full Update)",
+        request_body=TicketWriteSerializer,
+        responses={
+            200: TicketDetailSerializer,
+            400: "Validation Error",
+            404: "Ticket Not Found",
+            500: "Internal Server Error",
+        },
+        tags=["Tickets"],
+    )
+    def put(self, request, ticket_id):
+        try:
+            ticket = Ticket.objects.filter(
+                id=ticket_id,
+                is_deleted=False
+            ).first()
+
+            if not ticket:
+                return Response(
+                    {"error": "Ticket not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            serializer = TicketWriteSerializer(
+                ticket,
+                data=request.data,
+                context={"request": request},
+            )
+
+            serializer.is_valid(raise_exception=True)
+
+            updated_ticket = serializer.save()
+
+            return Response(
+                TicketDetailSerializer(updated_ticket).data,
+                status=status.HTTP_200_OK,
+            )
+
+        except ValidationError as validation_error:
+            logger.warning(f"Ticket update validation failed: {validation_error.detail}")
+            return Response(
+                {"error": validation_error.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error("Ticket Update API Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# ------------------------------------------------------------------
+# Ticket List API View (GET)
+# -------------------------------------------------------------------
+
+class TicketListAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Retrieve paginated list of tickets with optional filters",
+        manual_parameters=[
+            openapi.Parameter("status", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("priority", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("lab_id", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("department_id", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("from_date", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("to_date", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("page", openapi.IN_QUERY, type=openapi.TYPE_INTEGER),
+            openapi.Parameter("page_size", openapi.IN_QUERY, type=openapi.TYPE_INTEGER),
+        ],
+        responses={
+            200: TicketListSerializer(many=True),
+            400: "Validation Error",
+            500: "Internal Server Error",
+        },
+        tags=["Tickets"],
+    )
+    def get(self, request):
+        try:
+            queryset = Ticket.objects.filter(is_deleted=False)
+
+            # Filtering
+            if request.query_params.get("status"):
+                queryset = queryset.filter(status=request.query_params.get("status"))
+
+            if request.query_params.get("priority"):
+                queryset = queryset.filter(priority=request.query_params.get("priority"))
+
+            if request.query_params.get("lab_id"):
+                queryset = queryset.filter(lab_id=request.query_params.get("lab_id"))
+
+            if request.query_params.get("department_id"):
+                queryset = queryset.filter(department_id=request.query_params.get("department_id"))
+
+            # Pagination
+            page = int(request.query_params.get("page", 1))
+            page_size = int(request.query_params.get("page_size", 10))
+            start = (page - 1) * page_size
+            end = start + page_size
+
+            total_count = queryset.count()
+            paginated_queryset = queryset[start:end]
+
+            serializer = TicketListSerializer(paginated_queryset, many=True)
+
+            return Response(
+                {
+                    "count": total_count,
+                    "current_page": page,
+                    "results": serializer.data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception:
+            logger.error("Ticket List API Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# ------------------------------------------------------------------
+# Ticket Detail API View (GET)
+# -------------------------------------------------------------------
+
+class TicketDetailAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Retrieve detailed information of a specific ticket",
+        responses={
+            200: TicketDetailSerializer,
+            404: "Ticket Not Found",
+            500: "Internal Server Error",
+        },
+        tags=["Tickets"],
+    )
+    def get(self, request, ticket_id):
+        try:
+            ticket = Ticket.objects.filter(
+                id=ticket_id,
+                is_deleted=False
+            ).first()
+
+            if not ticket:
+                return Response(
+                    {"error": "Ticket not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            serializer = TicketDetailSerializer(ticket)
+
+            return Response(
+                serializer.data,
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception:
+            logger.error("Ticket Detail API Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# ------------------------------------------------------------------
+# Ticket Assign for Employee API View (POST)
+# -------------------------------------------------------------------
+
+class TicketAssignAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Assign a ticket to an employee",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["assigned_to_id"],
+            properties={
+                "assigned_to_id": openapi.Schema(type=openapi.TYPE_STRING)
+            },
+        ),
+        responses={
+            200: TicketDetailSerializer,
+            400: "Validation Error",
+            404: "Ticket Not Found",
+            500: "Internal Server Error",
+        },
+        tags=["Tickets"],
+    )
+    def post(self, request, ticket_id):
+        try:
+            ticket = Ticket.objects.filter(
+                id=ticket_id,
+                is_deleted=False
+            ).first()
+
+            if not ticket:
+                return Response(
+                    {"error": "Ticket not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            assigned_to_id = request.data.get("assigned_to_id")
+
+            if not assigned_to_id:
+                raise ValidationError("assigned_to_id is required")
+
+            ticket.assigned_to_id = assigned_to_id
+            ticket.save()
+
+            TicketTimeline.objects.create(
+                ticket=ticket,
+                action="Ticket Assigned",
+                done_by_id=assigned_to_id
+            )
+
+            return Response(
+                TicketDetailSerializer(ticket).data,
+                status=status.HTTP_200_OK,
+            )
+
+        except ValidationError as validation_error:
+            logger.warning(f"Ticket Assign validation failed: {validation_error}")
+            return Response(
+                {"error": str(validation_error)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error("Ticket Assign API Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# ------------------------------------------------------------------
+# Ticket Status Update API View (POST)
+# -------------------------------------------------------------------
+
+class TicketStatusUpdateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Update the status of a ticket",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["status"],
+            properties={
+                "status": openapi.Schema(type=openapi.TYPE_STRING)
+            },
+        ),
+        responses={
+            200: TicketDetailSerializer,
+            400: "Validation Error",
+            404: "Ticket Not Found",
+            500: "Internal Server Error",
+        },
+        tags=["Tickets"],
+    )
+    def post(self, request, ticket_id):
+        try:
+            ticket = Ticket.objects.filter(
+                id=ticket_id,
+                is_deleted=False
+            ).first()
+
+            if not ticket:
+                return Response(
+                    {"error": "Ticket not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            new_status = request.data.get("status")
+
+            if not new_status:
+                raise ValidationError("status field is required")
+
+            ticket.status = new_status
+
+            if new_status == "resolved":
+                ticket.resolved_at = timezone.now()
+
+            if new_status == "closed":
+                ticket.closed_at = timezone.now()
+
+            ticket.save()
+
+            TicketTimeline.objects.create(
+                ticket=ticket,
+                action=f"Status changed to {new_status}",
+                done_by=ticket.assigned_to
+            )
+
+            return Response(
+                TicketDetailSerializer(ticket).data,
+                status=status.HTTP_200_OK,
+            )
+
+        except ValidationError as validation_error:
+            logger.warning(f"Ticket Status validation failed: {validation_error}")
+            return Response(
+                {"error": str(validation_error)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error("Ticket Status API Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# ------------------------------------------------------------------
+# Ticket Document Upload API View (POST)
+# -------------------------------------------------------------------
+
+class TicketDocumentUploadAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Upload a document to a ticket",
+        manual_parameters=[
+            openapi.Parameter(
+                "file",
+                openapi.IN_FORM,
+                type=openapi.TYPE_FILE,
+                required=True
+            )
+        ],
+        responses={
+            201: TicketDetailSerializer,
+            400: "Validation Error",
+            404: "Ticket Not Found",
+            500: "Internal Server Error",
+        },
+        tags=["Tickets"],
+    )
+    def post(self, request, ticket_id):
+        try:
+            ticket = Ticket.objects.filter(
+                id=ticket_id,
+                is_deleted=False
+            ).first()
+
+            if not ticket:
+                return Response(
+                    {"error": "Ticket not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            uploaded_file = request.FILES.get("file")
+
+            if not uploaded_file:
+                raise ValidationError("File is required")
+
+            Document.objects.create(
+                ticket=ticket,
+                file=uploaded_file
+            )
+
+            return Response(
+                TicketDetailSerializer(ticket).data,
+                status=status.HTTP_201_CREATED,
+            )
+
+        except ValidationError as validation_error:
+            logger.warning(f"Document Upload validation failed: {validation_error}")
+            return Response(
+                {"error": str(validation_error)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error("Document Upload API Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# ------------------------------------------------------------------
+# Ticket Delete API View (DELETE)
+# -------------------------------------------------------------------
+
+class TicketDeleteAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Soft delete a ticket",
+        responses={
+            200: "Ticket deleted successfully",
+            404: "Ticket Not Found",
+            500: "Internal Server Error",
+        },
+        tags=["Tickets"],
+    )
+    def delete(self, request, ticket_id):
+        try:
+            ticket = Ticket.objects.filter(
+                id=ticket_id,
+                is_deleted=False
+            ).first()
+
+            if not ticket:
+                return Response(
+                    {"error": "Ticket not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            ticket.is_deleted = True
+            ticket.deleted_at = timezone.now()
+            ticket.save()
+
+            return Response(
+                {"message": "Ticket deleted successfully"},
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception:
+            logger.error("Ticket Delete API Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# ------------------------------------------------------------------
+# Ticket Dashboard Count API View (GET)
+# -------------------------------------------------------------------
+
+class TicketDashboardCountAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Get ticket count grouped by status",
+        responses={
+            200: "Ticket count response",
+            500: "Internal Server Error",
+        },
+        tags=["Tickets"],
+    )
+    def get(self, request):
+        try:
+            queryset = Ticket.objects.filter(is_deleted=False)
+
+            response_data = {
+                "new": queryset.filter(status="new").count(),
+                "pending": queryset.filter(status="pending").count(),
+                "resolved": queryset.filter(status="resolved").count(),
+                "closed": queryset.filter(status="closed").count(),
+                "total": queryset.count(),
+            }
+
+            return Response(
+                response_data,
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception:
+            logger.error("Dashboard Count API Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+# -------------------------------------------------------------------
+# LAB CREATE API
+# -------------------------------------------------------------------
+class LabCreateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Create a new lab",
+        request_body=LabWriteSerializer,
+        responses={
+            201: LabReadSerializer,
+            400: "Validation Error",
+            500: "Internal Server Error",
+        },
+        tags=["Labs"],
+    )
+    def post(self, request):
+        try:
+            serializer = LabWriteSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            lab = serializer.save()
+
+            return Response(
+                LabReadSerializer(lab).data,
+                status=status.HTTP_201_CREATED,
+            )
+
+        except ValidationError as ve:
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+# -------------------------------------------------------------------
+# LAB LIST API
+# -------------------------------------------------------------------
+class LabListAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="List all active labs",
+        responses={200: LabReadSerializer(many=True)},
+        tags=["Labs"],
+    )
+    def get(self, request):
+
+        labs = Lab.objects.filter(
+            is_deleted=False,
+            is_active=True
+        )
+
+        return Response(
+            LabReadSerializer(labs, many=True).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+# -------------------------------------------------------------------
+# LAB UPDATE API
+# -------------------------------------------------------------------
+class LabUpdateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Update lab",
+        request_body=LabWriteSerializer,
+        responses={
+            200: LabReadSerializer,
+            404: "Lab not found",
+        },
+        tags=["Labs"],
+    )
+    def put(self, request, lab_id):
+
+        lab = get_object_or_404(Lab, id=lab_id)
+
+        serializer = LabWriteSerializer(
+            lab,
+            data=request.data
+        )
+        serializer.is_valid(raise_exception=True)
+
+        updated_lab = serializer.save()
+
+        return Response(
+            LabReadSerializer(updated_lab).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+# -------------------------------------------------------------------
+# LAB SOFT DELETE API
+# -------------------------------------------------------------------
+class LabSoftDeleteAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Soft delete lab",
+        tags=["Labs"],
+    )
+    def delete(self, request, lab_id):
+
+        lab = get_object_or_404(Lab, id=lab_id)
+
+        lab.is_deleted = True
+        lab.is_active = False
+        lab.save()
+
+        return Response(
+            {"message": "Lab deleted successfully"},
+            status=status.HTTP_200_OK,
+        )
