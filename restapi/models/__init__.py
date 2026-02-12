@@ -22,3 +22,12 @@ from .lab import Lab
 from .ticket import Ticket
 from .document import Document
 from .ticket_timeline import TicketTimeline
+
+# Templates Module
+from .template_mail import TemplateMail
+from .template_sms import TemplateSMS
+from .template_whatsapp import TemplateWhatsApp
+
+from .template_mail_document import TemplateMailDocument
+from .template_sms_document import TemplateSMSDocument
+from .template_whatsapp_document import TemplateWhatsAppDocument
