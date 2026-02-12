@@ -1198,46 +1198,7 @@ class StageFieldSaveAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         
-# ------------------------------------------------------------------
-# UPDATE STAGE (Right Panel Save) (PUT)
-# -------------------------------------------------------------------
 
-class PipelineStageUpdateAPIView(APIView):
-
-    @swagger_auto_schema(
-        operation_description="Update pipeline stage",
-        tags=["Pipeline Stages"],
-    )
-    def put(self, request, stage_id):
-        try:
-            stage = PipelineStage.objects.get(id=stage_id)
-            updated = update_stage(stage, request.data)
-
-            return Response(
-                {"message": "Stage updated successfully"},
-                status=status.HTTP_200_OK,
-            )
-
-        except PipelineStage.DoesNotExist:
-            return Response(
-                {"error": "Stage not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        except ValidationError as ve:
-            return Response(
-                {"error": ve.detail},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        except Exception:
-            logger.error(
-                "Unhandled Stage Update Error:\n" + traceback.format_exc()
-            )
-            return Response(
-                {"error": "Internal Server Error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
 # ------------------------------------------------------------------
 # SAVE STAGE RULES (POST)
@@ -1612,6 +1573,11 @@ class TicketDetailAPIView(APIView):
         tags=["Tickets"],
     )
     def get(self, request, ticket_id):
+
+        # Prevent Swagger schema crash
+        if getattr(self, "swagger_fake_view", False):
+            return Response(status=200)
+
         try:
             ticket = Ticket.objects.filter(
                 id=ticket_id,
@@ -1783,6 +1749,7 @@ class TicketStatusUpdateAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+
 # ------------------------------------------------------------------
 # Ticket Document Upload API View (POST)
 # -------------------------------------------------------------------
@@ -1791,16 +1758,18 @@ class TicketDocumentUploadAPIView(APIView):
 
     @swagger_auto_schema(
         operation_description="Upload a document to a ticket",
-        manual_parameters=[
-            openapi.Parameter(
-                "file",
-                openapi.IN_FORM,
-                type=openapi.TYPE_FILE,
-                required=True
-            )
-        ],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["file"],
+            properties={
+                "file": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    format=openapi.FORMAT_BINARY
+                )
+            },
+        ),
         responses={
-            201: TicketDetailSerializer,
+            201: openapi.Schema(type=openapi.TYPE_OBJECT),
             400: "Validation Error",
             404: "Ticket Not Found",
             500: "Internal Server Error",
@@ -1808,6 +1777,11 @@ class TicketDocumentUploadAPIView(APIView):
         tags=["Tickets"],
     )
     def post(self, request, ticket_id):
+
+        # Prevent Swagger schema crash
+        if getattr(self, "swagger_fake_view", False):
+            return Response(status=200)
+
         try:
             ticket = Ticket.objects.filter(
                 id=ticket_id,
@@ -1836,14 +1810,19 @@ class TicketDocumentUploadAPIView(APIView):
             )
 
         except ValidationError as validation_error:
-            logger.warning(f"Document Upload validation failed: {validation_error}")
+            logger.warning(
+                f"Document Upload validation failed: {validation_error}"
+            )
             return Response(
                 {"error": str(validation_error)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         except Exception:
-            logger.error("Document Upload API Error:\n" + traceback.format_exc())
+            logger.error(
+                "Document Upload API Error:\n" +
+                traceback.format_exc()
+            )
             return Response(
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1973,7 +1952,7 @@ class LabListAPIView(APIView):
 
     @swagger_auto_schema(
         operation_description="List all active labs",
-        responses={200: LabReadSerializer(many=True)},
+        responses={200: LabReadSerializer},
         tags=["Labs"],
     )
     def get(self, request):

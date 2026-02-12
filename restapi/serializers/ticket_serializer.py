@@ -124,7 +124,31 @@ class TicketDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Ticket
-        fields = "__all__"
+        fields = [
+            "id",
+            "ticket_no",
+            "subject",
+            "description",
+            "lab",
+            "lab_name",
+            "department",
+            "department_name",
+            "requested_by",
+            "assigned_to",
+            "assigned_to_name",
+            "priority",
+            "status",
+            "due_date",
+            "created_at",
+            "updated_at",
+            "resolved_at",
+            "closed_at",
+            "is_deleted",
+            "deleted_at",
+            "documents",
+            "timeline",
+        ]
+
 
 
 # ============================================================
