@@ -86,6 +86,15 @@ from .views import (
     LabCreateAPIView,
     LabUpdateAPIView,
     LabSoftDeleteAPIView,
+
+    # ==================================================
+    # Template APIs
+    # ==================================================
+    TemplateListAPIView,
+    TemplateCreateAPIView,
+    TemplateUpdateAPIView,
+    TemplateDeleteAPIView,
+    TemplateDetailAPIView,
 )
 
 urlpatterns = [
@@ -258,4 +267,31 @@ path(
 path(
     "labs/<uuid:lab_id>/delete/", LabSoftDeleteAPIView.as_view(), name="lab-delete" ),
 
+
+# ==================================================
+# TEMPLATE APIs
+# ==================================================
+
+    # List templates by type (mail / sms / whatsapp)
+    path(
+        "templates/<str:template_type>/", TemplateListAPIView.as_view(), name="template-list" ),
+
+    # Get single template by ID
+    path( "templates/<str:template_type>/<uuid:template_id>/", TemplateDetailAPIView.as_view(),
+    name="template-detail"),
+
+    # Create template by type
+    path("templates/<str:template_type>/create/", TemplateCreateAPIView.as_view(), name="template-create"),
+
+    # Update template by type
+    path(
+        "templates/<str:template_type>/<uuid:template_id>/update/", TemplateUpdateAPIView.as_view(), 
+        name="template-update",
+    ),
+
+    # Soft delete template by type
+    path(
+        "templates/<str:template_type>/<uuid:template_id>/delete/", TemplateDeleteAPIView.as_view(),
+        name="template-delete",
+    ),
 ]
