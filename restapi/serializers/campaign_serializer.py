@@ -83,6 +83,23 @@ class SocialMediaCampaignSerializer(serializers.Serializer):
     enter_time = serializers.TimeField()
 
 # =====================================================
+# Email Campaign CREATE Serializer (Only for Email API)
+# =====================================================
+class EmailCampaignCreateSerializer(serializers.Serializer):
+    clinic = serializers.IntegerField()
+    campaign_name = serializers.CharField()
+    campaign_description = serializers.CharField()
+    campaign_objective = serializers.CharField()
+    target_audience = serializers.CharField()
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    selected_start = serializers.DateField()
+    selected_end = serializers.DateField()
+    enter_time = serializers.TimeField()
+
+    email = CampaignEmailSerializer(many=True)
+
+# =====================================================
 # Campaign WRITE Serializer
 # =====================================================
 class CampaignSerializer(serializers.ModelSerializer):
@@ -115,8 +132,7 @@ class CampaignSerializer(serializers.ModelSerializer):
             "is_active",
             "social_media",
             "email",
-            "social_media",
-            "email",
+
         ]
 
     # =========================

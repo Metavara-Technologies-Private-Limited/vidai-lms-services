@@ -42,6 +42,15 @@ from .views import (
     LeadSoftDeleteAPIView,
 
     # ==================================================
+    # Lead Notes APIs
+    # ==================================================
+    LeadNoteCreateAPIView,
+    LeadNoteUpdateAPIView,
+    LeadNoteDeleteAPIView,
+    LeadNoteListAPIView,
+
+
+    # ==================================================
     # Campaign APIs
     # ==================================================
     CampaignCreateAPIView,
@@ -52,6 +61,7 @@ from .views import (
     CampaignInactivateAPIView,
     CampaignSoftDeleteAPIView,
     SocialMediaCampaignCreateAPIView,
+    EmailCampaignCreateAPIView,
 
     # ==================================================
     # Sales Pipeline APIs
@@ -156,6 +166,21 @@ urlpatterns = [
     # Soft delete lead
     path("leads/<uuid:lead_id>/delete/", LeadSoftDeleteAPIView.as_view(), name="lead-soft-delete"),
 
+# ==================================================
+# LEAD NOTES APIs
+# ==================================================
+
+# Create a new note for a lead
+path("leads/notes/", LeadNoteCreateAPIView.as_view(), name="lead-note-create"),
+
+# Update existing note (partial update supported)
+path("leads/notes/<uuid:note_id>/update/", LeadNoteUpdateAPIView.as_view(), name="lead-note-update"),
+
+# Soft delete a note
+path("leads/notes/<uuid:note_id>/delete/", LeadNoteDeleteAPIView.as_view(), name="lead-note-delete"),
+
+# List all notes for a specific lead
+path("leads/<uuid:lead_id>/notes/", LeadNoteListAPIView.as_view(), name="lead-note-list"),
 
 # ==================================================
 # CAMPAIGN APIs
@@ -187,6 +212,12 @@ urlpatterns = [
         "social-media-campaign/create/",
         SocialMediaCampaignCreateAPIView.as_view(),
         name="social-media-campaign-create",
+    ),
+    # Create email campaign
+    path(
+        "campaigns/email/create/",
+        EmailCampaignCreateAPIView.as_view(),
+        name="email-campaign-create",
     ),
 
 
