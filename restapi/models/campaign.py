@@ -23,9 +23,11 @@ class Campaign(models.Model):
 
     ORGANIC = 1
     PAID = 2
+    EMAIL = 3
     CAMPAIGN_MODE_CHOICES = (
         (ORGANIC, "Organic Posting"),
         (PAID, "Paid Advertising"),
+        (EMAIL, "Email Campaign"),
     )
     campaign_mode = models.IntegerField(choices=CAMPAIGN_MODE_CHOICES)
 

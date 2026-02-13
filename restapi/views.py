@@ -26,7 +26,9 @@ from drf_yasg.utils import swagger_auto_schema
 from restapi.models import (
     Clinic,
     Ticket,
+    Employee,
     Document,
+    LeadNote,
     TicketTimeline,
     CampaignSocialMediaConfig,
     Pipeline,
@@ -34,6 +36,7 @@ from restapi.models import (
     TemplateMail,
     TemplateSMS,
     TemplateWhatsApp,
+    CampaignEmailConfig,
 )
 
 from .models import Lead, Campaign, Lab
@@ -60,6 +63,10 @@ from restapi.serializers.employee import (
     UserCreateSerializer,
 )
 
+from restapi.serializers.lead_note_serializers import (
+    LeadNoteSerializer,
+    LeadNoteReadSerializer,
+)
 from restapi.serializers.lead_serializer import (
     LeadSerializer,
     LeadReadSerializer,
@@ -69,6 +76,7 @@ from restapi.serializers.campaign_serializer import (
     CampaignSerializer,
     CampaignReadSerializer,
     SocialMediaCampaignSerializer,
+    EmailCampaignCreateSerializer
 )
 
 from restapi.serializers.pipeline_serializer import (
@@ -93,6 +101,13 @@ from restapi.services.pipeline_service import (
     update_stage,
     save_stage_rules,
     save_stage_fields,
+    
+)
+
+from restapi.services.lead_note_service import (
+    create_lead_note,
+    update_lead_note,
+    delete_lead_note,
 )
 
 
@@ -307,6 +322,186 @@ class EmployeeCreateAPIView(APIView):
             status=status.HTTP_201_CREATED
         )
 
+# =====================================================
+# CREATE LEAD NOTE API
+# =====================================================
+
+class LeadNoteCreateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Create a new note for a Lead",
+        request_body=LeadNoteSerializer,
+        responses={
+            201: LeadNoteReadSerializer,
+            400: "Validation Error",
+            500: "Internal Server Error",
+        },
+    )
+    def post(self, request):
+        try:
+            serializer = LeadNoteSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            note = serializer.save()
+
+            return Response(
+                LeadNoteReadSerializer(note).data,
+                status=status.HTTP_201_CREATED,
+            )
+
+        except ValidationError as validation_error:
+            logger.warning(f"Lead Note Create validation failed: {validation_error.detail}")
+            return Response(
+                {"error": validation_error.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error("Lead Note Create Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+# =====================================================
+# UPDATE LEAD NOTE API
+# =====================================================
+
+class LeadNoteUpdateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Update an existing Lead note",
+        request_body=LeadNoteSerializer,
+        responses={
+            200: LeadNoteReadSerializer,
+            400: "Validation Error",
+            404: "Not Found",
+            500: "Internal Server Error",
+        },
+    )
+    def put(self, request, note_id):
+        try:
+            note_instance = LeadNote.objects.filter(
+                id=note_id,
+                is_deleted=False
+            ).first()
+
+            if not note_instance:
+                return Response(
+                    {"error": "Lead note not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            serializer = LeadNoteSerializer(
+                note_instance,
+                data=request.data,
+                partial=True
+            )
+
+            serializer.is_valid(raise_exception=True)
+            updated_note = serializer.save()
+
+            return Response(
+                LeadNoteReadSerializer(updated_note).data,
+                status=status.HTTP_200_OK,
+            )
+
+        except ValidationError as validation_error:
+            logger.warning(f"Lead Note Update validation failed: {validation_error.detail}")
+            return Response(
+                {"error": validation_error.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error("Lead Note Update Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+# =====================================================
+# DELETE LEAD NOTE API (SOFT DELETE)
+# =====================================================
+
+class LeadNoteDeleteAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Soft delete a Lead note",
+        responses={
+            200: "Deleted Successfully",
+            404: "Not Found",
+            500: "Internal Server Error",
+        },
+    )
+    def delete(self, request, note_id):
+        try:
+            note_instance = LeadNote.objects.filter(
+                id=note_id,
+                is_deleted=False
+            ).first()
+
+            if not note_instance:
+                return Response(
+                    {"error": "Lead note not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            delete_lead_note(note_instance)
+
+            return Response(
+                {"message": "Lead note deleted successfully."},
+                status=status.HTTP_200_OK,
+            )
+
+        except ValidationError as validation_error:
+            logger.warning(f"Lead Note Delete validation failed: {validation_error.detail}")
+            return Response(
+                {"error": validation_error.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error("Lead Note Delete Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+# =====================================================
+# LIST NOTES BY LEAD API
+# =====================================================
+
+class LeadNoteListAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="List all notes for a specific Lead",
+        responses={
+            200: LeadNoteReadSerializer(many=True),
+            500: "Internal Server Error",
+        },
+    )
+    def get(self, request, lead_id):
+        try:
+            notes = LeadNote.objects.filter(
+                lead_id=lead_id,
+                is_deleted=False
+            ).order_by("-created_at")
+
+            serializer = LeadNoteReadSerializer(notes, many=True)
+
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        except Exception:
+            logger.error("Lead Note List Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
 # -------------------------------------------------------------------
 # Lead Create API View (POST)
 # -------------------------------------------------------------------
@@ -329,10 +524,10 @@ class LeadCreateAPIView(APIView):
         tags=["Leads"],
     )
     def post(self, request):
-        print("🚀 STEP 1: LeadCreateAPIView HIT")
+        print(" STEP 1: LeadCreateAPIView HIT")
 
         try:
-            print("📦 STEP 2: Incoming request data:")
+            print(" STEP 2: Incoming request data:")
             print(request.data)
 
             serializer = LeadSerializer(
@@ -340,10 +535,10 @@ class LeadCreateAPIView(APIView):
                 context={"request": request},
             )
 
-            print("🧪 STEP 3: Serializer initialized")
+            print("STEP 3: Serializer initialized")
 
             serializer.is_valid(raise_exception=True)
-            print("✅ STEP 4: Serializer validated successfully")
+            print("STEP 4: Serializer validated successfully")
 
             lead = serializer.save()
             print(f"💾 STEP 5: Lead saved successfully | ID = {lead.id}")
@@ -378,7 +573,7 @@ class LeadCreateAPIView(APIView):
             )
 
         except ValidationError as ve:
-            print("❌ VALIDATION ERROR OCCURRED")
+            print("VALIDATION ERROR OCCURRED")
             print(ve.detail)
 
             logger.warning(f"Lead validation failed: {ve.detail}")
@@ -389,7 +584,7 @@ class LeadCreateAPIView(APIView):
             )
 
         except Exception:
-            print("🔥 UNHANDLED EXCEPTION OCCURRED 🔥")
+            print("UNHANDLED EXCEPTION OCCURRED")
             print(traceback.format_exc())
 
             logger.error(
@@ -424,10 +619,10 @@ class LeadUpdateAPIView(APIView):
     )
     def put(self, request, lead_id):
         try:
-            # ✅ fetch existing lead
+            #  fetch existing lead
             lead = Lead.objects.get(id=lead_id)
 
-            # ✅ PUT = full update (instance + data)
+            #  PUT = full update (instance + data)
             serializer = LeadSerializer(
                 lead,
                 data=request.data,
@@ -436,10 +631,10 @@ class LeadUpdateAPIView(APIView):
 
             serializer.is_valid(raise_exception=True)
 
-            # ✅ calls update_lead()
+            #  calls update_lead()
             updated_lead = serializer.save()
 
-            # 🔔 ZAPIER
+            #  ZAPIER
             send_to_zapier({
                 "event": "lead_updated",
                 "lead_id": str(updated_lead.id),
@@ -484,17 +679,56 @@ class LeadUpdateAPIView(APIView):
 class LeadListAPIView(APIView):
 
     @swagger_auto_schema(
-        operation_description="Get all leads",
+        operation_description="Get all active leads",
         responses={200: LeadReadSerializer(many=True)},
         tags=["Leads"]
     )
     def get(self, request):
-        leads = Lead.objects.filter().order_by("-created_at")
+        try:
+            # -------------------------------------------------
+            # Base Query (Exclude Deleted)
+            # -------------------------------------------------
+            queryset = Lead.objects.filter(
+                is_deleted=False
+            ).order_by("-created_at")
 
-        return Response(
-            LeadReadSerializer(leads, many=True).data,
-            status=status.HTTP_200_OK
-        )
+            # -------------------------------------------------
+            # Optional Filters
+            # -------------------------------------------------
+
+            clinic_id = request.query_params.get("clinic")
+            lead_status = request.query_params.get("lead_status")
+            assigned_to = request.query_params.get("assigned_to")
+
+            if clinic_id:
+                queryset = queryset.filter(clinic_id=clinic_id)
+
+            if lead_status:
+                queryset = queryset.filter(lead_status=lead_status)
+
+            if assigned_to:
+                queryset = queryset.filter(assigned_to_id=assigned_to)
+
+            serializer = LeadReadSerializer(queryset, many=True)
+
+            return Response(
+                serializer.data,
+                status=status.HTTP_200_OK
+            )
+
+        except ValidationError as validation_error:
+            logger.warning(f"Lead list validation failed: {validation_error.detail}")
+            return Response(
+                {"error": validation_error.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error("Lead List Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 # -------------------------------------------------------------------
 # Lead List API using ID (GET)
@@ -1281,6 +1515,98 @@ class StageFieldSaveAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+class EmailCampaignCreateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Create Email Campaign Only",
+        request_body=EmailCampaignCreateSerializer,  # ✅ FIXED
+        responses={
+            201: "Email Campaign Created Successfully",
+            400: "Validation Error",
+            500: "Internal Server Error",
+        },
+        tags=["Email Campaign"],
+    )
+    @transaction.atomic
+    def post(self, request):
+        try:
+            serializer = EmailCampaignCreateSerializer(data=request.data)  # ✅ FIXED
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
+
+            # 1️⃣ Create Campaign (Email Mode internally set)
+            campaign = Campaign.objects.create(
+                clinic_id=data["clinic"],
+                campaign_name=data["campaign_name"],
+                campaign_description=data["campaign_description"],
+                campaign_objective=data["campaign_objective"],
+                target_audience=data["target_audience"],
+                start_date=data["start_date"],
+                end_date=data["end_date"],
+                campaign_mode=Campaign.EMAIL,  # ✅ internally set
+                selected_start=data["selected_start"],
+                selected_end=data["selected_end"],
+                enter_time=data["enter_time"],
+                is_active=True,
+            )
+
+            created_email_configs = []
+
+            # 2️⃣ Create Email Configs
+            for email_data in data["email"]:
+                email_config = CampaignEmailConfig.objects.create(
+                    campaign=campaign,
+                    audience_name=email_data["audience_name"],
+                    subject=email_data["subject"],
+                    email_body=email_data["email_body"],
+                    template_name=email_data.get("template_name"),
+                    sender_email=email_data["sender_email"],
+                    scheduled_at=email_data.get("scheduled_at"),
+                    is_active=True,
+                )
+
+                send_to_zapier({
+                    "event": "email_campaign_created",
+                    "campaign_id": str(campaign.id),
+                    "campaign_name": campaign.campaign_name,
+                    "clinic_id": campaign.clinic.id,
+                    "audience_name": email_config.audience_name,
+                    "subject": email_config.subject,
+                    "sender_email": email_config.sender_email,
+                    "scheduled_at": (
+                        email_config.scheduled_at.isoformat()
+                        if email_config.scheduled_at
+                        else None
+                    ),
+                })
+
+                created_email_configs.append({
+                    "email_config_id": email_config.id,
+                    "audience_name": email_config.audience_name,
+                })
+
+            return Response(
+                {
+                    "message": "Email campaign created successfully",
+                    "campaign_id": campaign.id,
+                    "emails": created_email_configs,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        except ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception:
+            logger.error(
+                "Email Campaign Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
 
 # ------------------------------------------------------------------
 # Social Media Campaign Create API View (POST)

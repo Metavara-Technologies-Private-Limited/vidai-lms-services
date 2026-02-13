@@ -31,3 +31,6 @@ from .template_whatsapp import TemplateWhatsApp
 from .template_mail_document import TemplateMailDocument
 from .template_sms_document import TemplateSMSDocument
 from .template_whatsapp_document import TemplateWhatsAppDocument
+
+# Lead Notes Module
+from .lead_note import LeadNote
