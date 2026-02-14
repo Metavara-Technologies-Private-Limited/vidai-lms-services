@@ -6,15 +6,6 @@ from .employee import Employee
 
 
 class LeadNote(models.Model):
-    """
-    LeadNote Model
-
-    Purpose:
-    Stores internal notes added to a Lead.
-
-    One Lead can have multiple notes.
-    Each note is created by an employee.
-    """
 
     id = models.UUIDField(
         primary_key=True,
@@ -43,6 +34,13 @@ class LeadNote(models.Model):
     # Core Fields
     # --------------------------------------------------
 
+    title = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Short title for the note."
+    )
+
     note = models.TextField(
         help_text="Note content added for the lead."
     )
@@ -61,13 +59,9 @@ class LeadNote(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
-    # --------------------------------------------------
-    # Meta Configuration
-    # --------------------------------------------------
-
     class Meta:
         db_table = "restapi_lead_note"
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"Note for Lead {self.lead_id}"
+        return f"{self.title} - Lead {self.lead_id}"

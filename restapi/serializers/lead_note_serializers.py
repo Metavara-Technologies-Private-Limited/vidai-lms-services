@@ -15,9 +15,13 @@ from restapi.services.lead_note_service import (
 class LeadNoteReadSerializer(serializers.ModelSerializer):
     """
     Read Serializer for Lead Notes.
-
     Used when returning notes to frontend.
     """
+
+    created_by_name = serializers.CharField(
+        source="created_by.name",
+        read_only=True
+    )
 
     class Meta:
         model = LeadNote
@@ -33,6 +37,7 @@ class LeadNoteSerializer(serializers.ModelSerializer):
     Write Serializer for Lead Notes.
 
     Responsibilities:
+    - Validate title
     - Validate note content
     - Delegate business logic to service layer
     """
@@ -45,13 +50,21 @@ class LeadNoteSerializer(serializers.ModelSerializer):
     # FIELD LEVEL VALIDATION
     # -------------------------------------------------
 
+    def validate_title(self, value):
+        """
+        Title must not be empty.
+        """
+        if not value or not value.strip():
+            raise ValidationError("Title cannot be empty.")
+        return value.strip()
+
     def validate_note(self, value):
         """
         Note content must not be empty.
         """
         if not value or not value.strip():
             raise ValidationError("Note content cannot be empty.")
-        return value
+        return value.strip()
 
     # -------------------------------------------------
     # CREATE
