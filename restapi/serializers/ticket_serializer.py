@@ -20,9 +20,20 @@ class LabReadSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    department_name = serializers.CharField(
+        source="department.name",
+        read_only=True
+    )
+
+    assigned_to_name = serializers.CharField(
+        source="assigned_to.name",
+        read_only=True
+    )
+
     class Meta:
         model = Lab
         fields = "__all__"
+
 
 # ============================================================
 # LAB WRITE SERIALIZER
@@ -33,7 +44,9 @@ class LabWriteSerializer(serializers.ModelSerializer):
         model = Lab
         fields = [
             "name",
-            
+            "clinic",
+            "department",
+            "assigned_to",
             "is_active",
         ]
 

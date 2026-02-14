@@ -408,18 +408,23 @@ class LeadNoteUpdateAPIView(APIView):
             )
 
         except ValidationError as validation_error:
-            logger.warning(f"Lead Note Update validation failed: {validation_error.detail}")
+            logger.warning(
+                f"Lead Note Update validation failed: {validation_error.detail}"
+            )
             return Response(
                 {"error": validation_error.detail},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         except Exception:
-            logger.error("Lead Note Update Error:\n" + traceback.format_exc())
+            logger.error(
+                "Lead Note Update Error:\n" + traceback.format_exc()
+            )
             return Response(
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
 
 
 # =====================================================
@@ -2278,7 +2283,7 @@ class LabListAPIView(APIView):
 
     @swagger_auto_schema(
         operation_description="List all active labs",
-        responses={200: LabReadSerializer},
+        responses={200: LabReadSerializer(many=True)},
         tags=["Labs"],
     )
     def get(self, request):
@@ -2310,12 +2315,18 @@ class LabUpdateAPIView(APIView):
     )
     def put(self, request, lab_id):
 
-        lab = get_object_or_404(Lab, id=lab_id)
+        lab = get_object_or_404(
+            Lab,
+            id=lab_id,
+            is_deleted=False
+        )
 
         serializer = LabWriteSerializer(
             lab,
-            data=request.data
+            data=request.data,
+            partial=True
         )
+
         serializer.is_valid(raise_exception=True)
 
         updated_lab = serializer.save()
@@ -2337,7 +2348,11 @@ class LabSoftDeleteAPIView(APIView):
     )
     def delete(self, request, lab_id):
 
-        lab = get_object_or_404(Lab, id=lab_id)
+        lab = get_object_or_404(
+            Lab,
+            id=lab_id,
+            is_deleted=False
+        )
 
         lab.is_deleted = True
         lab.is_active = False
