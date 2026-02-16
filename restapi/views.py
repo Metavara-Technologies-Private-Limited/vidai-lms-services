@@ -78,6 +78,12 @@ from restapi.serializers.campaign_serializer import (
     SocialMediaCampaignSerializer,
     EmailCampaignCreateSerializer
 )
+from restapi.serializers.campaign_social_post_serializer import (
+    CampaignSocialPostCallbackSerializer
+)
+from restapi.services.campaign_social_post_service import (
+    handle_zapier_callback
+)
 
 from restapi.serializers.pipeline_serializer import (
     PipelineSerializer,
@@ -885,6 +891,7 @@ class CampaignCreateAPIView(APIView):
     "campaign_name": campaign.campaign_name,
     "clinic_id": campaign.clinic.id,
     "campaign_mode": campaign.campaign_mode,
+    "status": campaign.status,
 
     # ✅ NOW DEFINED
     "channels": channels,
@@ -970,6 +977,7 @@ class CampaignUpdateAPIView(APIView):
                 "campaign_name": updated_campaign.campaign_name,
                 "clinic_id": updated_campaign.clinic.id,
                 "campaign_mode": updated_campaign.campaign_mode,
+                "status": updated_campaign.status,
 
                 "start_date": (
                     updated_campaign.start_date.isoformat()
@@ -1142,6 +1150,53 @@ class CampaignSoftDeleteAPIView(APIView):
     def delete(self, request, campaign_id):
         return self.patch(request, campaign_id)
 
+class CampaignZapierCallbackAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Zapier callback to update social post status",
+        request_body=CampaignSocialPostCallbackSerializer,
+        responses={
+            200: "Campaign social post updated successfully",
+            400: "Validation Error",
+            500: "Internal Server Error",
+        },
+        tags=["Campaigns"],
+    )
+    def post(self, request):
+        try:
+            serializer = CampaignSocialPostCallbackSerializer(
+                data=request.data
+            )
+
+            if not serializer.is_valid():
+                return Response(
+                    serializer.errors,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            social_post = handle_zapier_callback(
+                serializer.validated_data
+            )
+
+            return Response(
+                {
+                    "message": "Campaign social post updated successfully",
+                    "social_post_id": str(social_post.id),
+                    "status": social_post.status,
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            # 🔥 RETURN REAL ERROR FOR DEBUGGING
+            return Response(
+                {
+                    "error": str(e),
+                    "exception_type": type(e).__name__,
+                    "trace": traceback.format_exc()
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 # -------------------------------------------------------------------
 # Pipeline Create API View (POST)
