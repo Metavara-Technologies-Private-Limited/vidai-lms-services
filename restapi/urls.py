@@ -62,6 +62,7 @@ from .views import (
     CampaignSoftDeleteAPIView,
     SocialMediaCampaignCreateAPIView,
     EmailCampaignCreateAPIView,
+    CampaignZapierCallbackAPIView,
 
     # ==================================================
     # Sales Pipeline APIs
@@ -219,6 +220,12 @@ path("leads/<uuid:lead_id>/notes/", LeadNoteListAPIView.as_view(), name="lead-no
         EmailCampaignCreateAPIView.as_view(),
         name="email-campaign-create",
     ),
+
+    path(
+    "campaigns/zapier-callback/",
+    CampaignZapierCallbackAPIView.as_view(),
+    name="campaign-zapier-callback",
+),
 
 
 # ==================================================

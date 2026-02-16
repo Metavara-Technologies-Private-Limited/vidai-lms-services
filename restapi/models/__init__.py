@@ -5,6 +5,9 @@ from .campaign import Campaign
 # Campaign configs
 from .campaign_social_media_config import CampaignSocialMediaConfig
 from .campaign_email_config import CampaignEmailConfig
+# Campaign execution tracking
+from .campaign_social_post import CampaignSocialPost
+
 
 # Legacy / shared models
 from .clinic import Clinic
@@ -34,3 +37,4 @@ from .template_whatsapp_document import TemplateWhatsAppDocument
 
 # Lead Notes Module
 from .lead_note import LeadNote
+

@@ -10,6 +10,8 @@ from restapi.models import (
 from restapi.services.campaign_service import (
     create_campaign,
 )
+from restapi.services.campaign_service import update_campaign
+
 
 
 # =====================================================
@@ -103,14 +105,8 @@ class EmailCampaignCreateSerializer(serializers.Serializer):
 # Campaign WRITE Serializer
 # =====================================================
 class CampaignSerializer(serializers.ModelSerializer):
-    social_media = CampaignSocialMediaSerializer(
-        many=True,
-        required=False
-    )
-    email = CampaignEmailSerializer(
-        many=True,
-        required=False
-    )
+    social_media = CampaignSocialMediaSerializer(many=True, required=False)
+    email = CampaignEmailSerializer(many=True, required=False)
 
     class Meta:
         model = Campaign
@@ -129,22 +125,19 @@ class CampaignSerializer(serializers.ModelSerializer):
             "selected_start",
             "selected_end",
             "enter_time",
+            "status",              # ✅ ADDED
             "is_active",
             "social_media",
             "email",
-
         ]
 
-    # =========================
-    # CREATE
-    # =========================
+    def validate(self, data):
+        if data["start_date"] > data["end_date"]:
+            raise ValidationError("Start date cannot be after end date")
+        return data
+
     def create(self, validated_data):
         return create_campaign(validated_data)
-    
-    # =========================
-    # UPDATE
-    # =========================
-    def update(self, instance, validated_data):
-        from restapi.services.campaign_service import update_campaign
-        return update_campaign(instance, validated_data)
 
+    def update(self, instance, validated_data):
+        return update_campaign(instance, validated_data)
