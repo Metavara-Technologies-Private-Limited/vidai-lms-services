@@ -1,4 +1,3 @@
-
 # Python Standard Library
 
 import logging
@@ -20,6 +19,15 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
+
+from django.shortcuts import redirect
+from django.conf import settings
+from rest_framework.views import APIView
+from rest_framework.response import Response
+import requests
+import secrets
+from django.http import HttpResponseRedirect
+from datetime import datetime
 
 # Project Imports – Models
 
@@ -432,7 +440,6 @@ class LeadNoteUpdateAPIView(APIView):
             )
 
 
-
 # =====================================================
 # DELETE LEAD NOTE API (SOFT DELETE)
 # =====================================================
@@ -817,7 +824,7 @@ class LeadInactivateAPIView(APIView):
 
         except Lead.DoesNotExist:
             raise NotFound("Lead not found")
-        
+
 # -------------------------------------------------------------------
 # Lead Soft Delete (Patch)
 # -------------------------------------------------------------------
@@ -892,6 +899,9 @@ class CampaignCreateAPIView(APIView):
     "clinic_id": campaign.clinic.id,
     "campaign_mode": campaign.campaign_mode,
     "status": campaign.status,
+    "email_body": campaign.email_body,
+    "sender_email": campaign.sender_email,
+    "is_active": campaign.is_active,
 
     # ✅ NOW DEFINED
     "channels": channels,
@@ -940,7 +950,7 @@ class CampaignCreateAPIView(APIView):
 # -------------------------------------------------------------------
 # Campaign Update API View (PUT)
 # -------------------------------------------------------------------
-        
+
 class CampaignUpdateAPIView(APIView):
     """
     Update an existing Campaign
@@ -1450,7 +1460,6 @@ class StageRuleSaveAPIView(APIView):
             )
 
 
-
 # ------------------------------------------------------------------
 # ADD STAGE TO PIPELINE (POST)
 # -------------------------------------------------------------------
@@ -1491,7 +1500,6 @@ class StageFieldSaveAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-        
 
 
 # ------------------------------------------------------------------
@@ -1630,15 +1638,15 @@ class EmailCampaignCreateAPIView(APIView):
                     "event": "email_campaign_created",
                     "campaign_id": str(campaign.id),
                     "campaign_name": campaign.campaign_name,
-                    "clinic_id": campaign.clinic.id,
-                    "audience_name": email_config.audience_name,
+                    "campaign_description": campaign.campaign_description,
+                    "campaign_objective": campaign.campaign_objective,
+                    "target_audience": campaign.target_audience,
+                    "start_date": campaign.start_date.isoformat(),
+                    "end_date": campaign.end_date.isoformat(),
                     "subject": email_config.subject,
+                    "email_body": email_config.email_body,
                     "sender_email": email_config.sender_email,
-                    "scheduled_at": (
-                        email_config.scheduled_at.isoformat()
-                        if email_config.scheduled_at
-                        else None
-                    ),
+                    "scheduled_at": email_config.scheduled_at.isoformat() if email_config.scheduled_at else None,
                 })
 
                 created_email_configs.append({
@@ -1687,6 +1695,7 @@ class SocialMediaCampaignCreateAPIView(APIView):
     @transaction.atomic
     def post(self, request):
         try:
+            print("SOCIAL DATA:", request.data)
             serializer = SocialMediaCampaignSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
@@ -1759,14 +1768,14 @@ class SocialMediaCampaignCreateAPIView(APIView):
                 status=status.HTTP_201_CREATED,
             )
 
-        except Exception:
-            logger.error(
-                "Social Media Campaign Error:\n" + traceback.format_exc()
-            )
-            return Response(
-                {"error": "Internal Server Error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        except Exception as e:
+            import traceback
+            return Response({
+                "error": str(e),
+                "type": type(e).__name__,
+                "trace": traceback.format_exc()
+            }, status=400)
+
 
 # ------------------------------------------------------------------
 # Ticketcreate API View (POST)
@@ -2461,7 +2470,7 @@ class TemplateListAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-        
+
 
 # -------------------------------------------------------------------
 # TEMPLATE DETAIL API (GET)
@@ -2679,7 +2688,7 @@ class TemplateUpdateAPIView(APIView):
 
 
 # -------------------------------------------------------------------
-#TEMPLATE SOFT DELETE API (DELETE)
+# TEMPLATE SOFT DELETE API (DELETE)
 # -------------------------------------------------------------------
 
 class TemplateDeleteAPIView(APIView):
@@ -2736,3 +2745,104 @@ class TemplateDeleteAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+class LinkedInLoginAPIView(APIView):
+    def get(self, request):
+        auth_url = (
+            "https://www.linkedin.com/oauth/v2/authorization"
+            "?response_type=code"
+            f"&client_id={settings.LINKEDIN_CLIENT_ID}"
+            f"&redirect_uri={settings.LINKEDIN_REDIRECT_URI}"
+            "&scope=openid%20profile%20email"
+            "&prompt=login"
+        )
+        return redirect(auth_url)    
+
+
+class LinkedInCallbackAPIView(APIView):
+    def get(self, request):
+        code = request.GET.get("code")
+
+        token_url = "https://www.linkedin.com/oauth/v2/accessToken"
+
+        data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": settings.LINKEDIN_REDIRECT_URI,
+            "client_id": settings.LINKEDIN_CLIENT_ID,
+            "client_secret": settings.LINKEDIN_CLIENT_SECRET,
+        }
+
+        response = requests.post(token_url, data=data)
+        token_data = response.json()
+
+        access_token = token_data.get("access_token")
+
+        if access_token:
+            # Demo storage
+            request.session["linkedin_token"] = access_token
+
+        # Redirect back to frontend with success flag
+        return HttpResponseRedirect(
+            f"{settings.FRONTEND_URL}?linkedin=connected"
+        )
+
+class LinkedInStatusAPIView(APIView):
+    def get(self, request):
+        return Response({
+            "connected": bool(request.session.get("linkedin_token"))
+        })
+
+class FacebookLoginAPIView(APIView):
+    def get(self, request):
+        state = secrets.token_urlsafe(16)
+        request.session["facebook_state"] = state
+
+        auth_url = (
+            "https://www.facebook.com/v19.0/dialog/oauth"
+            "?response_type=code"
+            f"&client_id={settings.FACEBOOK_CLIENT_ID}"
+            f"&redirect_uri={settings.FACEBOOK_REDIRECT_URI}"
+            "&scope=email,public_profile"
+            f"&state={state}"
+            "&auth_type=rerequest"
+        )
+
+        return redirect(auth_url)
+
+class FacebookCallbackAPIView(APIView):
+    def get(self, request):
+        code = request.GET.get("code")
+
+        if not code:
+            return Response({"error": "No code received"})
+
+        token_url = "https://graph.facebook.com/v19.0/oauth/access_token"
+
+        params = {
+            "client_id": settings.FACEBOOK_CLIENT_ID,
+            "client_secret": settings.FACEBOOK_CLIENT_SECRET,
+            "redirect_uri": settings.FACEBOOK_REDIRECT_URI,
+            "code": code,
+        }
+
+        response = requests.get(token_url, params=params)
+        data = response.json()
+
+        print("FB TOKEN RESPONSE:", data)
+
+        if "access_token" not in data:
+            return Response(data)  # show real error
+
+        request.session["facebook_token"] = data["access_token"]
+
+        return HttpResponseRedirect(
+            f"{settings.FRONTEND_URL}?facebook=connected"
+        )
+
+
+class FacebookStatusAPIView(APIView):
+    def get(self, request):
+        return Response({
+            "connected": bool(request.session.get("facebook_token"))
+        })
