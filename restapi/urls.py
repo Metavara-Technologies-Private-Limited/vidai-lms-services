@@ -106,6 +106,13 @@ from .views import (
     TemplateUpdateAPIView,
     TemplateDeleteAPIView,
     TemplateDetailAPIView,
+
+    LinkedInLoginAPIView,
+    LinkedInCallbackAPIView,
+    LinkedInStatusAPIView,
+    FacebookLoginAPIView,
+    FacebookCallbackAPIView,
+    FacebookStatusAPIView,
 )
 
 urlpatterns = [
@@ -332,4 +339,14 @@ path(
         "templates/<str:template_type>/<uuid:template_id>/delete/", TemplateDeleteAPIView.as_view(),
         name="template-delete",
     ),
+
+    # LinkedIn Integration
+    path("linkedin/login/", LinkedInLoginAPIView.as_view()),
+    path("linkedin/callback/", LinkedInCallbackAPIView.as_view()),
+    path("linkedin/status/", LinkedInStatusAPIView.as_view()),
+
+    path("facebook/login/", FacebookLoginAPIView.as_view()),
+    path("facebook/callback/", FacebookCallbackAPIView.as_view()),
+    path("facebook/status/", FacebookStatusAPIView.as_view()),
+
 ]
