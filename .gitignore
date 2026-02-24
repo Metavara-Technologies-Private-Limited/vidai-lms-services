@@ -2,10 +2,11 @@
 .venv/
 venv/
 
-# logs
-*.log
-restapi/log/*.log
+
 
 # python cache
 __pycache__/
 *.pyc
+
+LMS-Project
+LMS-Project.pub

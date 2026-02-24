@@ -105,8 +105,14 @@ class EmailCampaignCreateSerializer(serializers.Serializer):
 # Campaign WRITE Serializer
 # =====================================================
 class CampaignSerializer(serializers.ModelSerializer):
+
     social_media = CampaignSocialMediaSerializer(many=True, required=False)
     email = CampaignEmailSerializer(many=True, required=False)
+
+    # =====================================================
+    # ✅ NEW: JSONB Field for content + documents
+    # =====================================================
+    platform_data = serializers.JSONField(required=False)
 
     class Meta:
         model = Campaign
@@ -125,15 +131,34 @@ class CampaignSerializer(serializers.ModelSerializer):
             "selected_start",
             "selected_end",
             "enter_time",
-            "status",              # ✅ ADDED
+            "status",
             "is_active",
+
+            # ✅ NEW JSONB FIELD
+            "platform_data",
+
             "social_media",
             "email",
         ]
 
+    # =====================================================
+    # VALIDATION
+    # =====================================================
     def validate(self, data):
+
         if data["start_date"] > data["end_date"]:
             raise ValidationError("Start date cannot be after end date")
+
+        # =====================================================
+        # ✅ OPTIONAL BASIC JSON STRUCTURE VALIDATION
+        # =====================================================
+        platform_data = data.get("platform_data")
+
+        if platform_data and not isinstance(platform_data, dict):
+            raise ValidationError({
+                "platform_data": "Must be a valid JSON object"
+            })
+
         return data
 
     def create(self, validated_data):

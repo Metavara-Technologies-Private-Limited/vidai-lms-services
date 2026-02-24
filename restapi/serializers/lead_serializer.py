@@ -7,6 +7,7 @@ from restapi.models import (
     Department,
     Employee,
     Campaign,
+    LeadDocument,
 )
 
 from restapi.services.lead_service import (
@@ -20,6 +21,10 @@ from restapi.services.lead_service import (
 # =====================================================
 
 class LeadReadSerializer(serializers.ModelSerializer):
+
+    # -------------------------
+    # Existing Mappings
+    # -------------------------
     clinic_id = serializers.IntegerField(source="clinic.id", read_only=True)
     clinic_name = serializers.CharField(source="clinic.name", read_only=True)
 
@@ -35,30 +40,32 @@ class LeadReadSerializer(serializers.ModelSerializer):
     personal_id = serializers.IntegerField(source="personal.id", read_only=True)
     personal_name = serializers.CharField(source="personal.emp_name", read_only=True)
 
+    # =====================================================
+    # ✅ NEW: created_by exposed in READ ONLY
+    # =====================================================
+    created_by_id = serializers.IntegerField(source="created_by.id", read_only=True)
+    created_by_name = serializers.CharField(source="created_by.emp_name", read_only=True)
+
+    # =====================================================
+    # ✅ NEW: Multiple Documents Support
+    # =====================================================
+    documents = serializers.SerializerMethodField()
+
     class Meta:
         model = Lead
         fields = [
             "id",
 
-            # clinic
-            "clinic_id",
-            "clinic_name",
+            "clinic_id", "clinic_name",
+            "department_id", "department_name",
+            "campaign_id", "campaign_name",
+            "assigned_to_id", "assigned_to_name",
+            "personal_id", "personal_name",
 
-            # department
-            "department_id",
-            "department_name",
+            # ✅ NEW
+            "created_by_id",
+            "created_by_name",
 
-            # campaign
-            "campaign_id",
-            "campaign_name",
-
-            # employee mappings
-            "assigned_to_id",
-            "assigned_to_name",
-            "personal_id",
-            "personal_name",
-
-            # lead data
             "full_name",
             "age",
             "marital_status",
@@ -75,29 +82,55 @@ class LeadReadSerializer(serializers.ModelSerializer):
             "sub_source",
             "lead_status",
             "next_action_status",
+            "next_action_type",
             "next_action_description",
             "treatment_interest",
-            "document",
             "book_appointment",
             "appointment_date",
             "slot",
             "remark",
+
+            # ✅ NEW
+            "documents",
+
             "created_at",
             "modified_at",
-            "is_active"
+            "is_active",
+        ]
+
+    # ✅ NEW: return document list
+    def get_documents(self, obj):
+        return [
+            {
+                "id": doc.id,
+                "file": doc.file.url if doc.file else None,
+                "uploaded_at": doc.uploaded_at,
+            }
+            for doc in obj.documents.all()
         ]
 
 
 # =====================================================
-# Lead WRITE Serializer (POST + PUT)
+# Lead WRITE Serializer
 # =====================================================
+
 class LeadSerializer(serializers.ModelSerializer):
+
     clinic_id = serializers.IntegerField(write_only=True, required=False)
     department_id = serializers.IntegerField(write_only=True, required=False)
     assigned_to_id = serializers.IntegerField(required=False, allow_null=True)
     personal_id = serializers.IntegerField(required=False, allow_null=True)
     campaign_id = serializers.UUIDField(required=False, allow_null=True)
-    document = serializers.FileField(required=False, allow_null=True)
+
+    # =====================================================
+    # ✅ NEW: Multi File Upload Support
+    # =====================================================
+    documents = serializers.ListField(
+        child=serializers.FileField(),
+        write_only=True,
+        required=False
+    )
+
     is_active = serializers.BooleanField(required=False)
 
     class Meta:
@@ -126,56 +159,46 @@ class LeadSerializer(serializers.ModelSerializer):
             "sub_source",
             "lead_status",
             "next_action_status",
+            "next_action_type",
             "next_action_description",
             "treatment_interest",
-            "document",
             "book_appointment",
             "appointment_date",
             "slot",
             "remark",
+            "documents",
             "is_active",
         ]
-        # 🔒 ID must NEVER be updated via payload
+
         read_only_fields = ("id",)
 
     # =====================================================
-    # GLOBAL VALIDATION
+    # VALIDATION
     # =====================================================
     def validate(self, attrs):
         request = self.context.get("request")
 
-        # -------------------------------------------------
         # CREATE → require clinic & department
-        # -------------------------------------------------
         if self.instance is None:
             if "clinic_id" not in attrs:
                 raise ValidationError({"clinic_id": "This field is required."})
             if "department_id" not in attrs:
                 raise ValidationError({"department_id": "This field is required."})
 
-        # -------------------------------------------------
-        # UPDATE → ID mismatch protection
-        # -------------------------------------------------
+        # UPDATE → prevent clinic/department change
         if self.instance is not None and request:
             payload_id = request.data.get("id")
             if payload_id and str(payload_id) != str(self.instance.id):
-                raise ValidationError({
-                    "id": "Lead ID is not matched"
-                })
+                raise ValidationError({"id": "Lead ID mismatch"})
 
             if "clinic_id" in attrs:
                 if attrs["clinic_id"] != self.instance.clinic_id:
-                    raise ValidationError({
-                        "clinic_id": "clinic_id cannot be changed"
-                    })
+                    raise ValidationError({"clinic_id": "Cannot change clinic"})
                 attrs.pop("clinic_id")
 
-            #  department_id change not allowed
             if "department_id" in attrs:
                 if attrs["department_id"] != self.instance.department_id:
-                    raise ValidationError({
-                        "department_id": "department_id cannot be changed"
-                    })
+                    raise ValidationError({"department_id": "Cannot change department"})
                 attrs.pop("department_id")
 
         return attrs
@@ -184,6 +207,14 @@ class LeadSerializer(serializers.ModelSerializer):
     # CREATE
     # =====================================================
     def create(self, validated_data):
+
+        # =====================================================
+        # ✅ NEW: Auto set created_by from logged-in user
+        # =====================================================
+        request = self.context.get("request")
+        if request and hasattr(request.user, "employee"):
+            validated_data["created_by"] = request.user.employee
+
         return create_lead(validated_data)
 
     # =====================================================

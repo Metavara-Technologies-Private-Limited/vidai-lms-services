@@ -63,7 +63,9 @@ from .views import (
     SocialMediaCampaignCreateAPIView,
     EmailCampaignCreateAPIView,
     CampaignZapierCallbackAPIView,
-
+    MailchimpWebhookAPIView,
+    SendSMSAPIView,
+    MakeCallAPIView,
     # ==================================================
     # Sales Pipeline APIs
     # ==================================================
@@ -226,7 +228,15 @@ path("leads/<uuid:lead_id>/notes/", LeadNoteListAPIView.as_view(), name="lead-no
     CampaignZapierCallbackAPIView.as_view(),
     name="campaign-zapier-callback",
 ),
-
+    # Mailchimp webhook receiver
+    path(
+        "mailchimp/webhook/",
+        MailchimpWebhookAPIView.as_view(),
+        name="mailchimp-webhook",
+    ),
+    
+    path("twilio/send-sms/", SendSMSAPIView.as_view()),
+    path("twilio/make-call/", MakeCallAPIView.as_view()),
 
 # ==================================================
 # SALES PIPELINE APIs
