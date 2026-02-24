@@ -22,7 +22,7 @@ SECRET_KEY = 'django-insecure-b#--p%6fpdr-ub523h198vs!#-2%fvtv+at(_@tzr#kaazchp=
 DEBUG = True
 
 #  IMPORTANT FOR SERVER ACCESS
-ALLOWED_HOSTS = ["0.0.0.0", "127.0.0.1", "72.62.227.137","backend.metavaratechnologies.com"]  #  ADDED VPS IP
+ALLOWED_HOSTS = ["0.0.0.0", "127.0.0.1", "72.62.227.137","localhost","backend.metavaratechnologies.com"]  #  ADDED VPS IP
 
 
 # ================================
@@ -45,7 +45,7 @@ INSTALLED_APPS = [
     'restapi',
 ]
 
-ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/uezdfh3/"
+ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/ucb1mwo/"
 
 MIDDLEWARE = [
     'restapi.middleware.RequestIDMiddleware',   # Custom middleware
@@ -196,3 +196,14 @@ SWAGGER_SETTINGS = {
         }
     }
 }
+
+LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID")
+LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET")
+LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI")
+
+FACEBOOK_CLIENT_ID = os.getenv("FACEBOOK_CLIENT_ID")
+FACEBOOK_CLIENT_SECRET = os.getenv("FACEBOOK_CLIENT_SECRET")
+FACEBOOK_REDIRECT_URI = os.getenv("FACEBOOK_REDIRECT_URI")
+
+FRONTEND_URL = os.getenv("FRONTEND_URL")
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL")
