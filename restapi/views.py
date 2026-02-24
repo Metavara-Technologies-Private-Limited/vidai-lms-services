@@ -78,12 +78,27 @@ from restapi.serializers.campaign_serializer import (
     SocialMediaCampaignSerializer,
     EmailCampaignCreateSerializer
 )
+
+from restapi.serializers.mailchimp_serializer import (
+    MailchimpWebhookSerializer,
+)
+from restapi.services.mailchimp_service import (
+    create_mailchimp_event,
+)
+
 from restapi.serializers.campaign_social_post_serializer import (
     CampaignSocialPostCallbackSerializer
 )
 from restapi.services.campaign_social_post_service import (
     handle_zapier_callback
 )
+
+from restapi.serializers.twilio_serializers import (
+    SendSMSSerializer,
+    MakeCallSerializer,
+)
+from restapi.services.twilio_service import send_sms, make_call
+
 
 from restapi.serializers.pipeline_serializer import (
     PipelineSerializer,
@@ -1666,8 +1681,140 @@ class EmailCampaignCreateAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        
+# ------------------------------------------------------------------
+# Mailchimp Webhook Receiver API View (POST)
+# -------------------------------------------------------------------
+class MailchimpWebhookAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Mailchimp Webhook Receiver",
+        request_body=MailchimpWebhookSerializer,
+        responses={
+            200: "Mailchimp Event Stored Successfully",
+            400: "Validation Error",
+            500: "Internal Server Error",
+        },
+        tags=["Mailchimp"],
+    )
+    @transaction.atomic
+    def post(self, request):
+        try:
+            serializer = MailchimpWebhookSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            validated_data = serializer.validated_data
+
+            create_mailchimp_event(validated_data)
+
+            return Response(
+                {"message": "Mailchimp event stored successfully"},
+                status=status.HTTP_200_OK,
+            )
+
+        except ValidationError as e:
+            return Response(
+                e.detail,
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Mailchimp Webhook Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+# -------------------------------
+# SEND SMS API
+# -------------------------------
+class SendSMSAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Send SMS using Twilio",
+        request_body=SendSMSSerializer,
+        responses={
+            200: "SMS Sent Successfully",
+            400: "Validation Error",
+            500: "Internal Server Error",
+        },
+        tags=["Twilio"],
+    )
+    @transaction.atomic
+    def post(self, request):
+        try:
+            serializer = SendSMSSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            validated_data = serializer.validated_data
+
+            message = send_sms(
+                validated_data["to"],
+                validated_data["message"]
+            )
+
+            return Response(
+                {
+                    "message": "SMS sent successfully",
+                    "sid": message.sid,
+                    "status": message.status,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception:
+            logger.error("Twilio SMS Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
+# -------------------------------
+# MAKE CALL API
+# -------------------------------
+class MakeCallAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Make outbound call using Twilio",
+        request_body=MakeCallSerializer,
+        responses={
+            200: "Call Initiated Successfully",
+            400: "Validation Error",
+            500: "Internal Server Error",
+        },
+        tags=["Twilio"],
+    )
+    @transaction.atomic
+    def post(self, request):
+        try:
+            serializer = MakeCallSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            validated_data = serializer.validated_data
+
+            call = make_call(validated_data["to"])
+
+            return Response(
+                {
+                    "message": "Call initiated successfully",
+                    "sid": call.sid,
+                    "status": call.status,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception:
+            logger.error("Twilio Call Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 # ------------------------------------------------------------------
 # Social Media Campaign Create API View (POST)
 # -------------------------------------------------------------------

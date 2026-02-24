@@ -1,6 +1,5 @@
 import uuid
 from django.db import models
-from django.utils import timezone
 
 
 class Campaign(models.Model):
@@ -28,11 +27,13 @@ class Campaign(models.Model):
     ORGANIC = 1
     PAID = 2
     EMAIL = 3
+
     CAMPAIGN_MODE_CHOICES = (
         (ORGANIC, "Organic Posting"),
         (PAID, "Paid Advertising"),
         (EMAIL, "Email Campaign"),
     )
+
     campaign_mode = models.IntegerField(choices=CAMPAIGN_MODE_CHOICES)
 
     campaign_content = models.TextField(blank=True)
@@ -42,7 +43,16 @@ class Campaign(models.Model):
     enter_time = models.TimeField()
 
     # ----------------------------
-    # STATUS FIELD (NEW)
+    # ✅ JSONB COLUMN FOR SOCIAL PLATFORMS
+    # ----------------------------
+    platform_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Stores Facebook, Instagram, LinkedIn campaign data"
+    )
+
+    # ----------------------------
+    # STATUS FIELD
     # ----------------------------
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
