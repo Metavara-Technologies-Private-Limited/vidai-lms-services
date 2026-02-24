@@ -1,0 +1,335 @@
+[ERROR] 2026-02-11 13:03:54 restapi.views:352 — Unhandled Lead Create Error:
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\restapi\views.py", line 305, in post
+    lead = serializer.save()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\rest_framework\serializers.py", line 210, in save
+    self.instance = self.create(validated_data)
+                    ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "D:\Code\Metavara\vidai-lms-services\restapi\serializers\lead_serializer.py", line 187, in create
+    return create_lead(validated_data)
+  File "C:\Python313\Lib\contextlib.py", line 85, in inner
+    return func(*args, **kwds)
+  File "D:\Code\Metavara\vidai-lms-services\restapi\services\lead_service.py", line 18, in create_lead
+    clinic = Clinic.objects.get(id=validated_data.pop("clinic_id"))
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\db\models\manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\db\models\query.py", line 635, in get
+    raise self.model.DoesNotExist(
+        "%s matching query does not exist." % self.model._meta.object_name
+    )
+restapi.models.clinic.Clinic.DoesNotExist: Clinic matching query does not exist.
+
+[ERROR] 2026-02-11 13:03:54 django.request:253 — Internal Server Error: /api/leads/
+[ERROR] 2026-02-11 13:03:54 django.server:213 — "POST /api/leads/ HTTP/1.1" 500 33
+[ERROR] 2026-02-11 13:06:09 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-11 13:18:05 restapi.exception_handler:30 — [ERROR][2026-02-11 07:48:05.766904][ReqID: ac0ff7b168c3][IP: 127.0.0.1]
+Path: /api/get_clinic/1/
+Error: Clinic not found
+[ERROR] 2026-02-11 13:49:35 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-11 13:49:48 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-11 13:49:49 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-11 15:18:33 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-11 15:18:33 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-11 19:58:02 restapi.exception_handler:30 — [ERROR][2026-02-11 14:28:02.669930][ReqID: 65690dc633cf][IP: 127.0.0.1]
+Path: /api/get_clinic/1/
+Error: Clinic not found
+[ERROR] 2026-02-13 12:41:17 restapi.exception_handler:30 — [ERROR][2026-02-13 07:11:17.272620][ReqID: 69624ac85940][IP: 127.0.0.1]
+Path: /api/employees/
+Error: Method "GET" not allowed.
+[ERROR] 2026-02-13 12:41:23 restapi.exception_handler:30 — [ERROR][2026-02-13 07:11:23.001659][ReqID: bcc2a8ebd517][IP: 127.0.0.1]
+Path: /api/employees/
+Error: Method "GET" not allowed.
+[ERROR] 2026-02-13 12:42:33 restapi.exception_handler:30 — [ERROR][2026-02-13 07:12:33.910612][ReqID: c8cdeddd56e5][IP: 127.0.0.1]
+Path: /api/clinics/1/employees/
+Error: name 'Employee' is not defined
+[ERROR] 2026-02-13 12:42:33 django.request:253 — Internal Server Error: /api/clinics/1/employees/
+[ERROR] 2026-02-13 12:42:33 django.server:213 — "GET /api/clinics/1/employees/ HTTP/1.1" 500 61
+[ERROR] 2026-02-13 12:43:48 restapi.exception_handler:30 — [ERROR][2026-02-13 07:13:48.317288][ReqID: 40eafeabbaa6][IP: 127.0.0.1]
+Path: /api/employees/
+Error: {'user_id': ErrorDetail(string='Invalid user_id', code='invalid')}
+[ERROR] 2026-02-13 12:44:42 restapi.exception_handler:30 — [ERROR][2026-02-13 07:14:42.964980][ReqID: 9ce7a10c5974][IP: 127.0.0.1]
+Path: /api/users/
+Error: {'username': [ErrorDetail(string='This field is required.', code='required')], 'password': [ErrorDetail(string='This field is required.', code='required')]}
+[ERROR] 2026-02-13 12:45:08 restapi.exception_handler:30 — [ERROR][2026-02-13 07:15:08.233215][ReqID: 5ea63909af7b][IP: 127.0.0.1]
+Path: /api/clinics/1/employees/
+Error: name 'Employee' is not defined
+[ERROR] 2026-02-13 12:45:08 django.request:253 — Internal Server Error: /api/clinics/1/employees/
+[ERROR] 2026-02-13 12:45:08 django.server:213 — "GET /api/clinics/1/employees/ HTTP/1.1" 500 61
+[ERROR] 2026-02-13 12:45:55 restapi.exception_handler:30 — [ERROR][2026-02-13 07:15:55.497380][ReqID: 86b9603f816b][IP: 127.0.0.1]
+Path: /api/clinics/1/employees/
+Error: name 'Employee' is not defined
+[ERROR] 2026-02-13 12:45:55 django.request:253 — Internal Server Error: /api/clinics/1/employees/
+[ERROR] 2026-02-13 12:45:55 django.server:213 — "GET /api/clinics/1/employees/ HTTP/1.1" 500 61
+[ERROR] 2026-02-13 12:46:24 restapi.exception_handler:30 — [ERROR][2026-02-13 07:16:24.877965][ReqID: ca1e1a7fc13d][IP: 127.0.0.1]
+Path: /api/clinics/1/employees/
+Error: name 'Employee' is not defined
+[ERROR] 2026-02-13 12:46:24 django.request:253 — Internal Server Error: /api/clinics/1/employees/
+[ERROR] 2026-02-13 12:46:24 django.server:213 — "GET /api/clinics/1/employees/ HTTP/1.1" 500 61
+[ERROR] 2026-02-13 12:48:11 restapi.exception_handler:30 — [ERROR][2026-02-13 07:18:11.831852][ReqID: 72be5e574c2b][IP: 127.0.0.1]
+Path: /api/clinics/1/employees/
+Error: name 'Employee' is not defined
+[ERROR] 2026-02-13 12:48:11 django.request:253 — Internal Server Error: /api/clinics/1/employees/
+[ERROR] 2026-02-13 12:48:11 django.server:213 — "GET /api/clinics/1/employees/ HTTP/1.1" 500 61
+[ERROR] 2026-02-13 12:48:14 restapi.exception_handler:30 — [ERROR][2026-02-13 07:18:14.478212][ReqID: 378071da72b2][IP: 127.0.0.1]
+Path: /api/clinics/1/employees/
+Error: name 'Employee' is not defined
+[ERROR] 2026-02-13 12:48:14 django.request:253 — Internal Server Error: /api/clinics/1/employees/
+[ERROR] 2026-02-13 12:48:14 django.server:213 — "GET /api/clinics/1/employees/ HTTP/1.1" 500 61
+[ERROR] 2026-02-13 12:49:04 restapi.exception_handler:30 — [ERROR][2026-02-13 07:19:04.145414][ReqID: 92cc5a5f6734][IP: 127.0.0.1]
+Path: /api/clinics/1/employees/
+Error: name 'Employee' is not defined
+[ERROR] 2026-02-13 12:49:04 django.request:253 — Internal Server Error: /api/clinics/1/employees/
+[ERROR] 2026-02-13 12:49:04 django.server:213 — "GET /api/clinics/1/employees/ HTTP/1.1" 500 61
+[ERROR] 2026-02-13 12:49:41 restapi.exception_handler:30 — [ERROR][2026-02-13 07:19:41.484955][ReqID: 51c872aa3522][IP: 127.0.0.1]
+Path: /api/clinics/1/employees/
+Error: name 'Employee' is not defined
+[ERROR] 2026-02-13 12:49:41 django.request:253 — Internal Server Error: /api/clinics/1/employees/
+[ERROR] 2026-02-13 12:49:41 django.server:213 — "GET /api/clinics/1/employees/ HTTP/1.1" 500 61
+[ERROR] 2026-02-13 12:57:24 restapi.exception_handler:30 — [ERROR][2026-02-13 07:27:24.361766][ReqID: 5a3355498b1a][IP: 127.0.0.1]
+Path: /api/users/
+Error: {'username': [ErrorDetail(string='A user with that username already exists.', code='unique')]}
+[ERROR] 2026-02-14 12:27:55 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-14 12:27:55 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-14 16:35:41 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-14 16:35:41 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-15 18:44:01 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-15 18:44:01 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-16 21:01:18 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-16 21:01:18 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-16 21:13:10 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-16 21:13:10 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-16 21:13:10 django.security.DisallowedHost:253 — Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 119, in __call__
+    response = self.process_request(request)
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 48, in process_request
+    host = request.get_host()
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\django\http\request.py", line 202, in get_host
+    raise DisallowedHost(msg)
+django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'localhost:8000'. You may need to add 'localhost' to ALLOWED_HOSTS.
+[ERROR] 2026-02-16 21:50:05 restapi.exception_handler:30 — [ERROR][2026-02-16 16:20:05.403966][ReqID: 765bb87b9afe][IP: 127.0.0.1]
+Path: /api/facebook/login/
+Error: name 'secrets' is not defined
+[ERROR] 2026-02-16 21:50:05 django.request:253 — Internal Server Error: /api/facebook/login/
+[ERROR] 2026-02-16 21:50:05 django.server:213 — "GET /api/facebook/login/ HTTP/1.1" 500 5373
+[ERROR] 2026-02-16 23:03:43 restapi.views:945 — Unhandled Campaign Create Error:
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\restapi\views.py", line 903, in post
+    "email_body": campaign.email_body,
+                  ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Campaign' object has no attribute 'email_body'
+
+[ERROR] 2026-02-16 23:03:43 django.request:253 — Internal Server Error: /api/campaigns/
+[ERROR] 2026-02-16 23:03:43 django.server:213 — "POST /api/campaigns/ HTTP/1.1" 500 33
+[ERROR] 2026-02-16 23:03:51 restapi.views:945 — Unhandled Campaign Create Error:
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\restapi\views.py", line 903, in post
+    "email_body": campaign.email_body,
+                  ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Campaign' object has no attribute 'email_body'
+
+[ERROR] 2026-02-16 23:03:51 django.request:253 — Internal Server Error: /api/campaigns/
+[ERROR] 2026-02-16 23:03:51 django.server:213 — "POST /api/campaigns/ HTTP/1.1" 500 33
+[ERROR] 2026-02-16 23:55:42 restapi.views:943 — Unhandled Campaign Create Error:
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\restapi\views.py", line 902, in post
+    "email_body": campaign.email_body,
+                  ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Campaign' object has no attribute 'email_body'
+
+[ERROR] 2026-02-16 23:55:42 django.request:253 — Internal Server Error: /api/campaigns/
+[ERROR] 2026-02-16 23:55:42 django.server:213 — "POST /api/campaigns/ HTTP/1.1" 500 33
+[ERROR] 2026-02-17 03:36:25 restapi.views:943 — Unhandled Campaign Create Error:
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\restapi\views.py", line 902, in post
+    "email_body": campaign.email_body,
+                  ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Campaign' object has no attribute 'email_body'
+
+[ERROR] 2026-02-17 03:36:25 django.request:253 — Internal Server Error: /api/campaigns/
+[ERROR] 2026-02-17 03:36:25 django.server:213 — "POST /api/campaigns/ HTTP/1.1" 500 33
+[ERROR] 2026-02-17 03:41:32 restapi.views:1773 — Social Media Campaign Error:
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\restapi\views.py", line 1701, in post
+    serializer.is_valid(raise_exception=True)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\rest_framework\serializers.py", line 233, in is_valid
+    raise ValidationError(self.errors)
+rest_framework.exceptions.ValidationError: {'schedule_date_range': [ErrorDetail(string='This field is required.', code='required')]}
+
+[ERROR] 2026-02-17 03:41:32 django.request:253 — Internal Server Error: /api/social-media-campaign/create/
+[ERROR] 2026-02-17 03:41:32 django.server:213 — "POST /api/social-media-campaign/create/ HTTP/1.1" 500 33
+[ERROR] 2026-02-17 03:45:08 restapi.views:1774 — Social Media Campaign Error:
+Traceback (most recent call last):
+  File "D:\Code\Metavara\vidai-lms-services\restapi\views.py", line 1702, in post
+    serializer.is_valid(raise_exception=True)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Code\Metavara\vidai-lms-services\venv\Lib\site-packages\rest_framework\serializers.py", line 233, in is_valid
+    raise ValidationError(self.errors)
+rest_framework.exceptions.ValidationError: {'schedule_date_range': [ErrorDetail(string='This field is required.', code='required')]}
+
+[ERROR] 2026-02-17 03:45:08 django.request:253 — Internal Server Error: /api/social-media-campaign/create/
+[ERROR] 2026-02-17 03:45:08 django.server:213 — "POST /api/social-media-campaign/create/ HTTP/1.1" 500 33
