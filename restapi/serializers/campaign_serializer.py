@@ -104,15 +104,17 @@ class EmailCampaignCreateSerializer(serializers.Serializer):
 # =====================================================
 # Campaign WRITE Serializer
 # =====================================================
+# =====================================================
+# Campaign WRITE Serializer
+# =====================================================
 class CampaignSerializer(serializers.ModelSerializer):
 
     social_media = CampaignSocialMediaSerializer(many=True, required=False)
     email = CampaignEmailSerializer(many=True, required=False)
 
-    # =====================================================
-    # ✅ NEW: JSONB Field for content + documents
-    # =====================================================
+    # ✅ JSONB FIELDS
     platform_data = serializers.JSONField(required=False)
+    budget_data = serializers.JSONField(required=False)   # ✅ ADD THIS
 
     class Meta:
         model = Campaign
@@ -134,8 +136,9 @@ class CampaignSerializer(serializers.ModelSerializer):
             "status",
             "is_active",
 
-            # ✅ NEW JSONB FIELD
+            # ✅ JSONB FIELDS
             "platform_data",
+            "budget_data",   # ✅ ADD HERE
 
             "social_media",
             "email",
@@ -149,15 +152,26 @@ class CampaignSerializer(serializers.ModelSerializer):
         if data["start_date"] > data["end_date"]:
             raise ValidationError("Start date cannot be after end date")
 
-        # =====================================================
-        # ✅ OPTIONAL BASIC JSON STRUCTURE VALIDATION
-        # =====================================================
+        # ✅ platform_data validation
         platform_data = data.get("platform_data")
-
         if platform_data and not isinstance(platform_data, dict):
             raise ValidationError({
                 "platform_data": "Must be a valid JSON object"
             })
+
+        # ✅ budget_data validation
+        budget_data = data.get("budget_data")
+        if budget_data:
+            if not isinstance(budget_data, dict):
+                raise ValidationError({
+                    "budget_data": "Must be a valid JSON object"
+                })
+
+            if "total_budget" in budget_data:
+                if float(budget_data["total_budget"]) < 0:
+                    raise ValidationError({
+                        "budget_data": "Total budget cannot be negative"
+                    })
 
         return data
 
