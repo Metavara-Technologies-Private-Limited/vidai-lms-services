@@ -209,7 +209,7 @@ class TicketWriteSerializer(serializers.ModelSerializer):
         # Only validate if both fields are present
         if assigned_employee and selected_department:
 
-            # 🔥 FIXED HERE (use dep, not department)
+            #  FIXED HERE (use dep, not department)
             if assigned_employee.dep != selected_department:
                 raise ValidationError(
                     "Assigned employee does not belong to the selected department."
