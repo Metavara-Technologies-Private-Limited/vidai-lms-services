@@ -1,20 +1,13 @@
 import uuid
 from django.db import models
-from django.utils import timezone
 
 from .clinic import Clinic
 from .department import Department
 from .employee import Employee
 from .campaign import Campaign
 
-class LeadChoices:
-    """
-    NOTE:
-    These are initial minimal values.
-    Frontend / Postman must send ONLY these string values.
-    If business confirms more values later, we will extend this list.
-    """
 
+class LeadChoices:
     MARITAL_STATUS = (
         ("single", "Single"),
         ("married", "Married"),
@@ -28,6 +21,11 @@ class LeadChoices:
     LEAD_STATUS = (
         ("new", "New"),
         ("contacted", "Contacted"),
+        ("appointment", "Appointment"),
+        ("follow_up", "Follow Up"),
+        ("converted", "Converted"),
+        ("cycle_conversion", "Cycle Conversion"),
+        ("lost", "Lost"),
     )
 
     NEXT_ACTION_STATUS = (
@@ -35,9 +33,28 @@ class LeadChoices:
         ("completed", "Completed"),
     )
 
+    NEXT_ACTION_TYPE = (
+        ("Follow Up", "Follow Up"),
+        ("Call Patient", "Call Patient"),
+        ("Book Appointment", "Book Appointment"),
+        ("Send Message", "Send Message"),
+        ("Send Email", "Send Email"),
+        ("Review Details", "Review Details"),
+        ("No Action", "No Action"),
+    )
+
 
 class Lead(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
+
+    # =============================
+    # RELATIONS
+    # =============================
 
     clinic = models.ForeignKey(
         Clinic,
@@ -53,6 +70,49 @@ class Lead(models.Model):
         related_name="leads"
     )
 
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.CASCADE
+    )
+
+    assigned_to = models.ForeignKey(
+        Employee,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_leads"
+    )
+
+    personal = models.ForeignKey(
+        Employee,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="personal_leads"
+    )
+
+    # ✅ NEW FIELD
+    created_by = models.ForeignKey(
+        Employee,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_leads"
+    )
+
+    # ✅ Recommended (audit purpose)
+    updated_by = models.ForeignKey(
+        Employee,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_leads"
+    )
+
+    # =============================
+    # BASIC DETAILS
+    # =============================
+
     full_name = models.CharField(max_length=255)
     age = models.IntegerField(null=True, blank=True)
 
@@ -67,13 +127,17 @@ class Lead(models.Model):
     contact_no = models.CharField(max_length=20)
 
     language_preference = models.CharField(max_length=50, blank=True)
-
     location = models.CharField(max_length=255, blank=True)
     address = models.TextField(blank=True)
+
+    # =============================
+    # PARTNER DETAILS
+    # =============================
 
     partner_inquiry = models.BooleanField(default=False)
     partner_full_name = models.CharField(max_length=255, blank=True)
     partner_age = models.IntegerField(null=True, blank=True)
+
     partner_gender = models.CharField(
         max_length=10,
         choices=LeadChoices.GENDER,
@@ -81,15 +145,16 @@ class Lead(models.Model):
         blank=True
     )
 
+    # =============================
+    # SOURCE DETAILS
+    # =============================
+
     source = models.CharField(max_length=100)
     sub_source = models.CharField(max_length=100, blank=True)
 
-    assigned_to = models.ForeignKey(
-        Employee,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="assigned_leads"
-    )
+    # =============================
+    # STATUS TRACKING
+    # =============================
 
     lead_status = models.CharField(
         max_length=20,
@@ -97,10 +162,16 @@ class Lead(models.Model):
         default="new"
     )
 
-    
     next_action_status = models.CharField(
         max_length=20,
         choices=LeadChoices.NEXT_ACTION_STATUS,
+        null=True,
+        blank=True
+    )
+
+    next_action_type = models.CharField(
+        max_length=50,
+        choices=LeadChoices.NEXT_ACTION_TYPE,
         null=True,
         blank=True
     )
@@ -110,43 +181,36 @@ class Lead(models.Model):
         blank=True
     )
 
+    # =============================
+    # TREATMENT / APPOINTMENT
+    # =============================
+
     treatment_interest = models.TextField(
         help_text="Comma separated values"
     )
 
-    document = models.FileField(
-        upload_to="lead_documents/",
-        null=True,
-        blank=True
-    )
-
     book_appointment = models.BooleanField(default=False)
-
-    department = models.ForeignKey(
-        Department,
-        on_delete=models.CASCADE
-    )
-
-    personal = models.ForeignKey(
-        Employee,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="personal_leads"
-    )
-
-    appointment_date = models.DateField()
-    slot = models.CharField(max_length=50)
+    appointment_date = models.DateField(null=True, blank=True)
+    slot = models.CharField(max_length=50, blank=True)
     remark = models.TextField(blank=True)
-    
 
-    # ✅ NEW FLAGS
+    # =============================
+    # SYSTEM FLAGS
+    # =============================
+
     is_active = models.BooleanField(default=True)
     is_deleted = models.BooleanField(default=False)
 
-    
+    # =============================
+    # TIMESTAMPS
+    # =============================
+
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        #anaged = False          # 🔐 VERY IMPORTANT
-        db_table = "restapi_lead"        # 👈 must match EXISTING DB table
+        db_table = "restapi_lead"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.full_name} ({self.lead_status})"

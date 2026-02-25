@@ -8,7 +8,8 @@ from .campaign_email_config import CampaignEmailConfig
 # Campaign execution tracking
 from .campaign_social_post import CampaignSocialPost
 
-
+from .mailchip import MarketingEvent
+from .twilio import TwilioMessage, TwilioCall
 # Legacy / shared models
 from .clinic import Clinic
 from .department import Department
@@ -23,7 +24,7 @@ from .stage_field import StageField
 # Ticketing Module
 from .lab import Lab
 from .ticket import Ticket
-from .document import Document
+from .ticket_document import Document
 from .ticket_timeline import TicketTimeline
 
 # Templates Module
@@ -37,4 +38,4 @@ from .template_whatsapp_document import TemplateWhatsAppDocument
 
 # Lead Notes Module
 from .lead_note import LeadNote
-
+from .lead_document import LeadDocument
