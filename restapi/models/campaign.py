@@ -50,7 +50,16 @@ class Campaign(models.Model):
         blank=True,
         help_text="Stores Facebook, Instagram, LinkedIn campaign data"
     )
-
+    
+    # ----------------------------
+    # ✅ NEW: JSONB COLUMN FOR BUDGET
+    # ----------------------------
+    budget_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Stores campaign budget structure (total, daily, split, spend, etc.)"
+    )
+    
     # ----------------------------
     # STATUS FIELD
     # ----------------------------
