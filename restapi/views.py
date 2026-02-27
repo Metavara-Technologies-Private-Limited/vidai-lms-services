@@ -914,33 +914,18 @@ class CampaignCreateAPIView(APIView):
     "clinic_id": campaign.clinic.id,
     "campaign_mode": campaign.campaign_mode,
     "status": campaign.status,
-    "email_body": campaign.email_body,
-    "sender_email": campaign.sender_email,
     "is_active": campaign.is_active,
 
-    # ✅ NOW DEFINED
     "channels": channels,
 
     "start_date": campaign.start_date.isoformat() if campaign.start_date else None,
     "end_date": campaign.end_date.isoformat() if campaign.end_date else None,
 
-    "selected_start": (
-        campaign.selected_start.isoformat()
-        if campaign.selected_start else None
-    ),
-    "selected_end": (
-        campaign.selected_end.isoformat()
-        if campaign.selected_end else None
-    ),
+    "selected_start": campaign.selected_start.isoformat() if campaign.selected_start else None,
+    "selected_end": campaign.selected_end.isoformat() if campaign.selected_end else None,
 
-    "enter_time": (
-        campaign.enter_time.strftime("%H:%M")
-        if campaign.enter_time else None
-    ),
-
-    "is_active": campaign.is_active,
+    "enter_time": campaign.enter_time.strftime("%H:%M") if campaign.enter_time else None,
 })
-
 
             return Response(
                 CampaignReadSerializer(campaign).data,
@@ -997,35 +982,24 @@ class CampaignUpdateAPIView(APIView):
 
             # 🔔 ZAPIER (event name should be updated, not created)
             send_to_zapier({
-                "event": "campaign_updated",
-                "campaign_id": str(updated_campaign.id),
-                "campaign_name": updated_campaign.campaign_name,
-                "clinic_id": updated_campaign.clinic.id,
-                "campaign_mode": updated_campaign.campaign_mode,
-                "status": updated_campaign.status,
+    "event": "campaign_created",
+    "campaign_id": str(campaign.id),
+    "campaign_name": campaign.campaign_name,
+    "clinic_id": campaign.clinic.id,
+    "campaign_mode": campaign.campaign_mode,
+    "status": campaign.status,
+    "is_active": campaign.is_active,
 
-                "start_date": (
-                    updated_campaign.start_date.isoformat()
-                    if updated_campaign.start_date else None
-                ),
-                "end_date": (
-                    updated_campaign.end_date.isoformat()
-                    if updated_campaign.end_date else None
-                ),
-                "selected_start": (
-                    updated_campaign.selected_start.isoformat()
-                    if updated_campaign.selected_start else None
-                ),
-                "selected_end": (
-                    updated_campaign.selected_end.isoformat()
-                    if updated_campaign.selected_end else None
-                ),
-                "enter_time": (
-                    updated_campaign.enter_time.strftime("%H:%M")
-                    if updated_campaign.enter_time else None
-                ),
-                "is_active": updated_campaign.is_active,
-            })
+    "channels": channels,
+
+    "start_date": campaign.start_date.isoformat() if campaign.start_date else None,
+    "end_date": campaign.end_date.isoformat() if campaign.end_date else None,
+
+    "selected_start": campaign.selected_start.isoformat() if campaign.selected_start else None,
+    "selected_end": campaign.selected_end.isoformat() if campaign.selected_end else None,
+
+    "enter_time": campaign.enter_time.strftime("%H:%M") if campaign.enter_time else None,
+})
 
             # ✅ THIS LINE WAS MISSING
             return Response(
