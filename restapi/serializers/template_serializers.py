@@ -21,26 +21,28 @@ from restapi.services.template_service import (
 
 
 # =====================================================
-# DOCUMENT SERIALIZERS
+# DOCUMENT SERIALIZERS (FIXED)
 # =====================================================
 
 class TemplateMailDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = TemplateMailDocument
-        fields = "__all__"
+        fields = ["id", "file"]
+        read_only_fields = ["id"]
 
 
 class TemplateSMSDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = TemplateSMSDocument
-        fields = "__all__"
+        fields = ["id", "file"]
+        read_only_fields = ["id"]
 
 
 class TemplateWhatsAppDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = TemplateWhatsAppDocument
-        fields = "__all__"
-
+        fields = ["id", "file"]
+        read_only_fields = ["id"]
 
 # =====================================================
 # EMAIL TEMPLATE SERIALIZERS
