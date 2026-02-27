@@ -58,6 +58,6 @@ jobs:
             docker run -d \
               --restart always \
               --name vidai-backend \
-              -p 8000:8000 \
+              -p 8001:8000 \
               ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
 
