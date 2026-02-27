@@ -1,10 +1,36 @@
 from django.db import transaction
+from django.utils import timezone
 from restapi.models import (
     Campaign,
     CampaignSocialMediaConfig,
     CampaignEmailConfig,
 )
-from rest_framework.exceptions import ValidationError 
+
+
+# =====================================================
+# AUTO STATUS (ONLY FOR DRAFT)
+# =====================================================
+def apply_auto_status(campaign):
+    """
+    Only auto-manage when status is DRAFT.
+    If user sends scheduled/live/paused/etc,
+    we respect it and do NOT override.
+    """
+    now = timezone.now()
+
+    if campaign.status == Campaign.Status.DRAFT:
+
+        if campaign.selected_start > now:
+            campaign.status = Campaign.Status.SCHEDULED
+
+        elif campaign.selected_start <= now <= campaign.selected_end:
+            campaign.status = Campaign.Status.LIVE
+
+        elif now > campaign.selected_end:
+            campaign.status = Campaign.Status.COMPLETED
+
+        campaign.save()
+
 
 # =====================================================
 # CREATE
@@ -16,6 +42,12 @@ def create_campaign(validated_data):
 
     campaign = Campaign.objects.create(**validated_data)
 
+    # ✅ Apply auto status only for draft
+    apply_auto_status(campaign)
+
+    # -----------------------------
+    # Social Media Config
+    # -----------------------------
     for sm in social_media_data:
         CampaignSocialMediaConfig.objects.create(
             campaign=campaign,
@@ -23,6 +55,9 @@ def create_campaign(validated_data):
             is_active=sm.get("is_active", True),
         )
 
+    # -----------------------------
+    # Email Config
+    # -----------------------------
     for email in email_data:
         CampaignEmailConfig.objects.create(
             campaign=campaign,
@@ -46,64 +81,13 @@ def update_campaign(instance, validated_data):
     social_media_data = validated_data.pop("social_media", [])
     email_data = validated_data.pop("email", [])
 
-    # -----------------------------
     # Update campaign fields
-    # -----------------------------
     for field, value in validated_data.items():
         setattr(instance, field, value)
 
     instance.save()
 
-    # -----------------------------
-    # SOCIAL MEDIA (ID SAFE)
-    # -----------------------------
-    existing_sm = {
-        sm.id: sm for sm in instance.social_configs.all()
-    }
+    # ✅ Apply auto status only if still draft
+    apply_auto_status(instance)
 
-    for sm in social_media_data:
-        sm_id = sm.get("id")
-
-        if not sm_id:
-            raise ValidationError("Social media id is required")
-
-        if sm_id not in existing_sm:
-            raise ValidationError(
-                f"Social media id {sm_id} does not belong to this campaign"
-            )
-
-        obj = existing_sm[sm_id]
-        obj.platform_name = sm["platform_name"]
-        obj.is_active = sm.get("is_active", True)
-        obj.save()
-
-    # -----------------------------
-    # EMAIL (ID SAFE)
-    # -----------------------------
-    existing_email = {
-        e.id: e for e in instance.email_configs.all()
-    }
-
-    for email in email_data:
-        email_id = email.get("id")
-
-        if not email_id:
-            raise ValidationError("Email id is required")
-
-        if email_id not in existing_email:
-            raise ValidationError(
-                f"Email id {email_id} does not belong to this campaign"
-            )
-
-        obj = existing_email[email_id]
-        obj.audience_name = email["audience_name"]
-        obj.subject = email["subject"]
-        obj.email_body = email["email_body"]
-        obj.template_name = email.get("template_name")
-        obj.sender_email = email.get("sender_email")
-        obj.scheduled_at = email.get("scheduled_at")
-        obj.is_active = email.get("is_active", True)
-        obj.save()
-
-    instance.refresh_from_db()
     return instance

@@ -10,6 +10,8 @@ from restapi.models import (
 from restapi.services.campaign_service import (
     create_campaign,
 )
+from restapi.services.campaign_service import update_campaign
+
 
 
 # =====================================================
@@ -83,17 +85,36 @@ class SocialMediaCampaignSerializer(serializers.Serializer):
     enter_time = serializers.TimeField()
 
 # =====================================================
+# Email Campaign CREATE Serializer (Only for Email API)
+# =====================================================
+class EmailCampaignCreateSerializer(serializers.Serializer):
+    clinic = serializers.IntegerField()
+    campaign_name = serializers.CharField()
+    campaign_description = serializers.CharField()
+    campaign_objective = serializers.CharField()
+    target_audience = serializers.CharField()
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    selected_start = serializers.DateField()
+    selected_end = serializers.DateField()
+    enter_time = serializers.TimeField()
+
+    email = CampaignEmailSerializer(many=True)
+
+# =====================================================
+# Campaign WRITE Serializer
+# =====================================================
+# =====================================================
 # Campaign WRITE Serializer
 # =====================================================
 class CampaignSerializer(serializers.ModelSerializer):
-    social_media = CampaignSocialMediaSerializer(
-        many=True,
-        required=False
-    )
-    email = CampaignEmailSerializer(
-        many=True,
-        required=False
-    )
+
+    social_media = CampaignSocialMediaSerializer(many=True, required=False)
+    email = CampaignEmailSerializer(many=True, required=False)
+
+    # ✅ JSONB FIELDS
+    platform_data = serializers.JSONField(required=False)
+    budget_data = serializers.JSONField(required=False)   # ✅ ADD THIS
 
     class Meta:
         model = Campaign
@@ -112,23 +133,50 @@ class CampaignSerializer(serializers.ModelSerializer):
             "selected_start",
             "selected_end",
             "enter_time",
+            "status",
             "is_active",
-            "social_media",
-            "email",
+
+            # ✅ JSONB FIELDS
+            "platform_data",
+            "budget_data",   # ✅ ADD HERE
+
             "social_media",
             "email",
         ]
 
-    # =========================
-    # CREATE
-    # =========================
+    # =====================================================
+    # VALIDATION
+    # =====================================================
+    def validate(self, data):
+
+        if data["start_date"] > data["end_date"]:
+            raise ValidationError("Start date cannot be after end date")
+
+        # ✅ platform_data validation
+        platform_data = data.get("platform_data")
+        if platform_data and not isinstance(platform_data, dict):
+            raise ValidationError({
+                "platform_data": "Must be a valid JSON object"
+            })
+
+        # ✅ budget_data validation
+        budget_data = data.get("budget_data")
+        if budget_data:
+            if not isinstance(budget_data, dict):
+                raise ValidationError({
+                    "budget_data": "Must be a valid JSON object"
+                })
+
+            if "total_budget" in budget_data:
+                if float(budget_data["total_budget"]) < 0:
+                    raise ValidationError({
+                        "budget_data": "Total budget cannot be negative"
+                    })
+
+        return data
+
     def create(self, validated_data):
         return create_campaign(validated_data)
-    
-    # =========================
-    # UPDATE
-    # =========================
-    def update(self, instance, validated_data):
-        from restapi.services.campaign_service import update_campaign
-        return update_campaign(instance, validated_data)
 
+    def update(self, instance, validated_data):
+        return update_campaign(instance, validated_data)
