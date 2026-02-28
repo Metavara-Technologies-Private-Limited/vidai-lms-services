@@ -88,7 +88,7 @@ WSGI_APPLICATION = 'lms_main.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'stage5_db',
+        'NAME': 'stage2_db',
         'USER': 'postgres',
         'PASSWORD': 'saimohan',
         'HOST': 'host.docker.internal',
