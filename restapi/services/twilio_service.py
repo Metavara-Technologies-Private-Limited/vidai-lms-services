@@ -1,12 +1,15 @@
 from twilio.rest import Client
 from django.conf import settings
 from restapi.models import TwilioMessage, TwilioCall
+from restapi.models.lead import Lead
 
 
 # -------------------------------
 # SEND SMS
 # -------------------------------
-def send_sms(to_number, message_body):
+def send_sms(lead_uuid, to_number, message_body):
+
+    lead = Lead.objects.get(id=lead_uuid)
 
     client = Client(
         settings.TWILIO_ACCOUNT_SID,
@@ -20,6 +23,7 @@ def send_sms(to_number, message_body):
     )
 
     TwilioMessage.objects.create(
+        lead=lead,
         sid=message.sid,
         from_number=settings.TWILIO_PHONE_NUMBER,
         to_number=to_number,
@@ -35,7 +39,9 @@ def send_sms(to_number, message_body):
 # -------------------------------
 # MAKE CALL
 # -------------------------------
-def make_call(to_number):
+def make_call(lead_uuid, to_number):
+
+    lead = Lead.objects.get(id=lead_uuid)
 
     client = Client(
         settings.TWILIO_ACCOUNT_SID,
@@ -49,6 +55,7 @@ def make_call(to_number):
     )
 
     TwilioCall.objects.create(
+        lead=lead,
         sid=call.sid,
         from_number=settings.TWILIO_PHONE_NUMBER,
         to_number=to_number,
