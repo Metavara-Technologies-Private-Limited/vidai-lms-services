@@ -1,4 +1,4 @@
-name: VIDAI Backend PUSHTRIGGER
+name: VIDAI-LMS-SERVICES Push Trigger
 
 on:
   push:
@@ -12,69 +12,55 @@ jobs:
 
     steps:
 
-    # ---------------- CHECKOUT ----------------
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      # Checkout code
 
-    # ---------------- DOCKER SETUP ----------------
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    # ---------------- LOGIN DOCKER ----------------
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
 
-    # ---------------- BUILD IMAGE ----------------
-    - name: Build backend Docker image
-      run: |
-        docker build \
-          -f devops/Dockerfile \
-          -t ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest .
+      # Setting up Docker builder
 
-    # ---------------- SAVE IMAGE ----------------
-    # (Saved INSIDE workspace → avoids permission errors)
-    - name: Save Docker image
-      run: docker save ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest -o backend.tar
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    # ---------------- VERIFY FILE EXISTS ----------------
-    - name: Verify tar file
-      run: ls -lh
 
-    # ---------------- COPY IMAGE TO VPS ----------------
-    - name: Copy image to VPS
-      uses: appleboy/scp-action@v0.1.7
-      with:
-        host: ${{ secrets.SERVER_IP }}
-        username: ${{ secrets.SERVER_USER }}
-        password: ${{ secrets.SERVER_PASSWORD }}
-        source: "backend.tar"
-        target: "/root/"
+      #  Login to Docker registry
 
-    # ---------------- DEPLOY CONTAINER ----------------
-    - name: Deploy backend container
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.SERVER_IP }}
-        username: ${{ secrets.SERVER_USER }}
-        password: ${{ secrets.SERVER_PASSWORD }}
-        script: |
-          echo "Loading Docker image..."
-          docker load -i /root/backend.tar
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-          echo "Stopping old container..."
-          docker stop vidai-backend || true
-          docker rm vidai-backend || true
+      - name: Build Docker image
+        run: |
+          docker build --no-cache -f devops/Dockerfile -t ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest .
 
-          echo "Starting new backend container..."
-          docker run -d \
-            --restart always \
-            --name vidai-backend \
-            -p 8004:8000 \
-            --add-host=host.docker.internal:host-gateway \
-            ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
+      - name: Push Docker image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
 
-          echo "Cleaning temp file..."
-          rm -f /root/backend.tar
+
+      # Deploy to Hostinger server
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          timeout: 60s
+          command_timeout: 15m
+          script: |
+            docker pull ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
+
+            docker ps -aq --filter "name=vidai-backend" | xargs -r docker stop
+            docker ps -aq --filter "name=vidai-backend" | xargs -r docker rm
+
+            docker run -d \
+              --restart always \
+              --name vidai-backend \
+              -p 8004:8000 \
+              --add-host=host.docker.internal:host-gateway \
+              ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
+
