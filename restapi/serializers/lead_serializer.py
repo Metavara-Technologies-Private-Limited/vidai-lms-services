@@ -96,6 +96,7 @@ class LeadReadSerializer(serializers.ModelSerializer):
             "created_at",
             "modified_at",
             "is_active",
+            "converted_at",
         ]
 
     # ✅ NEW: return document list

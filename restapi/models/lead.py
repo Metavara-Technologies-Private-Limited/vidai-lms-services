@@ -1,6 +1,6 @@
 import uuid
 from django.db import models
-
+from django.utils import timezone
 from .clinic import Clinic
 from .department import Department
 from .employee import Employee
@@ -207,10 +207,23 @@ class Lead(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
-
+    
+    converted_at = models.DateTimeField(null=True, blank=True)
     class Meta:
         db_table = "restapi_lead"
         ordering = ["-created_at"]
 
     def __str__(self):
         return f"{self.full_name} ({self.lead_status})"
+
+    from django.utils import timezone
+
+    def save(self, *args, **kwargs):
+
+        if self.lead_status == "converted" and not self.converted_at:
+            self.converted_at = timezone.now()
+
+        if self.lead_status != "converted":
+            self.converted_at = None
+
+        super().save(*args, **kwargs)
