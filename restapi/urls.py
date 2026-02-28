@@ -66,6 +66,9 @@ from .views import (
     MailchimpWebhookAPIView,
     SendSMSAPIView,
     MakeCallAPIView,
+    TwilioMessageListAPIView,
+    TwilioCallListAPIView,
+    
     # ==================================================
     # Sales Pipeline APIs
     # ==================================================
@@ -244,6 +247,20 @@ path("leads/<uuid:lead_id>/notes/", LeadNoteListAPIView.as_view(), name="lead-no
     
     path("twilio/send-sms/", SendSMSAPIView.as_view()),
     path("twilio/make-call/", MakeCallAPIView.as_view()),
+
+    # GET: Retrieve SMS
+# Example:
+# /api/twilio/sms/?lead_uuid=<lead_uuid>
+# lead_uuid is REQUIRED
+path("twilio/sms/", TwilioMessageListAPIView.as_view(), name="twilio-sms-list"),
+
+# GET: Retrieve Calls
+# Example:
+# /api/twilio/calls/?lead_uuid=<lead_uuid>
+# lead_uuid is REQUIRED
+path("twilio/calls/", TwilioCallListAPIView.as_view(), name="twilio-call-list"),  
+
+    
 
 # ==================================================
 # SALES PIPELINE APIs
