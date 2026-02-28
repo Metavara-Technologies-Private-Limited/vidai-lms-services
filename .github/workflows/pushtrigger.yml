@@ -34,7 +34,7 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -f devops/Dockerfile -t ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest .
+          docker build --no-cache -f devops/Dockerfile -t ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest .
 
       - name: Push Docker image
         run: |
