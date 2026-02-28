@@ -86,6 +86,7 @@ class Campaign(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
-
+    
+    converted_at = models.DateTimeField(null=True, blank=True)
     class Meta:
         db_table = "restapi_campaign"

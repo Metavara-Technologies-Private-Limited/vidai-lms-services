@@ -6,6 +6,8 @@ Django settings for django_rest_main project.
 #  IMPORTS (FIXED)
 # ================================
 from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv()
 import os   # ADDED (needed for logging + general use)
 
 # ================================
@@ -22,7 +24,7 @@ SECRET_KEY = 'django-insecure-b#--p%6fpdr-ub523h198vs!#-2%fvtv+at(_@tzr#kaazchp=
 DEBUG = True
 
 #  IMPORTANT FOR SERVER ACCESS
-ALLOWED_HOSTS = ["0.0.0.0", "127.0.0.1", "72.62.227.137","localhost","backend.metavaratechnologies.com"]  #  ADDED VPS IP
+ALLOWED_HOSTS = ["0.0.0.0", "127.0.0.1", "72.62.227.137","localhost"]  #  ADDED VPS IP
 
 
 # ================================
@@ -35,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django_extensions',
 
     # Third-party
     'rest_framework',
@@ -64,10 +67,11 @@ ROOT_URLCONF = 'lms_main.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [],   # keep empty for now
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
+                'django.template.context_processors.debug',
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
@@ -75,7 +79,6 @@ TEMPLATES = [
         },
     },
 ]
-
 WSGI_APPLICATION = 'lms_main.wsgi.application'
 
 
@@ -85,7 +88,7 @@ WSGI_APPLICATION = 'lms_main.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'stage2_db',
+        'NAME': 'stage5_db',
         'USER': 'postgres',
         'PASSWORD': 'saimohan',
         'HOST': 'localhost',
@@ -207,3 +210,10 @@ FACEBOOK_REDIRECT_URI = os.getenv("FACEBOOK_REDIRECT_URI")
 
 FRONTEND_URL = os.getenv("FRONTEND_URL")
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL")
+
+import os
+
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+
