@@ -1,0 +1,27 @@
+[33m96a98f9[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m HEAD@{0}: commit: Updated Twilio, Mailchimp, serializers and services
+[33m45af287[m HEAD@{1}: commit: added twilio and mailchimp
+[33me3d7b1b[m HEAD@{2}: commit: added twilio and mailchimp
+[33m63793ba[m HEAD@{3}: reset: moving to origin/main
+[33md717e9e[m HEAD@{4}: commit: Removed hardcoded Twilio credentials and moved to env
+[33m89e96e8[m HEAD@{5}: commit (merge): Merged local and remote changes safely
+[33m897de0e[m HEAD@{6}: reset: moving to HEAD
+[33m897de0e[m HEAD@{7}: pull origin main: updating HEAD
+[33m897de0e[m HEAD@{8}: checkout: moving from main to main
+[33m897de0e[m HEAD@{9}: commit: My local changes before pulling latest main
+[33m5fb6e80[m HEAD@{10}: commit: added status for campaign
+[33m9dfa8f5[m HEAD@{11}: commit: added clinic, dep, assignee_to -> lab, added title to lead_notes
+[33m186981f[m HEAD@{12}: commit: Notes for Lead API
+[33mfbf1f5f[m HEAD@{13}: commit: settings: tickets, templates
+[33me337768[m HEAD@{14}: commit: Template: Whatsapp, SMS, Mail
+[33m7d61630[m HEAD@{15}: commit: Add ticket, lab, document models and related services
+[33mf1f5e34[m HEAD@{16}: commit: Modified lead and pipeline sevice
+[33m47d9850[m HEAD@{17}: commit: Add pipeline, campaign, lead
+[33m8a4be26[m HEAD@{18}: commit: LMS - Leads and Campaign APIs
+[33m923b319[m HEAD@{19}: reset: moving to HEAD
+[33m923b319[m HEAD@{20}: checkout: moving from main to main
+[33m923b319[m HEAD@{21}: commit (merge): Merge LMS backend into main
+[33m9649f36[m HEAD@{22}: checkout: moving from main to main
+[33m9649f36[m HEAD@{23}: rebase (abort): returning to refs/heads/main
+[33m3c64235[m HEAD@{24}: pull origin main --rebase (start): checkout 3c64235646b051a32d821d62b5ddd98ba54b8975
+[33m9649f36[m HEAD@{25}: Branch: renamed refs/heads/master to refs/heads/main
+[33m9649f36[m HEAD@{27}: commit (initial): LMS - Leads and Campaign APIs
