@@ -41,9 +41,13 @@ from restapi.models import (
     CampaignSocialMediaConfig,
     Pipeline,
     PipelineStage,
+     LeadEmail,
     TemplateMail,
     TemplateSMS,
     TemplateWhatsApp,
+    TemplateWhatsAppDocument,
+    TemplateMailDocument,
+    TemplateSMSDocument,
     CampaignEmailConfig,
 )
 
@@ -79,6 +83,8 @@ from restapi.serializers.lead_serializer import (
     LeadSerializer,
     LeadReadSerializer,
 )
+from restapi.serializers.lead_email_serializer import LeadEmailSerializer
+from restapi.services.lead_email_service import send_lead_email
 
 from restapi.serializers.campaign_serializer import (
     CampaignSerializer,
@@ -875,6 +881,70 @@ class LeadSoftDeleteAPIView(APIView):
     def delete(self, request, lead_id):
         return self.patch(request, lead_id)
 
+# -------------------------------------------------------------------
+# Lead Email API View (POST)
+# -------------------------------------------------------------------
+class LeadEmailAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Create Lead Email (Optional: Send Immediately)",
+        operation_description="""
+        Create an email record for a lead.
+
+        If `send_now=true`, the email will be sent immediately.
+        Otherwise, it will be saved as DRAFT.
+        """,
+        request_body=LeadEmailSerializer,
+        responses={
+            201: openapi.Response(
+                description="Email created (and optionally sent)",
+                schema=LeadEmailSerializer
+            ),
+            400: "Bad Request"
+        }
+    )
+    @transaction.atomic
+    def post(self, request):
+
+        serializer = LeadEmailSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        send_now = request.data.get("send_now", False)
+
+        email_obj = serializer.save()
+
+        if send_now:
+            try:
+                email_obj = send_lead_email(email_obj.id)
+
+                return Response(
+                    {
+                        "message": "Email created and sent successfully",
+                        "status": email_obj.status,
+                        "sent_at": email_obj.sent_at,
+                        "data": LeadEmailSerializer(email_obj).data
+                    },
+                    status=status.HTTP_201_CREATED
+                )
+
+            except Exception as e:
+                return Response(
+                    {
+                        "message": "Email created but sending failed",
+                        "error": str(e)
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        return Response(
+            {
+                "message": "Email saved as draft",
+                "status": email_obj.status,
+                "data": LeadEmailSerializer(email_obj).data
+            },
+            status=status.HTTP_201_CREATED
+        )
+    
 # -------------------------------------------------------------------
 # Campaign Create API View (POST)
 # -------------------------------------------------------------------
@@ -2885,7 +2955,138 @@ class TemplateUpdateAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+# -------------------------------------------------------------------
+# TEMPLATE DOCUMENT UPLOAD API (POST)
+# -------------------------------------------------------------------
+class TemplateDocumentUploadAPIView(APIView):
 
+    parser_classes = [MultiPartParser, FormParser]
+
+    @swagger_auto_schema(
+        operation_description="Upload a document to a template (mail, sms, whatsapp)",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["file"],
+            properties={
+                "file": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    format=openapi.FORMAT_BINARY,
+                    description="The file to upload",
+                )
+            },
+        ),
+        responses={
+            201: openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "id": openapi.Schema(type=openapi.TYPE_STRING),
+                    "file": openapi.Schema(type=openapi.TYPE_STRING),
+                    "uploaded_at": openapi.Schema(type=openapi.TYPE_STRING),
+                    "template_id": openapi.Schema(type=openapi.TYPE_STRING),
+                },
+            ),
+            400: "Validation Error",
+            404: "Template Not Found",
+            500: "Internal Server Error",
+        },
+        tags=["Templates"],
+    )
+    def post(self, request, template_type, template_id):
+
+        # Prevent Swagger schema crash
+        if getattr(self, "swagger_fake_view", False):
+            return Response(status=200)
+
+        try:
+            # ── 1. Validate template_type and fetch the parent template ──────
+            if template_type == "mail":
+                template_instance = TemplateMail.objects.filter(
+                    id=template_id,
+                    is_deleted=False
+                ).first()
+
+                if not template_instance:
+                    return Response(
+                        {"error": "Mail template not found."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+
+                DocumentModel = TemplateMailDocument
+
+            elif template_type == "sms":
+                template_instance = TemplateSMS.objects.filter(
+                    id=template_id,
+                    is_deleted=False
+                ).first()
+
+                if not template_instance:
+                    return Response(
+                        {"error": "SMS template not found."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+
+                DocumentModel = TemplateSMSDocument
+
+            elif template_type == "whatsapp":
+                template_instance = TemplateWhatsApp.objects.filter(
+                    id=template_id,
+                    is_deleted=False
+                ).first()
+
+                if not template_instance:
+                    return Response(
+                        {"error": "WhatsApp template not found."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+
+                DocumentModel = TemplateWhatsAppDocument
+
+            else:
+                return Response(
+                    {"error": "Invalid template type. Allowed values: mail, sms, whatsapp."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # ── 2. Validate file presence ────────────────────────────────────
+            uploaded_file = request.FILES.get("file")
+
+            if not uploaded_file:
+                return Response(
+                    {"error": "No file was submitted. Send the file under the key 'file'."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # ── 3. Create the document record ────────────────────────────────
+            document = DocumentModel.objects.create(
+                template=template_instance,
+                file=uploaded_file,
+            )
+
+            logger.info(
+                f"✅ Template document uploaded: type={template_type}, "
+                f"template_id={template_id}, doc_id={document.id}, "
+                f"file={uploaded_file.name}"
+            )
+
+            # ── 4. Return the created document data ──────────────────────────
+            return Response(
+                {
+                    "id": str(document.id),
+                    "file": document.file.url if document.file else None,
+                    "uploaded_at": document.uploaded_at.isoformat() if hasattr(document, 'uploaded_at') else None,
+                    "template_id": str(template_id),
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        except Exception:
+            logger.error(
+                "Template Document Upload Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 # -------------------------------------------------------------------
 # TEMPLATE SOFT DELETE API (DELETE)
@@ -2945,7 +3146,9 @@ class TemplateDeleteAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
+# -------------------------------------------------------------------
+# LINKEDIN LOGIN API
+# -------------------------------------------------------------------
 class LinkedInLoginAPIView(APIView):
     def get(self, request):
         auth_url = (
@@ -2958,7 +3161,9 @@ class LinkedInLoginAPIView(APIView):
         )
         return redirect(auth_url)    
 
-
+# -------------------------------------------------------------------
+# LINKEDIN CALLBACK API
+# -------------------------------------------------------------------
 class LinkedInCallbackAPIView(APIView):
     def get(self, request):
         code = request.GET.get("code")
@@ -2986,7 +3191,9 @@ class LinkedInCallbackAPIView(APIView):
         return HttpResponseRedirect(
             f"{settings.FRONTEND_URL}?linkedin=connected"
         )
-
+# -------------------------------------------------------------------
+# LINKEDIN STATUS API
+# -------------------------------------------------------------------
 class LinkedInStatusAPIView(APIView):
     def get(self, request):
         return Response({
@@ -3010,6 +3217,9 @@ class FacebookLoginAPIView(APIView):
 
         return redirect(auth_url)
 
+# -------------------------------------------------------------------
+# FACEBOOK CALLBACK API
+# -------------------------------------------------------------------
 class FacebookCallbackAPIView(APIView):
     def get(self, request):
         code = request.GET.get("code")
@@ -3040,7 +3250,9 @@ class FacebookCallbackAPIView(APIView):
             f"{settings.FRONTEND_URL}?facebook=connected"
         )
 
-
+# -------------------------------------------------------------------
+# FACEBOOK STATUS API
+# -------------------------------------------------------------------
 class FacebookStatusAPIView(APIView):
     def get(self, request):
         return Response({

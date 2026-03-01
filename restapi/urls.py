@@ -40,6 +40,7 @@ from .views import (
     LeadActivateAPIView,
     LeadInactivateAPIView,
     LeadSoftDeleteAPIView,
+    LeadEmailAPIView,
 
     # ==================================================
     # Lead Notes APIs
@@ -111,6 +112,7 @@ from .views import (
     TemplateUpdateAPIView,
     TemplateDeleteAPIView,
     TemplateDetailAPIView,
+    TemplateDocumentUploadAPIView,
 
     LinkedInLoginAPIView,
     LinkedInCallbackAPIView,
@@ -179,6 +181,23 @@ urlpatterns = [
     # Soft delete lead
     path("leads/<uuid:lead_id>/delete/", LeadSoftDeleteAPIView.as_view(), name="lead-soft-delete"),
 
+    path("lead-email/", LeadEmailAPIView.as_view(), name="lead-email"),
+    
+    path("twilio/send-sms/", SendSMSAPIView.as_view()),
+    path("twilio/make-call/", MakeCallAPIView.as_view()),
+
+# GET: Retrieve SMS
+# Example:
+# /api/twilio/sms/?lead_uuid=<lead_uuid>
+# lead_uuid is REQUIRED
+path("twilio/sms/", TwilioMessageListAPIView.as_view(), name="twilio-sms-list"),
+
+# GET: Retrieve Calls
+# Example:
+# /api/twilio/calls/?lead_uuid=<lead_uuid>
+# lead_uuid is REQUIRED
+path("twilio/calls/", TwilioCallListAPIView.as_view(), name="twilio-call-list"),  
+
 # ==================================================
 # LEAD NOTES APIs
 # ==================================================
@@ -194,6 +213,7 @@ path("leads/notes/<uuid:note_id>/delete/", LeadNoteDeleteAPIView.as_view(), name
 
 # List all notes for a specific lead
 path("leads/<uuid:lead_id>/notes/", LeadNoteListAPIView.as_view(), name="lead-note-list"),
+
 
 # ==================================================
 # CAMPAIGN APIs
@@ -248,6 +268,7 @@ path("leads/<uuid:lead_id>/notes/", LeadNoteListAPIView.as_view(), name="lead-no
     path("twilio/send-sms/", SendSMSAPIView.as_view()),
     path("twilio/make-call/", MakeCallAPIView.as_view()),
 
+<<<<<<< HEAD
     # GET: Retrieve SMS
 # Example:
 # /api/twilio/sms/?lead_uuid=<lead_uuid>
@@ -259,6 +280,9 @@ path("twilio/sms/", TwilioMessageListAPIView.as_view(), name="twilio-sms-list"),
 # /api/twilio/calls/?lead_uuid=<lead_uuid>
 # lead_uuid is REQUIRED
 path("twilio/calls/", TwilioCallListAPIView.as_view(), name="twilio-call-list"),  
+=======
+
+>>>>>>> b4f099b (added lead_mail)
 
     
 
@@ -343,6 +367,12 @@ path(
 # ==================================================
 # TEMPLATE APIs
 # ==================================================
+    
+    path(
+        "templates/<str:template_type>/<uuid:template_id>/documents/",
+        TemplateDocumentUploadAPIView.as_view(),
+        name="template-document-upload",
+    ),
 
     # List templates by type (mail / sms / whatsapp)
     path(
