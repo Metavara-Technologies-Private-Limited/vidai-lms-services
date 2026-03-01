@@ -41,6 +41,7 @@ from .views import (
     LeadInactivateAPIView,
     LeadSoftDeleteAPIView,
     LeadEmailAPIView,
+    LeadMailListAPIView,
 
     # ==================================================
     # Lead Notes APIs
@@ -180,10 +181,19 @@ urlpatterns = [
 
     # Soft delete lead
     path("leads/<uuid:lead_id>/delete/", LeadSoftDeleteAPIView.as_view(), name="lead-soft-delete"),
-
-    path("lead-email/", LeadEmailAPIView.as_view(), name="lead-email"),
     
+    # Send lead email
+    path("lead-email/", LeadEmailAPIView.as_view(), name="lead-email"),
+
+    # GET: Retrieve mail
+    # Example:
+    # /api/lead-mail/?lead_uuid=<lead_uuid>
+    # lead_uuid is REQUIRED
+    path("lead-mail/", LeadMailListAPIView.as_view(), name="lead-mail-list"),
+    
+    # send sms using Twilio
     path("twilio/send-sms/", SendSMSAPIView.as_view()),
+    # make call using Twilio
     path("twilio/make-call/", MakeCallAPIView.as_view()),
 
 # GET: Retrieve SMS
