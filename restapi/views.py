@@ -1,15 +1,28 @@
+# =====================================================
 # Python Standard Library
+# =====================================================
 
 import logging
 import traceback
+import requests
+import secrets
+from datetime import datetime
 
+
+# =====================================================
 # Django Imports
+# =====================================================
 
-from django.utils import timezone
-from django.shortcuts import get_object_or_404
+from django.conf import settings
 from django.db import transaction
+from django.shortcuts import get_object_or_404, redirect
+from django.utils import timezone
+from django.http import HttpResponseRedirect
 
+
+# =====================================================
 # Third-Party Imports (DRF + Swagger)
+# =====================================================
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -20,16 +33,10 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 
-from django.shortcuts import redirect
-from django.conf import settings
-from rest_framework.views import APIView
-from rest_framework.response import Response
-import requests
-import secrets
-from django.http import HttpResponseRedirect
-from datetime import datetime
 
+# =====================================================
 # Project Imports – Models
+# =====================================================
 
 from restapi.models import (
     Clinic,
@@ -41,7 +48,8 @@ from restapi.models import (
     CampaignSocialMediaConfig,
     Pipeline,
     PipelineStage,
-     LeadEmail,
+    LeadEmail,
+    
     TemplateMail,
     TemplateSMS,
     TemplateWhatsApp,
@@ -49,107 +57,120 @@ from restapi.models import (
     TemplateMailDocument,
     TemplateSMSDocument,
     CampaignEmailConfig,
+    TwilioMessage,
+    TwilioCall,
 )
 
 from .models import Lead, Campaign, Lab
 
-# Project Imports – Serializers
 
+# =====================================================
+# Project Imports – Serializers
+# =====================================================
+
+# Ticket
 from restapi.serializers.ticket_serializer import (
     TicketListSerializer,
     TicketDetailSerializer,
     TicketWriteSerializer,
     LabReadSerializer,
     LabWriteSerializer,
-    
 )
 
+# Clinic
 from restapi.serializers.clinic import (
     ClinicSerializer,
     ClinicReadSerializer,
 )
 
+# Employee
 from restapi.serializers.employee import (
     EmployeeCreateSerializer,
     EmployeeReadSerializer,
     UserCreateSerializer,
 )
 
-from restapi.serializers.lead_note_serializers import (
-    LeadNoteSerializer,
-    LeadNoteReadSerializer,
-)
+# Lead
 from restapi.serializers.lead_serializer import (
     LeadSerializer,
     LeadReadSerializer,
 )
-from restapi.serializers.lead_email_serializer import LeadEmailSerializer
-from restapi.services.lead_email_service import send_lead_email
 
+# Lead Notes
+from restapi.serializers.lead_note_serializers import (
+    LeadNoteSerializer,
+    LeadNoteReadSerializer,
+)
+
+# Lead Email / Mail
+from restapi.serializers.lead_email_serializer import (
+    LeadEmailSerializer,
+    LeadMailListSerializer,  # ✅ Added for GET API
+)
+
+# Campaign
 from restapi.serializers.campaign_serializer import (
     CampaignSerializer,
     CampaignReadSerializer,
     SocialMediaCampaignSerializer,
-    EmailCampaignCreateSerializer
+    EmailCampaignCreateSerializer,
 )
 
+# Mailchimp
 from restapi.serializers.mailchimp_serializer import (
     MailchimpWebhookSerializer,
 )
-from restapi.services.mailchimp_service import (
-    create_mailchimp_event,
-)
 
+# Social Media Callback
 from restapi.serializers.campaign_social_post_serializer import (
-    CampaignSocialPostCallbackSerializer
-)
-from restapi.services.campaign_social_post_service import (
-    handle_zapier_callback
+    CampaignSocialPostCallbackSerializer,
 )
 
+# Twilio
 from restapi.serializers.twilio_serializers import (
     SendSMSSerializer,
     MakeCallSerializer,
-)
-from restapi.services.twilio_service import send_sms, make_call
-
-from restapi.models import TwilioMessage, TwilioCall
-from restapi.serializers.twilio_serializers import (
     TwilioMessageListSerializer,
     TwilioCallListSerializer,
 )
 
+# Pipeline
 from restapi.serializers.pipeline_serializer import (
     PipelineSerializer,
     PipelineReadSerializer,
 )
 
+# Templates
 from restapi.serializers.template_serializers import (
     TemplateMailSerializer,
     TemplateSMSSerializer,
     TemplateWhatsAppSerializer,
-
     TemplateMailReadSerializer,
     TemplateSMSReadSerializer,
     TemplateWhatsAppReadSerializer,
 )
-# Project Imports – Services
 
+
+# =====================================================
+# Project Imports – Services
+# =====================================================
+
+from restapi.services.lead_email_service import send_lead_email
+from restapi.services.mailchimp_service import create_mailchimp_event
+from restapi.services.campaign_social_post_service import handle_zapier_callback
+from restapi.services.twilio_service import send_sms, make_call
 from restapi.services.zapier_service import send_to_zapier
 from restapi.services.pipeline_service import (
     add_stage,
     update_stage,
     save_stage_rules,
     save_stage_fields,
-    
 )
-
 from restapi.services.lead_note_service import (
     create_lead_note,
     update_lead_note,
     delete_lead_note,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -944,7 +965,43 @@ class LeadEmailAPIView(APIView):
             },
             status=status.HTTP_201_CREATED
         )
-    
+
+class LeadMailListAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Retrieve Lead Mail list (optional filter by lead_uuid)",
+        manual_parameters=[
+            openapi.Parameter(
+                "lead_uuid",
+                openapi.IN_QUERY,
+                description="Filter by Lead UUID (optional)",
+                type=openapi.TYPE_STRING,
+                required=False,  # ✅ Now optional
+            )
+        ],
+        responses={200: LeadMailListSerializer(many=True)},
+        tags=["Lead Mail"],
+    )
+    def get(self, request):
+        try:
+            lead_uuid = request.query_params.get("lead_uuid")
+
+            queryset = LeadEmail.objects.all().order_by("-created_at")
+
+            # ✅ Apply filter only if provided
+            if lead_uuid:
+                queryset = queryset.filter(lead__id=lead_uuid)
+
+            serializer = LeadMailListSerializer(queryset, many=True)
+
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        except Exception:
+            logger.error("Lead Mail Fetch Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 # -------------------------------------------------------------------
 # Campaign Create API View (POST)
 # -------------------------------------------------------------------
@@ -2964,17 +3021,15 @@ class TemplateDocumentUploadAPIView(APIView):
 
     @swagger_auto_schema(
         operation_description="Upload a document to a template (mail, sms, whatsapp)",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=["file"],
-            properties={
-                "file": openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    format=openapi.FORMAT_BINARY,
-                    description="The file to upload",
-                )
-            },
-        ),
+        manual_parameters=[
+            openapi.Parameter(
+                name="file",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_FILE,
+                required=True,
+                description="The file to upload"
+            )
+        ],
         responses={
             201: openapi.Schema(
                 type=openapi.TYPE_OBJECT,
@@ -2993,12 +3048,10 @@ class TemplateDocumentUploadAPIView(APIView):
     )
     def post(self, request, template_type, template_id):
 
-        # Prevent Swagger schema crash
         if getattr(self, "swagger_fake_view", False):
             return Response(status=200)
 
         try:
-            # ── 1. Validate template_type and fetch the parent template ──────
             if template_type == "mail":
                 template_instance = TemplateMail.objects.filter(
                     id=template_id,
@@ -3047,7 +3100,6 @@ class TemplateDocumentUploadAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ── 2. Validate file presence ────────────────────────────────────
             uploaded_file = request.FILES.get("file")
 
             if not uploaded_file:
@@ -3056,7 +3108,6 @@ class TemplateDocumentUploadAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ── 3. Create the document record ────────────────────────────────
             document = DocumentModel.objects.create(
                 template=template_instance,
                 file=uploaded_file,
@@ -3068,7 +3119,6 @@ class TemplateDocumentUploadAPIView(APIView):
                 f"file={uploaded_file.name}"
             )
 
-            # ── 4. Return the created document data ──────────────────────────
             return Response(
                 {
                     "id": str(document.id),
