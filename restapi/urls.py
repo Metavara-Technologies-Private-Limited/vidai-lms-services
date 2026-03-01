@@ -268,7 +268,7 @@ path("leads/<uuid:lead_id>/notes/", LeadNoteListAPIView.as_view(), name="lead-no
     path("twilio/send-sms/", SendSMSAPIView.as_view()),
     path("twilio/make-call/", MakeCallAPIView.as_view()),
 
-<<<<<<< HEAD
+
     # GET: Retrieve SMS
 # Example:
 # /api/twilio/sms/?lead_uuid=<lead_uuid>
@@ -280,9 +280,9 @@ path("twilio/sms/", TwilioMessageListAPIView.as_view(), name="twilio-sms-list"),
 # /api/twilio/calls/?lead_uuid=<lead_uuid>
 # lead_uuid is REQUIRED
 path("twilio/calls/", TwilioCallListAPIView.as_view(), name="twilio-call-list"),  
-=======
 
->>>>>>> b4f099b (added lead_mail)
+
+
 
     
 
