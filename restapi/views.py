@@ -60,6 +60,8 @@ from restapi.models import (
     TwilioMessage,
     TwilioCall,
 )
+from restapi.models.social_account import SocialAccount
+from django.http import HttpResponseRedirect
 
 from .models import Lead, Campaign, Lab
 
@@ -2053,6 +2055,10 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     is_active=True,
                 )
 
+                campaign.platform_data = data.get("platform_data", {})
+                campaign.budget_data = data.get("budget_data", {})
+                campaign.save(update_fields=["platform_data", "budget_data"])
+
                 channels = []
 
                 for platform in data["select_ad_accounts"]:
@@ -2063,23 +2069,49 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     )
                     channels.append(platform)
 
+                clinic_id = data["clinic"]
+
+                social = SocialAccount.objects.filter(
+                    clinic_id=clinic_id,
+                    platform="facebook",
+                    is_active=True
+                ).first()
+
+                if "facebook" in channels:
+                    if not social:
+                        return Response(
+                            {"error": "Facebook not connected for this clinic"},
+                            status=400
+                        )
+
+                    fb_response = post_to_facebook(
+                        page_id=social.page_id,
+                        page_token=social.access_token,
+                        message=campaign.campaign_content
+                    )
+
+                    print("FB POST RESPONSE:", fb_response)
+
                 # 🔥 UPDATED ZAPIER PAYLOAD (Boolean Flags)
-                send_to_zapier({
-                    "event": "social_media_campaign_created",
-                    "campaign_id": str(campaign.id),
-                    "campaign_name": campaign.campaign_name,
-                    "clinic_id": campaign.clinic.id,
-                    "campaign_mode": campaign.campaign_mode,
+                # send_to_zapier({
+                #     "event": "social_media_campaign_created",
+                #     "campaign_id": str(campaign.id),
+                #     "campaign_name": campaign.campaign_name,
+                #     "clinic_id": campaign.clinic.id,
+                #     "campaign_mode": campaign.campaign_mode,
 
-                    "is_instagram": "instagram" in channels,
-                    "is_facebook": "facebook" in channels,
-                    "is_linkedin": "linkedin" in channels,
+                #     "is_instagram": "instagram" in channels,
+                #     "is_facebook": "facebook" in channels,
+                #     "is_linkedin": "linkedin" in channels,
 
-                    "start_date": campaign.start_date.isoformat(),
-                    "end_date": campaign.end_date.isoformat(),
-                    "enter_time": campaign.enter_time.strftime("%H:%M"),
-                    "campaign_content": campaign.campaign_content,
-                })
+                #     "facebook_access_token": social.access_token if social else None,
+                #     "facebook_page_id": social.page_id if social else None,
+
+                #     "start_date": campaign.start_date.isoformat(),
+                #     "end_date": campaign.end_date.isoformat(),
+                #     "enter_time": campaign.enter_time.strftime("%H:%M"),
+                #     "campaign_content": campaign.campaign_content,
+                # })
 
                 created_campaigns.append({
                     "campaign_id": campaign.id,
@@ -3260,51 +3292,91 @@ class FacebookLoginAPIView(APIView):
             "?response_type=code"
             f"&client_id={settings.FACEBOOK_CLIENT_ID}"
             f"&redirect_uri={settings.FACEBOOK_REDIRECT_URI}"
-            "&scope=email,public_profile"
+            "&scope=public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts"
             f"&state={state}"
             "&auth_type=rerequest"
         )
-
+        print("FB APP ID:", settings.FACEBOOK_CLIENT_ID, auth_url)
         return redirect(auth_url)
 
-# -------------------------------------------------------------------
-# FACEBOOK CALLBACK API
-# -------------------------------------------------------------------
+
 class FacebookCallbackAPIView(APIView):
     def get(self, request):
-        code = request.GET.get("code")
+        try:
+            code = request.GET.get("code")
 
-        if not code:
-            return Response({"error": "No code received"})
+            token_url = "https://graph.facebook.com/v19.0/oauth/access_token"
 
-        token_url = "https://graph.facebook.com/v19.0/oauth/access_token"
+            params = {
+                "client_id": settings.FACEBOOK_CLIENT_ID,
+                "client_secret": settings.FACEBOOK_CLIENT_SECRET,
+                "redirect_uri": settings.FACEBOOK_REDIRECT_URI,
+                "code": code,
+            }
 
-        params = {
-            "client_id": settings.FACEBOOK_CLIENT_ID,
-            "client_secret": settings.FACEBOOK_CLIENT_SECRET,
-            "redirect_uri": settings.FACEBOOK_REDIRECT_URI,
-            "code": code,
-        }
+            response = requests.get(token_url, params=params)
+            data = response.json()
 
-        response = requests.get(token_url, params=params)
-        data = response.json()
+            if "access_token" not in data:
+                return Response(data)
 
-        print("FB TOKEN RESPONSE:", data)
+            user_token = data["access_token"]
 
-        if "access_token" not in data:
-            return Response(data)  # show real error
+            pages_response = requests.get(
+                "https://graph.facebook.com/v19.0/me/accounts",
+                params={"access_token": user_token},
+            )
 
-        request.session["facebook_token"] = data["access_token"]
+            pages_data = pages_response.json()
 
-        return HttpResponseRedirect(
-            f"{settings.FRONTEND_URL}?facebook=connected"
-        )
+            if not pages_data.get("data"):
+                return Response({"error": "No pages found"})
 
-# -------------------------------------------------------------------
-# FACEBOOK STATUS API
-# -------------------------------------------------------------------
+            page = pages_data["data"][0]
+
+            clinic = Clinic.objects.first()
+
+            SocialAccount.objects.update_or_create(
+                clinic=clinic,
+                platform="facebook",
+                defaults={
+                    "access_token": page["access_token"],
+                    "page_id": page["id"],
+                    "page_name": page["name"],
+                    "is_active": True,
+                },
+            )
+
+            # return Response({"status": "facebook connected", "page_name": page["name"]})
+            return HttpResponseRedirect(
+                f"{settings.FRONTEND_URL}?facebook=connected&page={page['name']}"
+            )
+
+        except Exception as e:
+            import traceback
+
+            traceback.print_exc()
+            return Response({"error": str(e)})
+
+
 class FacebookStatusAPIView(APIView):
     def get(self, request):
-        return Response({
-            "connected": bool(request.session.get("facebook_token"))
-        })
+        clinic = Clinic.objects.first()
+
+        connected = SocialAccount.objects.filter(
+            clinic=clinic, platform="facebook", is_active=True
+        ).exists()
+
+        return Response({"connected": connected})
+
+
+def post_to_facebook(page_id, page_token, message):
+    url = f"https://graph.facebook.com/v19.0/{page_id}/feed"
+
+    payload = {
+        "message": message,
+        "access_token": page_token,
+    }
+
+    response = requests.post(url, data=payload)
+    return response.json()
