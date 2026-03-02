@@ -1,7 +1,7 @@
 # virtual environment
 .venv/
 venv/
-
+.env
 
 
 # python cache
