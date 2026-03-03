@@ -121,6 +121,7 @@ from .views import (
     FacebookLoginAPIView,
     FacebookCallbackAPIView,
     FacebookStatusAPIView,
+    FacebookInsightsAPIView,
 )
 
 urlpatterns = [
@@ -415,5 +416,9 @@ path(
     path("facebook/login/", FacebookLoginAPIView.as_view()),
     path("facebook/callback/", FacebookCallbackAPIView.as_view()),
     path("facebook/status/", FacebookStatusAPIView.as_view()),
+    path(
+    "campaign/<uuid:campaign_id>/facebook-insights/",
+    FacebookInsightsAPIView.as_view(),
+),
 
 ]

@@ -7,8 +7,12 @@ import traceback
 import requests
 import secrets
 from datetime import datetime
-
-
+from django.utils.timezone import make_aware  # ✅ ADD THIS
+from django.utils.html import strip_tags
+from restapi.services.facebook_service import (
+    post_to_facebook,
+    get_facebook_post_insights,
+)
 # =====================================================
 # Django Imports
 # =====================================================
@@ -1015,9 +1019,9 @@ class CampaignCreateAPIView(APIView):
             "Create a new campaign along with optional "
             "social media and email configurations"
         ),
-        request_body=CampaignSerializer,        # WRITE
+        request_body=CampaignSerializer,
         responses={
-            201: CampaignReadSerializer,         # READ
+            201: CampaignReadSerializer,
             400: "Validation Error",
             500: "Internal Server Error",
         },
@@ -1038,28 +1042,21 @@ class CampaignCreateAPIView(APIView):
             if campaign.email_configs.filter(is_active=True).exists():
                 channels.append("email")
 
-            print("ZAPIER CHANNELS →", channels)  # debug (optional)
-
-            # 🔔 ZAPIER
             send_to_zapier({
-    "event": "campaign_created",
-    "campaign_id": str(campaign.id),
-    "campaign_name": campaign.campaign_name,
-    "clinic_id": campaign.clinic.id,
-    "campaign_mode": campaign.campaign_mode,
-    "status": campaign.status,
-    "is_active": campaign.is_active,
-
-    "channels": channels,
-
-    "start_date": campaign.start_date.isoformat() if campaign.start_date else None,
-    "end_date": campaign.end_date.isoformat() if campaign.end_date else None,
-
-    "selected_start": campaign.selected_start.isoformat() if campaign.selected_start else None,
-    "selected_end": campaign.selected_end.isoformat() if campaign.selected_end else None,
-
-    "enter_time": campaign.enter_time.strftime("%H:%M") if campaign.enter_time else None,
-})
+                "event": "campaign_created",
+                "campaign_id": str(campaign.id),
+                "campaign_name": campaign.campaign_name,
+                "clinic_id": campaign.clinic.id,
+                "campaign_mode": campaign.campaign_mode,
+                "status": campaign.status,
+                "is_active": campaign.is_active,
+                "channels": channels,
+                "start_date": campaign.start_date.isoformat() if campaign.start_date else None,
+                "end_date": campaign.end_date.isoformat() if campaign.end_date else None,
+                "selected_start": campaign.selected_start.isoformat() if campaign.selected_start else None,
+                "selected_end": campaign.selected_end.isoformat() if campaign.selected_end else None,
+                "enter_time": campaign.enter_time.strftime("%H:%M") if campaign.enter_time else None,
+            })
 
             return Response(
                 CampaignReadSerializer(campaign).data,
@@ -1081,6 +1078,7 @@ class CampaignCreateAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
 # -------------------------------------------------------------------
 # Campaign Update API View (PUT)
 # -------------------------------------------------------------------
@@ -2008,7 +2006,6 @@ class TwilioCallListAPIView(APIView):
 # ------------------------------------------------------------------
 # Social Media Campaign Create API View (POST)
 # -------------------------------------------------------------------
-
 class SocialMediaCampaignCreateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -2039,6 +2036,47 @@ class SocialMediaCampaignCreateAPIView(APIView):
 
             for mode in data["campaign_mode"]:
 
+                # ----------------------------------------------------------
+                # Extract facebook message:
+                # Priority 1 — platform_data.facebook (from frontend editor)
+                # Priority 2 — campaign_content (Postman / fallback)
+                # ----------------------------------------------------------
+                raw_platform_data = data.get("platform_data") or {}
+
+                # If platform_data is missing keys but campaign_content exists,
+                # auto-populate platform_data.facebook from campaign_content
+                # so it is always saved correctly.
+                raw_campaign_content = (data.get("campaign_content") or "").strip()
+
+                if not raw_platform_data.get("facebook") and raw_campaign_content:
+                    for acc in data.get("select_ad_accounts", []):
+                        if acc not in raw_platform_data:
+                            raw_platform_data[acc] = raw_campaign_content
+
+                _platform_facebook = strip_tags(raw_platform_data.get("facebook", "") or "").strip()
+                _campaign_content  = strip_tags(raw_campaign_content).strip()
+                facebook_message   = _platform_facebook or _campaign_content
+
+                print("=" * 60)
+                print("DEBUG raw platform_data   :", raw_platform_data)
+                print("DEBUG campaign_content     :", _campaign_content)
+                print("DEBUG facebook_message     :", facebook_message)
+                print("=" * 60)
+
+                # Fix naive datetime warnings by making datetimes timezone-aware
+                from datetime import datetime, time, date
+                start = data["start_date"]
+                end   = data["end_date"]
+
+                selected_start = timezone.make_aware(
+                    datetime.combine(start if isinstance(start, date) else datetime.strptime(start, "%Y-%m-%d").date(),
+                    time(0, 0, 0))
+                )
+                selected_end = timezone.make_aware(
+                    datetime.combine(end if isinstance(end, date) else datetime.strptime(end, "%Y-%m-%d").date(),
+                    time(23, 59, 59))
+                )
+
                 campaign = Campaign.objects.create(
                     clinic_id=data["clinic"],
                     campaign_name=data["campaign_name"],
@@ -2048,16 +2086,19 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     start_date=data["start_date"],
                     end_date=data["end_date"],
                     campaign_mode=mode_mapping.get(mode),
-                    campaign_content=data["campaign_content"],
-                    selected_start=data["start_date"],
-                    selected_end=data["end_date"],
+                    campaign_content=facebook_message,
+                    selected_start=selected_start,
+                    selected_end=selected_end,
                     enter_time=data["enter_time"],
+                    platform_data=raw_platform_data,
+                    budget_data=data.get("budget_data") or {},
                     is_active=True,
                 )
 
-                campaign.platform_data = data.get("platform_data", {})
-                campaign.budget_data = data.get("budget_data", {})
-                campaign.save(update_fields=["platform_data", "budget_data"])
+                print("=" * 60)
+                print("PLATFORM DATA:", campaign.platform_data)
+                print("FACEBOOK MESSAGE EXTRACTED:", facebook_message)
+                print("=" * 60)
 
                 channels = []
 
@@ -2077,46 +2118,56 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     is_active=True
                 ).first()
 
+                fb_post_id = None
+
+                print("=" * 60)
+                print("CHANNELS:", channels)
+                print("SOCIAL ACCOUNT FOUND:", social)
+                print("=" * 60)
+
                 if "facebook" in channels:
                     if not social:
+                        print("NO FACEBOOK SOCIAL ACCOUNT for clinic_id:", clinic_id)
                         return Response(
                             {"error": "Facebook not connected for this clinic"},
                             status=400
                         )
 
-                    fb_response = post_to_facebook(
-                        page_id=social.page_id,
-                        page_token=social.access_token,
-                        message=campaign.campaign_content
-                    )
+                    print("=" * 60)
+                    print(">>> CALLING post_to_facebook()")
+                    print("Page ID   :", social.page_id)
+                    print("Page Name :", social.page_name)
+                    print("Token (20):", social.access_token[:20] if social.access_token else "NONE")
+                    print("Message   :", facebook_message)
+                    print("=" * 60)
 
-                    print("FB POST RESPONSE:", fb_response)
+                    if not facebook_message:
+                        print("WARNING: facebook_message is empty — skipping FB post")
+                    else:
+                        fb_response = post_to_facebook(
+                            page_id=social.page_id,
+                            page_token=social.access_token,
+                            message=facebook_message
+                        )
 
-                # 🔥 UPDATED ZAPIER PAYLOAD (Boolean Flags)
-                # send_to_zapier({
-                #     "event": "social_media_campaign_created",
-                #     "campaign_id": str(campaign.id),
-                #     "campaign_name": campaign.campaign_name,
-                #     "clinic_id": campaign.clinic.id,
-                #     "campaign_mode": campaign.campaign_mode,
+                        print("FB POST FULL RESPONSE:", fb_response)
 
-                #     "is_instagram": "instagram" in channels,
-                #     "is_facebook": "facebook" in channels,
-                #     "is_linkedin": "linkedin" in channels,
+                        fb_post_id = fb_response.get("id")
+                        print("FB POST ID:", fb_post_id)
 
-                #     "facebook_access_token": social.access_token if social else None,
-                #     "facebook_page_id": social.page_id if social else None,
-
-                #     "start_date": campaign.start_date.isoformat(),
-                #     "end_date": campaign.end_date.isoformat(),
-                #     "enter_time": campaign.enter_time.strftime("%H:%M"),
-                #     "campaign_content": campaign.campaign_content,
-                # })
+                        if fb_post_id:
+                            # ✅ Save FB post ID directly to Campaign.post_id
+                            campaign.post_id = fb_post_id
+                            campaign.save(update_fields=["post_id"])
+                            print("FB POST ID SAVED TO campaign.post_id:", fb_post_id)
+                        else:
+                            print("FB POST ID IS NONE — check FB error above")
 
                 created_campaigns.append({
                     "campaign_id": campaign.id,
                     "mode": mode,
                     "platforms": channels,
+                    "fb_post_id": fb_post_id,
                 })
 
             return Response(
@@ -2128,13 +2179,11 @@ class SocialMediaCampaignCreateAPIView(APIView):
             )
 
         except Exception as e:
-            import traceback
             return Response({
                 "error": str(e),
                 "type": type(e).__name__,
                 "trace": traceback.format_exc()
             }, status=400)
-
 
 # ------------------------------------------------------------------
 # Ticketcreate API View (POST)
@@ -3381,3 +3430,80 @@ def post_to_facebook(page_id, page_token, message):
     response = requests.post(url, data=payload)
     print("Facebook Raw Response:", response.json())
     return response.json()
+
+
+# --------------------------------------------------
+# FACEBOOK POST INSIGHTS API (GET)
+# --------------------------------------------------
+
+class FacebookInsightsAPIView(APIView):
+
+    def get(self, request, campaign_id):
+
+        try:
+            # -------------------------------------------------
+            # 1️⃣ Get Campaign
+            # -------------------------------------------------
+            campaign = Campaign.objects.filter(
+                id=campaign_id,
+                is_active=True
+            ).first()
+
+            if not campaign:
+                return Response(
+                    {"error": "Campaign not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # -------------------------------------------------
+            # 2️⃣ Get post_id directly from Campaign
+            # -------------------------------------------------
+            if not campaign.post_id:
+                return Response(
+                    {"error": "post_id not available for this campaign"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            post_id = campaign.post_id
+
+            # -------------------------------------------------
+            # 3️⃣ Get Social Account
+            # -------------------------------------------------
+            social = SocialAccount.objects.filter(
+                clinic=campaign.clinic,
+                platform="facebook",
+                is_active=True
+            ).first()
+
+            if not social:
+                return Response(
+                    {"error": "Facebook account not connected"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # -------------------------------------------------
+            # 4️⃣ Fetch Insights From Facebook
+            # -------------------------------------------------
+            insights = get_facebook_post_insights(
+                post_id=post_id,
+                page_token=social.access_token
+            )
+
+            return Response(
+                {
+                    "campaign_id": campaign.id,
+                    "post_id": post_id,
+                    "insights": insights
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            import traceback
+            return Response(
+                {
+                    "error": str(e),
+                    "trace": traceback.format_exc()
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )

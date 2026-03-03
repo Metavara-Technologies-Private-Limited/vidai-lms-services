@@ -38,6 +38,16 @@ class Campaign(models.Model):
 
     campaign_content = models.TextField(blank=True)
 
+    # ----------------------------
+    # ✅ NEW: SOCIAL MEDIA POST ID
+    # ----------------------------
+    post_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Stores social media post ID (Facebook / LinkedIn / Instagram)"
+    )
+
     selected_start = models.DateTimeField()
     selected_end = models.DateTimeField()
     enter_time = models.TimeField()
@@ -88,5 +98,6 @@ class Campaign(models.Model):
     modified_at = models.DateTimeField(auto_now=True)
     
     converted_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         db_table = "restapi_campaign"
