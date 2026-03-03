@@ -21,6 +21,14 @@ class CampaignSocialMediaConfig(models.Model):
         related_name="social_configs"
     )
 
+    # ✅ POST ID (Correct Place)
+    post_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Stores social media post ID"
+    )
+
     platform_name = models.CharField(
         max_length=50,
         choices=PLATFORM_CHOICES

@@ -7,11 +7,7 @@ from restapi.models import (
     CampaignEmailConfig,
 )
 
-from restapi.services.campaign_service import (
-    create_campaign,
-)
-from restapi.services.campaign_service import update_campaign
-
+from restapi.services.campaign_service import create_campaign, update_campaign
 
 
 # =====================================================
@@ -25,8 +21,10 @@ class CampaignSocialMediaSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "platform_name",
+            "post_id",        # ✅ Added
             "is_active",
         ]
+        read_only_fields = ["post_id"]   # ✅ Backend controlled
 
 
 # =====================================================
@@ -66,6 +64,10 @@ class CampaignReadSerializer(serializers.ModelSerializer):
         model = Campaign
         fields = "__all__"
 
+
+# =====================================================
+# Social Media Campaign Serializer (Flexible Version)
+# =====================================================
 class SocialMediaCampaignSerializer(serializers.Serializer):
     clinic = serializers.IntegerField()
     campaign_name = serializers.CharField()
@@ -74,18 +76,58 @@ class SocialMediaCampaignSerializer(serializers.Serializer):
     target_audience = serializers.CharField()
     start_date = serializers.DateField()
     end_date = serializers.DateField()
+
     select_ad_accounts = serializers.ListField(
         child=serializers.CharField()
     )
+
     campaign_mode = serializers.ListField(
         child=serializers.CharField()
     )
-    campaign_content = serializers.CharField()
-    schedule_date_range = serializers.CharField()
+
+    # ✅ Flexible Content
+    campaign_content = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        default=""
+    )
+
+    schedule_date_range = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        default=""
+    )
+
     enter_time = serializers.TimeField()
 
+    # ✅ JSON Support
+    platform_data = serializers.JSONField(
+        required=False,
+        default=dict
+    )
+
+    budget_data = serializers.JSONField(
+        required=False,
+        default=dict
+    )
+
+    # ✅ Status Controls
+    status = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="draft"
+    )
+
+    is_active = serializers.BooleanField(
+        required=False,
+        default=False
+    )
+
+
 # =====================================================
-# Email Campaign CREATE Serializer (Only for Email API)
+# Email Campaign CREATE Serializer
 # =====================================================
 class EmailCampaignCreateSerializer(serializers.Serializer):
     clinic = serializers.IntegerField()
@@ -101,9 +143,7 @@ class EmailCampaignCreateSerializer(serializers.Serializer):
 
     email = CampaignEmailSerializer(many=True)
 
-# =====================================================
-# Campaign WRITE Serializer
-# =====================================================
+
 # =====================================================
 # Campaign WRITE Serializer
 # =====================================================
@@ -112,9 +152,9 @@ class CampaignSerializer(serializers.ModelSerializer):
     social_media = CampaignSocialMediaSerializer(many=True, required=False)
     email = CampaignEmailSerializer(many=True, required=False)
 
-    # ✅ JSONB FIELDS
+    # ✅ JSONB Fields
     platform_data = serializers.JSONField(required=False)
-    budget_data = serializers.JSONField(required=False)   # ✅ ADD THIS
+    budget_data = serializers.JSONField(required=False)
 
     class Meta:
         model = Campaign
@@ -135,11 +175,8 @@ class CampaignSerializer(serializers.ModelSerializer):
             "enter_time",
             "status",
             "is_active",
-
-            # ✅ JSONB FIELDS
             "platform_data",
-            "budget_data",   # ✅ ADD HERE
-
+            "budget_data",
             "social_media",
             "email",
         ]
@@ -175,6 +212,9 @@ class CampaignSerializer(serializers.ModelSerializer):
 
         return data
 
+    # =====================================================
+    # CREATE & UPDATE
+    # =====================================================
     def create(self, validated_data):
         return create_campaign(validated_data)
 
