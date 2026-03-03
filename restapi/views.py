@@ -3379,4 +3379,5 @@ def post_to_facebook(page_id, page_token, message):
     }
 
     response = requests.post(url, data=payload)
+    print("Facebook Raw Response:", response.json())
     return response.json()
