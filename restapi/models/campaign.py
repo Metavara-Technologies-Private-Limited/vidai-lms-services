@@ -39,13 +39,23 @@ class Campaign(models.Model):
     campaign_content = models.TextField(blank=True)
 
     # ----------------------------
-    # ✅ NEW: SOCIAL MEDIA POST ID
+    # ✅ SOCIAL MEDIA POST ID
     # ----------------------------
     post_id = models.CharField(
         max_length=255,
         null=True,
         blank=True,
         help_text="Stores social media post ID (Facebook / LinkedIn / Instagram)"
+    )
+
+    # ----------------------------
+    # ✅ NEW: IMAGE URL FOR SOCIAL POSTS
+    # ----------------------------
+    image_url = models.URLField(
+        max_length=2000,
+        null=True,
+        blank=True,
+        help_text="Public image URL attached to social media posts"
     )
 
     selected_start = models.DateTimeField()
@@ -60,16 +70,16 @@ class Campaign(models.Model):
         blank=True,
         help_text="Stores Facebook, Instagram, LinkedIn campaign data"
     )
-    
+
     # ----------------------------
-    # ✅ NEW: JSONB COLUMN FOR BUDGET
+    # ✅ JSONB COLUMN FOR BUDGET
     # ----------------------------
     budget_data = models.JSONField(
         default=dict,
         blank=True,
         help_text="Stores campaign budget structure (total, daily, split, spend, etc.)"
     )
-    
+
     # ----------------------------
     # STATUS FIELD
     # ----------------------------
@@ -96,7 +106,7 @@ class Campaign(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
-    
+
     converted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

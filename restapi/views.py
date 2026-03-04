@@ -7,12 +7,8 @@ import traceback
 import requests
 import secrets
 from datetime import datetime
-from django.utils.timezone import make_aware  # ✅ ADD THIS
-from django.utils.html import strip_tags
-from restapi.services.facebook_service import (
-    post_to_facebook,
-    get_facebook_post_insights,
-)
+
+
 # =====================================================
 # Django Imports
 # =====================================================
@@ -22,6 +18,7 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django.http import HttpResponseRedirect
+from django.utils.html import strip_tags
 
 
 # =====================================================
@@ -53,7 +50,7 @@ from restapi.models import (
     Pipeline,
     PipelineStage,
     LeadEmail,
-    
+
     TemplateMail,
     TemplateSMS,
     TemplateWhatsApp,
@@ -111,7 +108,7 @@ from restapi.serializers.lead_note_serializers import (
 # Lead Email / Mail
 from restapi.serializers.lead_email_serializer import (
     LeadEmailSerializer,
-    LeadMailListSerializer,  # ✅ Added for GET API
+    LeadMailListSerializer,
 )
 
 # Campaign
@@ -180,6 +177,232 @@ from restapi.services.lead_note_service import (
 
 logger = logging.getLogger(__name__)
 
+
+# =====================================================
+# HELPERS
+# =====================================================
+
+# Allowed direct image extensions
+_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.tiff', '.bmp')
+
+
+def _is_direct_image_url(url: str) -> bool:
+    """
+    Return True only when the URL path ends with a known image extension.
+    Strips query-string and fragment before checking.
+    e.g.  https://example.com/photo.jpg?w=800  → True
+          https://www.freepik.com/free-vector/... → False
+    """
+    if not url:
+        return False
+    clean = url.split("?")[0].split("#")[0].lower()
+    return clean.endswith(_IMAGE_EXTENSIONS)
+
+
+def _download_image(image_url: str):
+    """
+    Download image bytes from a public URL.
+
+    Returns (image_bytes, filename, content_type) on success.
+    Returns (None, None, None) on any failure.
+
+    Handles:
+    - Hotlink-protected hosts (sets Referer to the same origin)
+    - Wikipedia thumbnail redirect issues  →  strips /thumb/ variant
+    - Non-image HTML pages  →  rejected early via _is_direct_image_url
+    """
+    import re
+    import urllib.parse
+
+    # ── 1. Reject HTML pages / non-image URLs immediately ──────────────────
+    if not _is_direct_image_url(image_url):
+        print(f"⚠️  Skipping non-image URL (not a direct image file): {image_url}")
+        return None, None, None
+
+    # ── 2. Fix Wikipedia / Wikimedia URLs via MD5 path recomputation ──────
+    #
+    # Wikimedia derives the upload path from the MD5 of the normalised filename:
+    #   md5    = hashlib.md5(filename.encode("utf-8")).hexdigest()
+    #   path   = f"{md5[0]}/{md5[:2]}/{filename}"
+    #
+    # This means the URL the user pastes may have the WRONG hash dirs (e.g.
+    # they copied a /thumb/ URL or constructed the path by hand).  We fix it
+    # by re-deriving the correct hash path ourselves.
+    #
+    # Handles both:
+    #   • /thumb/  URLs  (e.g. .../thumb/2/27/File.jpg/1280px-File.jpg)
+    #   • direct   URLs  (e.g. .../commons/2/27/File.jpg)  ← hash may be wrong
+
+    wiki_upload_pattern = re.compile(
+        r"https://upload\.wikimedia\.org/wikipedia/(?:commons|en)/"
+        r"(?:thumb/[^/]+/[^/]+/|[^/]+/[^/]+/)([^/?#]+?)(?:/\d+px-[^/?#]+)?(?:[?#].*)?$",
+        re.IGNORECASE,
+    )
+    wiki_match = wiki_upload_pattern.match(image_url)
+    if wiki_match:
+        import hashlib
+
+        raw_filename = urllib.parse.unquote(wiki_match.group(1))
+        # Strip leading size prefix if this was a thumb  e.g. "1280px-Holi.jpg"
+        clean_filename = re.sub(r"^\d+px-", "", raw_filename)
+        # Wikimedia normalises: spaces → underscores, first letter uppercase
+        clean_filename = clean_filename.replace(" ", "_")
+        if clean_filename:
+            clean_filename = clean_filename[0].upper() + clean_filename[1:]
+
+        # Recompute the correct MD5-based hash dirs
+        md5 = hashlib.md5(clean_filename.encode("utf-8")).hexdigest()
+        correct_url = (
+            f"https://upload.wikimedia.org/wikipedia/commons/"
+            f"{md5[0]}/{md5[:2]}/{urllib.parse.quote(clean_filename, safe='')}"
+        )
+        print(f"🔧 Wikipedia URL detected.")
+        print(f"   Original : {image_url}")
+        print(f"   Filename : {clean_filename}")
+        print(f"   MD5      : {md5}  →  dirs: {md5[0]}/{md5[:2]}/")
+        print(f"   Fixed URL: {correct_url}")
+        image_url = correct_url
+
+    # ── 3. Build headers (Referer = same origin to bypass hotlink guards) ──
+    parsed    = urllib.parse.urlparse(image_url)
+    referer   = f"{parsed.scheme}://{parsed.netloc}/"
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept":          "image/webp,image/apng,image/*,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer":         referer,
+        "sec-fetch-dest":  "image",
+        "sec-fetch-mode":  "no-cors",
+        "sec-fetch-site":  "cross-site",
+    }
+
+    # ── 4. Download ────────────────────────────────────────────────────────
+    try:
+        resp = requests.get(image_url, timeout=20, headers=headers, allow_redirects=True)
+        print(f"🔹 Image download status: {resp.status_code}  from  {image_url}")
+
+        if resp.status_code != 200:
+            print(f"❌ Image download failed: HTTP {resp.status_code}")
+            return None, None, None
+
+        image_bytes = resp.content
+
+        # ── 5. Derive filename & content-type ─────────────────────────────
+        raw_filename  = image_url.split("?")[0].split("/")[-1]
+        image_filename = urllib.parse.unquote(raw_filename) or "image.jpg"
+        image_filename = re.sub(r"\s+", "_", image_filename)
+
+        ext = image_filename.split(".")[-1].lower()
+        content_type_map = {
+            "jpg":  "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png":  "image/png",
+            "gif":  "image/gif",
+            "webp": "image/webp",
+            "tiff": "image/tiff",
+            "bmp":  "image/bmp",
+        }
+        content_type = content_type_map.get(ext, "image/jpeg")
+
+        print(f"🔹 Image filename : {image_filename}")
+        print(f"🔹 Image size     : {len(image_bytes)} bytes")
+        print(f"🔹 Content type   : {content_type}")
+
+        return image_bytes, image_filename, content_type
+
+    except Exception as e:
+        print(f"❌ Failed to download image: {e}")
+        return None, None, None
+
+
+# =====================================================
+# FACEBOOK POST HELPER FUNCTION
+# =====================================================
+
+def post_to_facebook(page_id, page_token, message, image_url=None):
+    """
+    Post a message (with optional image) to a Facebook Page.
+
+    Image handling strategy
+    ───────────────────────
+    1. Validate that image_url is a direct image file (not an HTML page).
+    2. Fix Wikipedia /thumb/ URLs automatically.
+    3. Download the image in Python (bypasses hotlink protection).
+    4. Upload to Facebook as multipart/form-data `source`.
+    5. If download fails for any reason → fall back to text-only post.
+    """
+
+    print("=" * 60)
+    print("📘 FACEBOOK POST DEBUG")
+    print(f"🔹 Page ID    : {page_id}")
+    print(f"🔹 Token (20) : {page_token[:20] if page_token else 'NONE'}")
+    print(f"🔹 Message    : {message}")
+    print(f"🔹 Image URL  : {image_url}")
+    print("=" * 60)
+
+    # ── Attempt image post ─────────────────────────────────────────────────
+    if image_url:
+        image_bytes, image_filename, content_type = _download_image(image_url)
+
+        if image_bytes:
+            url = f"https://graph.facebook.com/v19.0/{page_id}/photos"
+            print(f"🔹 Posting WITH image to: {url}")
+
+            response = requests.post(
+                url,
+                data={
+                    "caption":      message,
+                    "access_token": page_token,
+                },
+                files={
+                    "source": (image_filename, image_bytes, content_type),
+                },
+            )
+        else:
+            # Download failed — fall back to text-only post
+            print("⚠️  Image download failed. Falling back to text-only post.")
+            image_url = None   # reset so the block below executes
+
+    # ── Text-only post (or fallback) ───────────────────────────────────────
+    if not image_url:
+        url = f"https://graph.facebook.com/v19.0/{page_id}/feed"
+        print(f"🔹 Posting TEXT-ONLY to: {url}")
+
+        response = requests.post(
+            url,
+            data={
+                "message":      message,
+                "access_token": page_token,
+            },
+        )
+
+    # ── Parse & return ─────────────────────────────────────────────────────
+    print(f"🔹 HTTP Status Code : {response.status_code}")
+    print(f"🔹 Raw Response     : {response.text}")
+
+    try:
+        result = response.json()
+    except Exception as parse_err:
+        print(f"❌ Failed to parse JSON response: {parse_err}")
+        return {}
+
+    print(f"🔹 Parsed JSON: {result}")
+
+    if "id" in result:
+        print(f"✅ Facebook Post ID: {result['id']}")
+    else:
+        print(f"❌ Facebook Post Failed — no 'id' in response")
+        print(f"❌ Error Details: {result.get('error', result)}")
+
+    print("=" * 60)
+    return result
+
+
 # -------------------------------------------------------------------
 # Create Clinic (POST)
 # -------------------------------------------------------------------
@@ -244,7 +467,7 @@ class ClinicUpdateAPIView(APIView):
 
             serializer = ClinicSerializer(
                 clinic,
-                data=request.data  # PUT = full update
+                data=request.data
             )
             serializer.is_valid(raise_exception=True)
 
@@ -277,6 +500,7 @@ class ClinicUpdateAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
 # -------------------------------------------------------------------
 # Get Clinic by ID (GET)
 # -------------------------------------------------------------------
@@ -317,10 +541,8 @@ class GetClinicView(APIView):
 # -------------------------------------------------------------------
 # User Create API View (POST)
 # -------------------------------------------------------------------
-
-
 class UserCreateAPIView(APIView):
-    
+
     def post(self, request):
         serializer = UserCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -337,9 +559,8 @@ class UserCreateAPIView(APIView):
 # -------------------------------------------------------------------
 # Clinic Employees API View (GET)
 # -------------------------------------------------------------------
-
 class ClinicEmployeesAPIView(APIView):
-    
+
     @swagger_auto_schema(
         operation_summary="Get Clinic Employees",
         operation_description="Retrieve all employees under a specific clinic",
@@ -351,21 +572,15 @@ class ClinicEmployeesAPIView(APIView):
         tags=["Clinic"]
     )
     def get(self, request, clinic_id):
-        #  Validate clinic existence
         get_object_or_404(Clinic, id=clinic_id)
-
-        #  Fetch employees for the clinic
         employees = Employee.objects.filter(clinic_id=clinic_id)
-
         serializer = EmployeeReadSerializer(employees, many=True)
         return Response(serializer.data)
 
 # -------------------------------------------------------------------
 # Employee Create API View (POST)
 # -------------------------------------------------------------------
-
 class EmployeeCreateAPIView(APIView):
-   
 
     @swagger_auto_schema(
         operation_summary="Create Employee",
@@ -380,7 +595,6 @@ class EmployeeCreateAPIView(APIView):
     )
     def post(self, request):
         serializer = EmployeeCreateSerializer(data=request.data)
-
         serializer.is_valid(raise_exception=True)
         employee = serializer.save()
 
@@ -392,7 +606,6 @@ class EmployeeCreateAPIView(APIView):
 # =====================================================
 # CREATE LEAD NOTE API
 # =====================================================
-
 class LeadNoteCreateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -434,7 +647,6 @@ class LeadNoteCreateAPIView(APIView):
 # =====================================================
 # UPDATE LEAD NOTE API
 # =====================================================
-
 class LeadNoteUpdateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -496,7 +708,6 @@ class LeadNoteUpdateAPIView(APIView):
 # =====================================================
 # DELETE LEAD NOTE API (SOFT DELETE)
 # =====================================================
-
 class LeadNoteDeleteAPIView(APIView):
 
     @swagger_auto_schema(
@@ -545,7 +756,6 @@ class LeadNoteDeleteAPIView(APIView):
 # =====================================================
 # LIST NOTES BY LEAD API
 # =====================================================
-
 class LeadNoteListAPIView(APIView):
 
     @swagger_auto_schema(
@@ -576,7 +786,6 @@ class LeadNoteListAPIView(APIView):
 # -------------------------------------------------------------------
 # Lead Create API View (POST)
 # -------------------------------------------------------------------
-
 class LeadCreateAPIView(APIView):
     """
     Create Lead API (Supports JSON + File Upload)
@@ -595,10 +804,10 @@ class LeadCreateAPIView(APIView):
         tags=["Leads"],
     )
     def post(self, request):
-        print(" STEP 1: LeadCreateAPIView HIT")
+        print("STEP 1: LeadCreateAPIView HIT")
 
         try:
-            print(" STEP 2: Incoming request data:")
+            print("STEP 2: Incoming request data:")
             print(request.data)
 
             serializer = LeadSerializer(
@@ -612,12 +821,9 @@ class LeadCreateAPIView(APIView):
             print("STEP 4: Serializer validated successfully")
 
             lead = serializer.save()
-            print(f"💾 STEP 5: Lead saved successfully | ID = {lead.id}")
+            print(f"STEP 5: Lead saved successfully | ID = {lead.id}")
 
-            # ===============================
-            # ZAPIER INTEGRATION
-            # ===============================
-            print("🔔 STEP 6: Sending data to Zapier")
+            print("STEP 6: Sending data to Zapier")
 
             send_to_zapier({
                 "event": "lead_created",
@@ -633,10 +839,10 @@ class LeadCreateAPIView(APIView):
                 ),
             })
 
-            print("🚀 STEP 7: Zapier call completed")
+            print("STEP 7: Zapier call completed")
 
             response_data = LeadReadSerializer(lead).data
-            print("📤 STEP 8: Response prepared")
+            print("STEP 8: Response prepared")
 
             return Response(
                 response_data,
@@ -670,7 +876,6 @@ class LeadCreateAPIView(APIView):
 # -------------------------------------------------------------------
 # Lead Update API View (PUT)
 # -------------------------------------------------------------------
-
 class LeadUpdateAPIView(APIView):
     """
     Update an existing Lead
@@ -690,10 +895,8 @@ class LeadUpdateAPIView(APIView):
     )
     def put(self, request, lead_id):
         try:
-            #  fetch existing lead
             lead = Lead.objects.get(id=lead_id)
 
-            #  PUT = full update (instance + data)
             serializer = LeadSerializer(
                 lead,
                 data=request.data,
@@ -702,10 +905,8 @@ class LeadUpdateAPIView(APIView):
 
             serializer.is_valid(raise_exception=True)
 
-            #  calls update_lead()
             updated_lead = serializer.save()
 
-            #  ZAPIER
             send_to_zapier({
                 "event": "lead_updated",
                 "lead_id": str(updated_lead.id),
@@ -743,10 +944,10 @@ class LeadUpdateAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
 # -------------------------------------------------------------------
 # Lead List API View (GET)
 # -------------------------------------------------------------------
-
 class LeadListAPIView(APIView):
 
     @swagger_auto_schema(
@@ -756,16 +957,9 @@ class LeadListAPIView(APIView):
     )
     def get(self, request):
         try:
-            # -------------------------------------------------
-            # Base Query (Exclude Deleted)
-            # -------------------------------------------------
             queryset = Lead.objects.filter(
                 is_deleted=False
             ).order_by("-created_at")
-
-            # -------------------------------------------------
-            # Optional Filters
-            # -------------------------------------------------
 
             clinic_id = request.query_params.get("clinic")
             lead_status = request.query_params.get("lead_status")
@@ -804,7 +998,6 @@ class LeadListAPIView(APIView):
 # -------------------------------------------------------------------
 # Lead List API using ID (GET)
 # -------------------------------------------------------------------
-
 class LeadGetAPIView(APIView):
 
     @swagger_auto_schema(
@@ -832,7 +1025,6 @@ class LeadGetAPIView(APIView):
 # -------------------------------------------------------------------
 # Lead Activate API (Post)
 # -------------------------------------------------------------------
-
 class LeadActivateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -853,10 +1045,10 @@ class LeadActivateAPIView(APIView):
 
         except Lead.DoesNotExist:
             raise NotFound("Lead not found")
+
 # -------------------------------------------------------------------
 # Lead In_Activate API (Patch)
 # -------------------------------------------------------------------
-
 class LeadInactivateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -881,7 +1073,6 @@ class LeadInactivateAPIView(APIView):
 # -------------------------------------------------------------------
 # Lead Soft Delete (Patch)
 # -------------------------------------------------------------------
-
 class LeadSoftDeleteAPIView(APIView):
 
     @swagger_auto_schema(
@@ -904,7 +1095,6 @@ class LeadSoftDeleteAPIView(APIView):
         except Lead.DoesNotExist:
             raise NotFound("Lead not found")
 
-    # Optional DELETE support
     def delete(self, request, lead_id):
         return self.patch(request, lead_id)
 
@@ -972,6 +1162,7 @@ class LeadEmailAPIView(APIView):
             status=status.HTTP_201_CREATED
         )
 
+
 class LeadMailListAPIView(APIView):
 
     @swagger_auto_schema(
@@ -982,7 +1173,7 @@ class LeadMailListAPIView(APIView):
                 openapi.IN_QUERY,
                 description="Filter by Lead UUID (optional)",
                 type=openapi.TYPE_STRING,
-                required=False,  # ✅ Now optional
+                required=False,
             )
         ],
         responses={200: LeadMailListSerializer(many=True)},
@@ -994,7 +1185,6 @@ class LeadMailListAPIView(APIView):
 
             queryset = LeadEmail.objects.all().order_by("-created_at")
 
-            # ✅ Apply filter only if provided
             if lead_uuid:
                 queryset = queryset.filter(lead__id=lead_uuid)
 
@@ -1008,10 +1198,10 @@ class LeadMailListAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
 # -------------------------------------------------------------------
 # Campaign Create API View (POST)
 # -------------------------------------------------------------------
-
 class CampaignCreateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1082,11 +1272,7 @@ class CampaignCreateAPIView(APIView):
 # -------------------------------------------------------------------
 # Campaign Update API View (PUT)
 # -------------------------------------------------------------------
-
 class CampaignUpdateAPIView(APIView):
-    """
-    Update an existing Campaign
-    """
 
     @swagger_auto_schema(
         operation_description="Update an existing campaign",
@@ -1101,7 +1287,6 @@ class CampaignUpdateAPIView(APIView):
     )
     def put(self, request, campaign_id):
         try:
-            # ✅ fetch campaign
             campaign = Campaign.objects.get(id=campaign_id)
 
             serializer = CampaignSerializer(
@@ -1112,28 +1297,28 @@ class CampaignUpdateAPIView(APIView):
 
             updated_campaign = serializer.save()
 
-            # 🔔 ZAPIER (event name should be updated, not created)
+            channels = []
+            if updated_campaign.social_configs.filter(is_active=True).exists():
+                channels.append("facebook")
+            if updated_campaign.email_configs.filter(is_active=True).exists():
+                channels.append("email")
+
             send_to_zapier({
-    "event": "campaign_created",
-    "campaign_id": str(campaign.id),
-    "campaign_name": campaign.campaign_name,
-    "clinic_id": campaign.clinic.id,
-    "campaign_mode": campaign.campaign_mode,
-    "status": campaign.status,
-    "is_active": campaign.is_active,
+                "event": "campaign_updated",
+                "campaign_id": str(updated_campaign.id),
+                "campaign_name": updated_campaign.campaign_name,
+                "clinic_id": updated_campaign.clinic.id,
+                "campaign_mode": updated_campaign.campaign_mode,
+                "status": updated_campaign.status,
+                "is_active": updated_campaign.is_active,
+                "channels": channels,
+                "start_date": updated_campaign.start_date.isoformat() if updated_campaign.start_date else None,
+                "end_date": updated_campaign.end_date.isoformat() if updated_campaign.end_date else None,
+                "selected_start": updated_campaign.selected_start.isoformat() if updated_campaign.selected_start else None,
+                "selected_end": updated_campaign.selected_end.isoformat() if updated_campaign.selected_end else None,
+                "enter_time": updated_campaign.enter_time.strftime("%H:%M") if updated_campaign.enter_time else None,
+            })
 
-    "channels": channels,
-
-    "start_date": campaign.start_date.isoformat() if campaign.start_date else None,
-    "end_date": campaign.end_date.isoformat() if campaign.end_date else None,
-
-    "selected_start": campaign.selected_start.isoformat() if campaign.selected_start else None,
-    "selected_end": campaign.selected_end.isoformat() if campaign.selected_end else None,
-
-    "enter_time": campaign.enter_time.strftime("%H:%M") if campaign.enter_time else None,
-})
-
-            # ✅ THIS LINE WAS MISSING
             return Response(
                 CampaignReadSerializer(updated_campaign).data,
                 status=status.HTTP_200_OK
@@ -1165,7 +1350,6 @@ class CampaignUpdateAPIView(APIView):
 # -------------------------------------------------------------------
 # Campaign List API View (GET)
 # -------------------------------------------------------------------
-
 class CampaignListAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1187,7 +1371,6 @@ class CampaignListAPIView(APIView):
 # -------------------------------------------------------------------
 # Campaign Get API View With ID (GET)
 # -------------------------------------------------------------------
-
 class CampaignGetAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1202,10 +1385,10 @@ class CampaignGetAPIView(APIView):
         data["lead_generated"] = campaign.leads.count()
 
         return Response(data, status=status.HTTP_200_OK)
+
 # -------------------------------------------------------------------
 # Campaign Activate API (Post)
 # -------------------------------------------------------------------
-
 class CampaignActivateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1230,7 +1413,6 @@ class CampaignActivateAPIView(APIView):
 # -------------------------------------------------------------------
 # Campaign In_Activate API (Patch)
 # -------------------------------------------------------------------
-
 class CampaignInactivateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1255,7 +1437,6 @@ class CampaignInactivateAPIView(APIView):
 # -------------------------------------------------------------------
 # Campaign Soft Delete API (Patch)
 # -------------------------------------------------------------------
-
 class CampaignSoftDeleteAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1280,6 +1461,7 @@ class CampaignSoftDeleteAPIView(APIView):
 
     def delete(self, request, campaign_id):
         return self.patch(request, campaign_id)
+
 
 class CampaignZapierCallbackAPIView(APIView):
 
@@ -1319,7 +1501,6 @@ class CampaignZapierCallbackAPIView(APIView):
             )
 
         except Exception as e:
-            # 🔥 RETURN REAL ERROR FOR DEBUGGING
             return Response(
                 {
                     "error": str(e),
@@ -1332,14 +1513,13 @@ class CampaignZapierCallbackAPIView(APIView):
 # -------------------------------------------------------------------
 # Pipeline Create API View (POST)
 # -------------------------------------------------------------------
-
 class PipelineCreateAPIView(APIView):
 
     @swagger_auto_schema(
         operation_description="Create a new sales pipeline",
-        request_body=PipelineSerializer,          # WRITE
+        request_body=PipelineSerializer,
         responses={
-            201: PipelineReadSerializer,           # READ
+            201: PipelineReadSerializer,
             400: "Validation Error",
             500: "Internal Server Error",
         },
@@ -1377,9 +1557,8 @@ class PipelineCreateAPIView(APIView):
             )
 
 # -------------------------------------------------------------------
-# LIST PIPELINES (Left Sidebar) (GET)
+# LIST PIPELINES (GET)
 # -------------------------------------------------------------------
-
 class PipelineListAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1419,10 +1598,8 @@ class PipelineListAPIView(APIView):
             )
 
 # -------------------------------------------------------------------
-# GET SINGLE PIPELINE (Canvas Load) (GET)
+# GET SINGLE PIPELINE (GET)
 # -------------------------------------------------------------------
-
-
 class PipelineDetailAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1457,8 +1634,6 @@ class PipelineDetailAPIView(APIView):
 # -------------------------------------------------------------------
 # ADD STAGE TO PIPELINE (POST)
 # -------------------------------------------------------------------
-
-
 class PipelineStageCreateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1501,7 +1676,6 @@ class PipelineStageCreateAPIView(APIView):
 # -------------------------------------------------------------------
 # UPDATE STAGE (PUT)
 # -------------------------------------------------------------------
-
 class PipelineStageUpdateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1511,7 +1685,7 @@ class PipelineStageUpdateAPIView(APIView):
     def put(self, request, stage_id):
         try:
             stage = PipelineStage.objects.get(id=stage_id)
-            updated = update_stage(stage, request.data)
+            update_stage(stage, request.data)
 
             return Response(
                 {"message": "Stage updated successfully"},
@@ -1542,7 +1716,6 @@ class PipelineStageUpdateAPIView(APIView):
 # -------------------------------------------------------------------
 # SAVE STAGE RULES (POST)
 # -------------------------------------------------------------------
-
 class StageRuleSaveAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1580,94 +1753,9 @@ class StageRuleSaveAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-
-# ------------------------------------------------------------------
-# ADD STAGE TO PIPELINE (POST)
 # -------------------------------------------------------------------
-
-class StageFieldSaveAPIView(APIView):
-
-    @swagger_auto_schema(
-        operation_description="Save stage data capture fields",
-        tags=["Pipeline Stages"],
-    )
-    def post(self, request, stage_id):
-        try:
-            stage = PipelineStage.objects.get(id=stage_id)
-            save_stage_fields(stage, request.data.get("fields", []))
-
-            return Response(
-                {"message": "Stage fields saved"},
-                status=status.HTTP_200_OK,
-            )
-
-        except PipelineStage.DoesNotExist:
-            return Response(
-                {"error": "Stage not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        except ValidationError as ve:
-            return Response(
-                {"error": ve.detail},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        except Exception:
-            logger.error(
-                "Unhandled Stage Field Error:\n" + traceback.format_exc()
-            )
-            return Response(
-                {"error": "Internal Server Error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-
-# ------------------------------------------------------------------
-# SAVE STAGE RULES (POST)
-# -------------------------------------------------------------------
-
-class StageRuleSaveAPIView(APIView):
-
-    @swagger_auto_schema(
-        operation_description="Save stage action rules",
-        tags=["Pipeline Stages"],
-    )
-    def post(self, request, stage_id):
-        try:
-            stage = PipelineStage.objects.get(id=stage_id)
-            save_stage_rules(stage, request.data.get("rules", []))
-
-            return Response(
-                {"message": "Stage rules saved"},
-                status=status.HTTP_200_OK,
-            )
-
-        except PipelineStage.DoesNotExist:
-            return Response(
-                {"error": "Stage not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        except ValidationError as ve:
-            return Response(
-                {"error": ve.detail},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        except Exception:
-            logger.error(
-                "Unhandled Stage Rule Error:\n" + traceback.format_exc()
-            )
-            return Response(
-                {"error": "Internal Server Error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-# ------------------------------------------------------------------
 # SAVE STAGE FIELDS (POST)
 # -------------------------------------------------------------------
-
 class StageFieldSaveAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1704,12 +1792,13 @@ class StageFieldSaveAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
 
 class EmailCampaignCreateAPIView(APIView):
 
     @swagger_auto_schema(
         operation_description="Create Email Campaign Only",
-        request_body=EmailCampaignCreateSerializer,  # ✅ FIXED
+        request_body=EmailCampaignCreateSerializer,
         responses={
             201: "Email Campaign Created Successfully",
             400: "Validation Error",
@@ -1720,11 +1809,10 @@ class EmailCampaignCreateAPIView(APIView):
     @transaction.atomic
     def post(self, request):
         try:
-            serializer = EmailCampaignCreateSerializer(data=request.data)  # ✅ FIXED
+            serializer = EmailCampaignCreateSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             data = serializer.validated_data
 
-            # 1️⃣ Create Campaign (Email Mode internally set)
             campaign = Campaign.objects.create(
                 clinic_id=data["clinic"],
                 campaign_name=data["campaign_name"],
@@ -1733,7 +1821,7 @@ class EmailCampaignCreateAPIView(APIView):
                 target_audience=data["target_audience"],
                 start_date=data["start_date"],
                 end_date=data["end_date"],
-                campaign_mode=Campaign.EMAIL,  # ✅ internally set
+                campaign_mode=Campaign.EMAIL,
                 selected_start=data["selected_start"],
                 selected_end=data["selected_end"],
                 enter_time=data["enter_time"],
@@ -1742,7 +1830,6 @@ class EmailCampaignCreateAPIView(APIView):
 
             created_email_configs = []
 
-            # 2️⃣ Create Email Configs
             for email_data in data["email"]:
                 email_config = CampaignEmailConfig.objects.create(
                     campaign=campaign,
@@ -1795,8 +1882,8 @@ class EmailCampaignCreateAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-        
-# ------------------------------------------------------------------
+
+# -------------------------------------------------------------------
 # Mailchimp Webhook Receiver API View (POST)
 # -------------------------------------------------------------------
 class MailchimpWebhookAPIView(APIView):
@@ -1840,9 +1927,9 @@ class MailchimpWebhookAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-# -------------------------------
+# -------------------------------------------------------------------
 # SEND SMS API
-# -------------------------------
+# -------------------------------------------------------------------
 class SendSMSAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1863,7 +1950,7 @@ class SendSMSAPIView(APIView):
             validated_data = serializer.validated_data
 
             message = send_sms(
-                lead_uuid=validated_data["lead_uuid"],   # ✅ REQUIRED
+                lead_uuid=validated_data["lead_uuid"],
                 to_number=validated_data["to"],
                 message_body=validated_data["message"]
             )
@@ -1888,9 +1975,9 @@ class SendSMSAPIView(APIView):
             )
 
 
-# -------------------------------
+# -------------------------------------------------------------------
 # MAKE CALL API
-# -------------------------------
+# -------------------------------------------------------------------
 class MakeCallAPIView(APIView):
 
     @swagger_auto_schema(
@@ -1911,7 +1998,7 @@ class MakeCallAPIView(APIView):
             validated_data = serializer.validated_data
 
             call = make_call(
-                lead_uuid=validated_data["lead_uuid"],   # ✅ REQUIRED
+                lead_uuid=validated_data["lead_uuid"],
                 to_number=validated_data["to"]
             )
 
@@ -1933,6 +2020,7 @@ class MakeCallAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
 
 class TwilioMessageListAPIView(APIView):
 
@@ -1969,6 +2057,7 @@ class TwilioMessageListAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+
 class TwilioCallListAPIView(APIView):
 
     @swagger_auto_schema(
@@ -2003,7 +2092,8 @@ class TwilioCallListAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-# ------------------------------------------------------------------
+
+# -------------------------------------------------------------------
 # Social Media Campaign Create API View (POST)
 # -------------------------------------------------------------------
 class SocialMediaCampaignCreateAPIView(APIView):
@@ -2036,45 +2126,61 @@ class SocialMediaCampaignCreateAPIView(APIView):
 
             for mode in data["campaign_mode"]:
 
-                # ----------------------------------------------------------
-                # Extract facebook message:
-                # Priority 1 — platform_data.facebook (from frontend editor)
-                # Priority 2 — campaign_content (Postman / fallback)
-                # ----------------------------------------------------------
-                raw_platform_data = data.get("platform_data") or {}
-
-                # If platform_data is missing keys but campaign_content exists,
-                # auto-populate platform_data.facebook from campaign_content
-                # so it is always saved correctly.
+                raw_platform_data  = data.get("platform_data") or {}
                 raw_campaign_content = (data.get("campaign_content") or "").strip()
 
-                if not raw_platform_data.get("facebook") and raw_campaign_content:
-                    for acc in data.get("select_ad_accounts", []):
-                        if acc not in raw_platform_data:
-                            raw_platform_data[acc] = raw_campaign_content
-
+                # ── Resolve facebook message text ──────────────────────────
                 _platform_facebook = strip_tags(raw_platform_data.get("facebook", "") or "").strip()
                 _campaign_content  = strip_tags(raw_campaign_content).strip()
                 facebook_message   = _platform_facebook or _campaign_content
+
+                # ── Resolve image_url ──────────────────────────────────────
+                # Priority order:
+                #   1. Explicit `image_url` field in request
+                #   2. platform_data.facebook if it looks like a direct image URL
+                #   3. campaign_content if it looks like a direct image URL
+                # Non-image URLs (HTML pages, Freepik etc.) are rejected by
+                # _is_direct_image_url() inside _download_image(), so we pass
+                # them through and let the helper handle the fallback gracefully.
+
+                image_url_field = (request.data.get("image_url") or "").strip() or None
+
+                if not image_url_field:
+                    fb_content = (raw_platform_data.get("facebook") or "").strip()
+                    if fb_content and _is_direct_image_url(fb_content):
+                        image_url_field = fb_content
+                        facebook_message = facebook_message or campaign_name  # keep text
+                        print(f"🖼️  image_url resolved from platform_data.facebook: {image_url_field}")
+
+                if not image_url_field:
+                    if _campaign_content and _is_direct_image_url(_campaign_content):
+                        image_url_field = _campaign_content
+                        facebook_message = ""
+                        print(f"🖼️  image_url resolved from campaign_content: {image_url_field}")
 
                 print("=" * 60)
                 print("DEBUG raw platform_data   :", raw_platform_data)
                 print("DEBUG campaign_content     :", _campaign_content)
                 print("DEBUG facebook_message     :", facebook_message)
+                print("DEBUG image_url            :", image_url_field)
                 print("=" * 60)
 
-                # Fix naive datetime warnings by making datetimes timezone-aware
-                from datetime import datetime, time, date
+                # ── Build selected_start / selected_end ────────────────────
+                from datetime import datetime, time, date as date_type
                 start = data["start_date"]
                 end   = data["end_date"]
 
                 selected_start = timezone.make_aware(
-                    datetime.combine(start if isinstance(start, date) else datetime.strptime(start, "%Y-%m-%d").date(),
-                    time(0, 0, 0))
+                    datetime.combine(
+                        start if isinstance(start, date_type) else datetime.strptime(start, "%Y-%m-%d").date(),
+                        time(0, 0, 0)
+                    )
                 )
                 selected_end = timezone.make_aware(
-                    datetime.combine(end if isinstance(end, date) else datetime.strptime(end, "%Y-%m-%d").date(),
-                    time(23, 59, 59))
+                    datetime.combine(
+                        end if isinstance(end, date_type) else datetime.strptime(end, "%Y-%m-%d").date(),
+                        time(23, 59, 59)
+                    )
                 )
 
                 campaign = Campaign.objects.create(
@@ -2092,12 +2198,14 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     enter_time=data["enter_time"],
                     platform_data=raw_platform_data,
                     budget_data=data.get("budget_data") or {},
+                    image_url=image_url_field,
                     is_active=True,
                 )
 
                 print("=" * 60)
                 print("PLATFORM DATA:", campaign.platform_data)
-                print("FACEBOOK MESSAGE EXTRACTED:", facebook_message)
+                print("FACEBOOK MESSAGE:", facebook_message)
+                print("IMAGE URL SAVED:", campaign.image_url)
                 print("=" * 60)
 
                 channels = []
@@ -2133,35 +2241,50 @@ class SocialMediaCampaignCreateAPIView(APIView):
                             status=400
                         )
 
+                    # Fallback: use campaign name if message is empty
+                    if not facebook_message:
+                        facebook_message = campaign.campaign_name
+
+                    formatted_message = (
+                        f"📢 {campaign.campaign_name}\n\n"
+                        f"{facebook_message}\n\n"
+                        f"📅 Campaign Duration: "
+                        f"{campaign.start_date.strftime('%d %b %Y')} – "
+                        f"{campaign.end_date.strftime('%d %b %Y')}\n"
+                        f"⏰ Scheduled Time: "
+                        f"{campaign.enter_time.strftime('%I:%M %p') if campaign.enter_time else 'N/A'}\n"
+                        f"🎯 Objective: {campaign.campaign_objective}\n"
+                        f"👥 Target Audience: {campaign.target_audience}\n\n"
+                        f"#LMS #Campaign #{campaign.campaign_name.replace(' ', '')}"
+                    )
+
                     print("=" * 60)
                     print(">>> CALLING post_to_facebook()")
                     print("Page ID   :", social.page_id)
                     print("Page Name :", social.page_name)
                     print("Token (20):", social.access_token[:20] if social.access_token else "NONE")
-                    print("Message   :", facebook_message)
+                    print("Message   :", formatted_message[:80], "...")
+                    print("Image URL :", campaign.image_url)
                     print("=" * 60)
 
-                    if not facebook_message:
-                        print("WARNING: facebook_message is empty — skipping FB post")
+                    fb_response = post_to_facebook(
+                        page_id=social.page_id,
+                        page_token=social.access_token,
+                        message=formatted_message,
+                        image_url=campaign.image_url,
+                    )
+
+                    print("FB POST FULL RESPONSE:", fb_response)
+
+                    fb_post_id = fb_response.get("id")
+                    print("FB POST ID:", fb_post_id)
+
+                    if fb_post_id:
+                        campaign.post_id = fb_post_id
+                        campaign.save(update_fields=["post_id"])
+                        print("FB POST ID SAVED:", fb_post_id)
                     else:
-                        fb_response = post_to_facebook(
-                            page_id=social.page_id,
-                            page_token=social.access_token,
-                            message=facebook_message
-                        )
-
-                        print("FB POST FULL RESPONSE:", fb_response)
-
-                        fb_post_id = fb_response.get("id")
-                        print("FB POST ID:", fb_post_id)
-
-                        if fb_post_id:
-                            # ✅ Save FB post ID directly to Campaign.post_id
-                            campaign.post_id = fb_post_id
-                            campaign.save(update_fields=["post_id"])
-                            print("FB POST ID SAVED TO campaign.post_id:", fb_post_id)
-                        else:
-                            print("FB POST ID IS NONE — check FB error above")
+                        print("FB POST ID IS NONE — check FB error above")
 
                 created_campaigns.append({
                     "campaign_id": campaign.id,
@@ -2185,11 +2308,9 @@ class SocialMediaCampaignCreateAPIView(APIView):
                 "trace": traceback.format_exc()
             }, status=400)
 
-# ------------------------------------------------------------------
-# Ticketcreate API View (POST)
 # -------------------------------------------------------------------
-
-
+# Ticket Create API View (POST)
+# -------------------------------------------------------------------
 class TicketCreateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -2232,10 +2353,9 @@ class TicketCreateAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-# ------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Ticket Update API View (PUT)
 # -------------------------------------------------------------------
-
 class TicketUpdateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -2291,10 +2411,9 @@ class TicketUpdateAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-# ------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Ticket List API View (GET)
 # -------------------------------------------------------------------
-
 class TicketListAPIView(APIView):
 
     @swagger_auto_schema(
@@ -2320,7 +2439,6 @@ class TicketListAPIView(APIView):
         try:
             queryset = Ticket.objects.filter(is_deleted=False)
 
-            # Filtering
             if request.query_params.get("status"):
                 queryset = queryset.filter(status=request.query_params.get("status"))
 
@@ -2333,7 +2451,6 @@ class TicketListAPIView(APIView):
             if request.query_params.get("department_id"):
                 queryset = queryset.filter(department_id=request.query_params.get("department_id"))
 
-            # Pagination
             page = int(request.query_params.get("page", 1))
             page_size = int(request.query_params.get("page_size", 10))
             start = (page - 1) * page_size
@@ -2360,10 +2477,9 @@ class TicketListAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-# ------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Ticket Detail API View (GET)
 # -------------------------------------------------------------------
-
 class TicketDetailAPIView(APIView):
 
     @swagger_auto_schema(
@@ -2377,7 +2493,6 @@ class TicketDetailAPIView(APIView):
     )
     def get(self, request, ticket_id):
 
-        # Prevent Swagger schema crash
         if getattr(self, "swagger_fake_view", False):
             return Response(status=200)
 
@@ -2407,10 +2522,9 @@ class TicketDetailAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-# ------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Ticket Assign for Employee API View (POST)
 # -------------------------------------------------------------------
-
 class TicketAssignAPIView(APIView):
 
     @swagger_auto_schema(
@@ -2476,10 +2590,9 @@ class TicketAssignAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-# ------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Ticket Status Update API View (POST)
 # -------------------------------------------------------------------
-
 class TicketStatusUpdateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -2552,11 +2665,9 @@ class TicketStatusUpdateAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-
-# ------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Ticket Document Upload API View (POST)
 # -------------------------------------------------------------------
-
 class TicketDocumentUploadAPIView(APIView):
 
     @swagger_auto_schema(
@@ -2581,7 +2692,6 @@ class TicketDocumentUploadAPIView(APIView):
     )
     def post(self, request, ticket_id):
 
-        # Prevent Swagger schema crash
         if getattr(self, "swagger_fake_view", False):
             return Response(status=200)
 
@@ -2631,10 +2741,9 @@ class TicketDocumentUploadAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-# ------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Ticket Delete API View (DELETE)
 # -------------------------------------------------------------------
-
 class TicketDeleteAPIView(APIView):
 
     @swagger_auto_schema(
@@ -2675,10 +2784,9 @@ class TicketDeleteAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-# ------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Ticket Dashboard Count API View (GET)
 # -------------------------------------------------------------------
-
 class TicketDashboardCountAPIView(APIView):
 
     @swagger_auto_schema(
@@ -2838,7 +2946,6 @@ class LabSoftDeleteAPIView(APIView):
 # -------------------------------------------------------------------
 # TEMPLATE LIST API (GET)
 # -------------------------------------------------------------------
-
 class TemplateListAPIView(APIView):
 
     @swagger_auto_schema(
@@ -2952,7 +3059,6 @@ class TemplateDetailAPIView(APIView):
 # -------------------------------------------------------------------
 # TEMPLATE CREATE API (POST)
 # -------------------------------------------------------------------
-
 class TemplateCreateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -3002,7 +3108,6 @@ class TemplateCreateAPIView(APIView):
 # -------------------------------------------------------------------
 # TEMPLATE UPDATE API (PUT)
 # -------------------------------------------------------------------
-
 class TemplateUpdateAPIView(APIView):
 
     def put(self, request, template_type, template_id):
@@ -3093,6 +3198,7 @@ class TemplateUpdateAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
 # -------------------------------------------------------------------
 # TEMPLATE DOCUMENT UPLOAD API (POST)
 # -------------------------------------------------------------------
@@ -3195,7 +3301,7 @@ class TemplateDocumentUploadAPIView(APIView):
             )
 
             logger.info(
-                f"✅ Template document uploaded: type={template_type}, "
+                f"Template document uploaded: type={template_type}, "
                 f"template_id={template_id}, doc_id={document.id}, "
                 f"file={uploaded_file.name}"
             )
@@ -3222,7 +3328,6 @@ class TemplateDocumentUploadAPIView(APIView):
 # -------------------------------------------------------------------
 # TEMPLATE SOFT DELETE API (DELETE)
 # -------------------------------------------------------------------
-
 class TemplateDeleteAPIView(APIView):
 
     def delete(self, request, template_type, template_id):
@@ -3277,6 +3382,7 @@ class TemplateDeleteAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
 # -------------------------------------------------------------------
 # LINKEDIN LOGIN API
 # -------------------------------------------------------------------
@@ -3290,7 +3396,7 @@ class LinkedInLoginAPIView(APIView):
             "&scope=openid%20profile%20email"
             "&prompt=login"
         )
-        return redirect(auth_url)    
+        return redirect(auth_url)
 
 # -------------------------------------------------------------------
 # LINKEDIN CALLBACK API
@@ -3315,13 +3421,41 @@ class LinkedInCallbackAPIView(APIView):
         access_token = token_data.get("access_token")
 
         if access_token:
-            # Demo storage
             request.session["linkedin_token"] = access_token
 
-        # Redirect back to frontend with success flag
         return HttpResponseRedirect(
             f"{settings.FRONTEND_URL}?linkedin=connected"
         )
+
+
+class ImageUploadAPIView(APIView):
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        try:
+            file = request.FILES.get("file")
+
+            if not file:
+                return Response(
+                    {"error": "No file provided"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            from django.core.files.storage import default_storage
+            path = default_storage.save(f"campaign_images/{file.name}", file)
+            url = request.build_absolute_uri(settings.MEDIA_URL + path)
+
+            print(f"✅ Image uploaded: {url} | path: {path}")
+
+            return Response({"url": url, "path": path}, status=status.HTTP_200_OK)
+
+        except Exception:
+            logger.error("Image Upload Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
 # -------------------------------------------------------------------
 # LINKEDIN STATUS API
 # -------------------------------------------------------------------
@@ -3331,6 +3465,10 @@ class LinkedInStatusAPIView(APIView):
             "connected": bool(request.session.get("linkedin_token"))
         })
 
+
+# -------------------------------------------------------------------
+# FACEBOOK LOGIN API
+# -------------------------------------------------------------------
 class FacebookLoginAPIView(APIView):
     def get(self, request):
         state = secrets.token_urlsafe(16)
@@ -3349,6 +3487,9 @@ class FacebookLoginAPIView(APIView):
         return redirect(auth_url)
 
 
+# -------------------------------------------------------------------
+# FACEBOOK CALLBACK API
+# -------------------------------------------------------------------
 class FacebookCallbackAPIView(APIView):
     def get(self, request):
         try:
@@ -3396,18 +3537,18 @@ class FacebookCallbackAPIView(APIView):
                 },
             )
 
-            # return Response({"status": "facebook connected", "page_name": page["name"]})
             return HttpResponseRedirect(
                 f"{settings.FRONTEND_URL}?facebook=connected&page={page['name']}"
             )
 
         except Exception as e:
-            import traceback
-
             traceback.print_exc()
             return Response({"error": str(e)})
 
 
+# -------------------------------------------------------------------
+# FACEBOOK STATUS API
+# -------------------------------------------------------------------
 class FacebookStatusAPIView(APIView):
     def get(self, request):
         clinic = Clinic.objects.first()
@@ -3417,93 +3558,3 @@ class FacebookStatusAPIView(APIView):
         ).exists()
 
         return Response({"connected": connected})
-
-
-def post_to_facebook(page_id, page_token, message):
-    url = f"https://graph.facebook.com/v19.0/{page_id}/feed"
-
-    payload = {
-        "message": message,
-        "access_token": page_token,
-    }
-
-    response = requests.post(url, data=payload)
-    print("Facebook Raw Response:", response.json())
-    return response.json()
-
-
-# --------------------------------------------------
-# FACEBOOK POST INSIGHTS API (GET)
-# --------------------------------------------------
-
-class FacebookInsightsAPIView(APIView):
-
-    def get(self, request, campaign_id):
-
-        try:
-            # -------------------------------------------------
-            # 1️⃣ Get Campaign
-            # -------------------------------------------------
-            campaign = Campaign.objects.filter(
-                id=campaign_id,
-                is_active=True
-            ).first()
-
-            if not campaign:
-                return Response(
-                    {"error": "Campaign not found"},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            # -------------------------------------------------
-            # 2️⃣ Get post_id directly from Campaign
-            # -------------------------------------------------
-            if not campaign.post_id:
-                return Response(
-                    {"error": "post_id not available for this campaign"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            post_id = campaign.post_id
-
-            # -------------------------------------------------
-            # 3️⃣ Get Social Account
-            # -------------------------------------------------
-            social = SocialAccount.objects.filter(
-                clinic=campaign.clinic,
-                platform="facebook",
-                is_active=True
-            ).first()
-
-            if not social:
-                return Response(
-                    {"error": "Facebook account not connected"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            # -------------------------------------------------
-            # 4️⃣ Fetch Insights From Facebook
-            # -------------------------------------------------
-            insights = get_facebook_post_insights(
-                post_id=post_id,
-                page_token=social.access_token
-            )
-
-            return Response(
-                {
-                    "campaign_id": campaign.id,
-                    "post_id": post_id,
-                    "insights": insights
-                },
-                status=status.HTTP_200_OK
-            )
-
-        except Exception as e:
-            import traceback
-            return Response(
-                {
-                    "error": str(e),
-                    "trace": traceback.format_exc()
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
