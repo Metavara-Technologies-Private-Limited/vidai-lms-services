@@ -182,57 +182,56 @@ logger = logging.getLogger(__name__)
 # HELPERS
 # =====================================================
 
-# Allowed direct image extensions
 _IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.tiff', '.bmp')
 
 
 def _is_direct_image_url(url: str) -> bool:
     """
-    Return True only when the URL path ends with a known image extension.
-    Strips query-string and fragment before checking.
-    e.g.  https://example.com/photo.jpg?w=800  → True
-          https://www.freepik.com/free-vector/... → False
+    Return True when the URL is likely a direct image:
+    - Path ends with a known image extension, OR
+    - URL is from a known image CDN (Unsplash, Pexels, Imgur, Cloudinary, etc.)
     """
     if not url:
         return False
     clean = url.split("?")[0].split("#")[0].lower()
-    return clean.endswith(_IMAGE_EXTENSIONS)
+    if clean.endswith(_IMAGE_EXTENSIONS):
+        return True
+    # Known image CDN domains that serve images without file extensions
+    _IMAGE_CDN_HOSTS = (
+        "images.unsplash.com",
+        "images.pexels.com",
+        "i.imgur.com",
+        "res.cloudinary.com",
+        "cdn.pixabay.com",
+        "media.istockphoto.com",
+        "images.squarespace-cdn.com",
+        "cdn.shopify.com",
+        "storage.googleapis.com",
+        "s3.amazonaws.com",
+    )
+    try:
+        import urllib.parse
+        host = urllib.parse.urlparse(url).netloc.lower()
+        return any(host == cdn or host.endswith("." + cdn) for cdn in _IMAGE_CDN_HOSTS)
+    except Exception:
+        return False
 
 
 def _download_image(image_url: str):
     """
     Download image bytes from a public URL.
-
     Returns (image_bytes, filename, content_type) on success.
     Returns (None, None, None) on any failure.
-
-    Handles:
-    - Hotlink-protected hosts (sets Referer to the same origin)
-    - Wikipedia thumbnail redirect issues  →  strips /thumb/ variant
-    - Non-image HTML pages  →  rejected early via _is_direct_image_url
     """
     import re
     import urllib.parse
 
-    # ── 1. Reject HTML pages / non-image URLs immediately ──────────────────
+    # 1. Reject non-image URLs immediately
     if not _is_direct_image_url(image_url):
-        print(f"⚠️  Skipping non-image URL (not a direct image file): {image_url}")
+        print(f"Skipping non-image URL (not a direct image file): {image_url}")
         return None, None, None
 
-    # ── 2. Fix Wikipedia / Wikimedia URLs via MD5 path recomputation ──────
-    #
-    # Wikimedia derives the upload path from the MD5 of the normalised filename:
-    #   md5    = hashlib.md5(filename.encode("utf-8")).hexdigest()
-    #   path   = f"{md5[0]}/{md5[:2]}/{filename}"
-    #
-    # This means the URL the user pastes may have the WRONG hash dirs (e.g.
-    # they copied a /thumb/ URL or constructed the path by hand).  We fix it
-    # by re-deriving the correct hash path ourselves.
-    #
-    # Handles both:
-    #   • /thumb/  URLs  (e.g. .../thumb/2/27/File.jpg/1280px-File.jpg)
-    #   • direct   URLs  (e.g. .../commons/2/27/File.jpg)  ← hash may be wrong
-
+    # 2. Fix Wikipedia/Wikimedia URLs via MD5 recompute + API fallback
     wiki_upload_pattern = re.compile(
         r"https://upload\.wikimedia\.org/wikipedia/(?:commons|en)/"
         r"(?:thumb/[^/]+/[^/]+/|[^/]+/[^/]+/)([^/?#]+?)(?:/\d+px-[^/?#]+)?(?:[?#].*)?$",
@@ -243,29 +242,61 @@ def _download_image(image_url: str):
         import hashlib
 
         raw_filename = urllib.parse.unquote(wiki_match.group(1))
-        # Strip leading size prefix if this was a thumb  e.g. "1280px-Holi.jpg"
         clean_filename = re.sub(r"^\d+px-", "", raw_filename)
-        # Wikimedia normalises: spaces → underscores, first letter uppercase
         clean_filename = clean_filename.replace(" ", "_")
         if clean_filename:
             clean_filename = clean_filename[0].upper() + clean_filename[1:]
 
-        # Recompute the correct MD5-based hash dirs
         md5 = hashlib.md5(clean_filename.encode("utf-8")).hexdigest()
-        correct_url = (
+        md5_url = (
             f"https://upload.wikimedia.org/wikipedia/commons/"
             f"{md5[0]}/{md5[:2]}/{urllib.parse.quote(clean_filename, safe='')}"
         )
-        print(f"🔧 Wikipedia URL detected.")
+        print(f"Wikipedia URL detected.")
         print(f"   Original : {image_url}")
         print(f"   Filename : {clean_filename}")
-        print(f"   MD5      : {md5}  →  dirs: {md5[0]}/{md5[:2]}/")
-        print(f"   Fixed URL: {correct_url}")
-        image_url = correct_url
+        print(f"   MD5 dirs : {md5[0]}/{md5[:2]}/")
+        print(f"   MD5 URL  : {md5_url}")
 
-    # ── 3. Build headers (Referer = same origin to bypass hotlink guards) ──
-    parsed    = urllib.parse.urlparse(image_url)
-    referer   = f"{parsed.scheme}://{parsed.netloc}/"
+        try:
+            head = requests.head(md5_url, timeout=8, allow_redirects=True, headers={
+                "User-Agent": "Mozilla/5.0 (compatible; LMS-Bot/1.0)"
+            })
+            if head.status_code == 200:
+                print("MD5 URL exists")
+                image_url = md5_url
+            else:
+                print(f"MD5 URL HTTP {head.status_code} - querying Wikimedia Commons API...")
+                api_url = (
+                    "https://commons.wikimedia.org/w/api.php"
+                    f"?action=query&titles=File:{urllib.parse.quote(clean_filename)}"
+                    "&prop=imageinfo&iiprop=url&format=json&redirects=1"
+                )
+                api_resp = requests.get(api_url, timeout=10, headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; LMS-Bot/1.0)"
+                })
+                api_data = api_resp.json()
+                pages = api_data.get("query", {}).get("pages", {})
+                resolved_url = None
+                for page_id, page in pages.items():
+                    if page_id != "-1":
+                        imageinfo = page.get("imageinfo", [])
+                        if imageinfo:
+                            resolved_url = imageinfo[0].get("url")
+                            break
+                if resolved_url:
+                    print(f"Wikimedia API resolved: {resolved_url}")
+                    image_url = resolved_url
+                else:
+                    print(f"File '{clean_filename}' not found on Wikimedia Commons.")
+                    return None, None, None
+        except Exception as wiki_err:
+            print(f"Wikipedia HEAD/API check failed: {wiki_err}. Trying MD5 URL anyway.")
+            image_url = md5_url
+
+    # 3. Build headers (Referer = same origin to bypass hotlink guards)
+    parsed = urllib.parse.urlparse(image_url)
+    referer = f"{parsed.scheme}://{parsed.netloc}/"
 
     headers = {
         "User-Agent": (
@@ -273,50 +304,50 @@ def _download_image(image_url: str):
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/120.0.0.0 Safari/537.36"
         ),
-        "Accept":          "image/webp,image/apng,image/*,*/*;q=0.8",
+        "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
-        "Referer":         referer,
-        "sec-fetch-dest":  "image",
-        "sec-fetch-mode":  "no-cors",
-        "sec-fetch-site":  "cross-site",
+        "Referer": referer,
+        "sec-fetch-dest": "image",
+        "sec-fetch-mode": "no-cors",
+        "sec-fetch-site": "cross-site",
     }
 
-    # ── 4. Download ────────────────────────────────────────────────────────
+    # 4. Download
     try:
         resp = requests.get(image_url, timeout=20, headers=headers, allow_redirects=True)
-        print(f"🔹 Image download status: {resp.status_code}  from  {image_url}")
+        print(f"Image download status: {resp.status_code}  from  {image_url}")
 
         if resp.status_code != 200:
-            print(f"❌ Image download failed: HTTP {resp.status_code}")
+            print(f"Image download failed: HTTP {resp.status_code}")
             return None, None, None
 
         image_bytes = resp.content
 
-        # ── 5. Derive filename & content-type ─────────────────────────────
-        raw_filename  = image_url.split("?")[0].split("/")[-1]
+        # 5. Derive filename & content-type
+        raw_filename = image_url.split("?")[0].split("/")[-1]
         image_filename = urllib.parse.unquote(raw_filename) or "image.jpg"
         image_filename = re.sub(r"\s+", "_", image_filename)
 
         ext = image_filename.split(".")[-1].lower()
         content_type_map = {
-            "jpg":  "image/jpeg",
+            "jpg": "image/jpeg",
             "jpeg": "image/jpeg",
-            "png":  "image/png",
-            "gif":  "image/gif",
+            "png": "image/png",
+            "gif": "image/gif",
             "webp": "image/webp",
             "tiff": "image/tiff",
-            "bmp":  "image/bmp",
+            "bmp": "image/bmp",
         }
         content_type = content_type_map.get(ext, "image/jpeg")
 
-        print(f"🔹 Image filename : {image_filename}")
-        print(f"🔹 Image size     : {len(image_bytes)} bytes")
-        print(f"🔹 Content type   : {content_type}")
+        print(f"Image filename : {image_filename}")
+        print(f"Image size     : {len(image_bytes)} bytes")
+        print(f"Content type   : {content_type}")
 
         return image_bytes, image_filename, content_type
 
     except Exception as e:
-        print(f"❌ Failed to download image: {e}")
+        print(f"Failed to download image: {e}")
         return None, None, None
 
 
@@ -327,36 +358,27 @@ def _download_image(image_url: str):
 def post_to_facebook(page_id, page_token, message, image_url=None):
     """
     Post a message (with optional image) to a Facebook Page.
-
-    Image handling strategy
-    ───────────────────────
-    1. Validate that image_url is a direct image file (not an HTML page).
-    2. Fix Wikipedia /thumb/ URLs automatically.
-    3. Download the image in Python (bypasses hotlink protection).
-    4. Upload to Facebook as multipart/form-data `source`.
-    5. If download fails for any reason → fall back to text-only post.
     """
 
     print("=" * 60)
-    print("📘 FACEBOOK POST DEBUG")
-    print(f"🔹 Page ID    : {page_id}")
-    print(f"🔹 Token (20) : {page_token[:20] if page_token else 'NONE'}")
-    print(f"🔹 Message    : {message}")
-    print(f"🔹 Image URL  : {image_url}")
+    print("FACEBOOK POST DEBUG")
+    print(f"Page ID    : {page_id}")
+    print(f"Token (20) : {page_token[:20] if page_token else 'NONE'}")
+    print(f"Message    : {message}")
+    print(f"Image URL  : {image_url}")
     print("=" * 60)
 
-    # ── Attempt image post ─────────────────────────────────────────────────
     if image_url:
         image_bytes, image_filename, content_type = _download_image(image_url)
 
         if image_bytes:
             url = f"https://graph.facebook.com/v19.0/{page_id}/photos"
-            print(f"🔹 Posting WITH image to: {url}")
+            print(f"Posting WITH image to: {url}")
 
             response = requests.post(
                 url,
                 data={
-                    "caption":      message,
+                    "caption": message,
                     "access_token": page_token,
                 },
                 files={
@@ -364,40 +386,36 @@ def post_to_facebook(page_id, page_token, message, image_url=None):
                 },
             )
         else:
-            # Download failed — fall back to text-only post
-            print("⚠️  Image download failed. Falling back to text-only post.")
-            image_url = None   # reset so the block below executes
+            print("Image download failed. Falling back to text-only post.")
+            image_url = None
 
-    # ── Text-only post (or fallback) ───────────────────────────────────────
     if not image_url:
         url = f"https://graph.facebook.com/v19.0/{page_id}/feed"
-        print(f"🔹 Posting TEXT-ONLY to: {url}")
+        print(f"Posting TEXT-ONLY to: {url}")
 
         response = requests.post(
             url,
             data={
-                "message":      message,
+                "message": message,
                 "access_token": page_token,
             },
         )
 
-    # ── Parse & return ─────────────────────────────────────────────────────
-    print(f"🔹 HTTP Status Code : {response.status_code}")
-    print(f"🔹 Raw Response     : {response.text}")
+    print(f"HTTP Status Code : {response.status_code}")
+    print(f"Raw Response     : {response.text}")
 
     try:
         result = response.json()
     except Exception as parse_err:
-        print(f"❌ Failed to parse JSON response: {parse_err}")
+        print(f"Failed to parse JSON response: {parse_err}")
         return {}
 
-    print(f"🔹 Parsed JSON: {result}")
+    print(f"Parsed JSON: {result}")
 
     if "id" in result:
-        print(f"✅ Facebook Post ID: {result['id']}")
+        print(f"Facebook Post ID: {result['id']}")
     else:
-        print(f"❌ Facebook Post Failed — no 'id' in response")
-        print(f"❌ Error Details: {result.get('error', result)}")
+        print(f"Facebook Post Failed: {result.get('error', result)}")
 
     print("=" * 60)
     return result
@@ -2126,37 +2144,54 @@ class SocialMediaCampaignCreateAPIView(APIView):
 
             for mode in data["campaign_mode"]:
 
-                raw_platform_data  = data.get("platform_data") or {}
+                raw_platform_data = data.get("platform_data") or {}
                 raw_campaign_content = (data.get("campaign_content") or "").strip()
 
-                # ── Resolve facebook message text ──────────────────────────
+                # Helper: extract first image URL from mixed text+URL string
+                def _extract_image_url(text):
+                    if not text:
+                        return None, text
+                    text = text.strip()
+                    # Case 1: entire string is just a URL
+                    if _is_direct_image_url(text) and "\n" not in text and " " not in text:
+                        return text, ""
+                    # Case 2: URL embedded inside text
+                    tokens = text.replace("\n", " ").split()
+                    for token in tokens:
+                        token = token.strip(".,;!?\"'")
+                        if _is_direct_image_url(token):
+                            clean = text.replace(token, "").strip().strip(".,;!?\n ")
+                            return token, clean
+                    return None, text
+
+                # Resolve facebook message text
                 _platform_facebook = strip_tags(raw_platform_data.get("facebook", "") or "").strip()
-                _campaign_content  = strip_tags(raw_campaign_content).strip()
-                facebook_message   = _platform_facebook or _campaign_content
+                _campaign_content = strip_tags(raw_campaign_content).strip()
 
-                # ── Resolve image_url ──────────────────────────────────────
-                # Priority order:
-                #   1. Explicit `image_url` field in request
-                #   2. platform_data.facebook if it looks like a direct image URL
-                #   3. campaign_content if it looks like a direct image URL
-                # Non-image URLs (HTML pages, Freepik etc.) are rejected by
-                # _is_direct_image_url() inside _download_image(), so we pass
-                # them through and let the helper handle the fallback gracefully.
+                # Extract any embedded image URL from the text fields
+                _fb_extracted_url, _platform_facebook = _extract_image_url(_platform_facebook)
+                _cc_extracted_url, _campaign_content = _extract_image_url(_campaign_content)
 
-                image_url_field = (request.data.get("image_url") or "").strip() or None
+                facebook_message = _platform_facebook or _campaign_content
 
-                if not image_url_field:
-                    fb_content = (raw_platform_data.get("facebook") or "").strip()
-                    if fb_content and _is_direct_image_url(fb_content):
-                        image_url_field = fb_content
-                        facebook_message = facebook_message or campaign_name  # keep text
-                        print(f"🖼️  image_url resolved from platform_data.facebook: {image_url_field}")
+                # Resolve image_url
+                # Priority: 1. Explicit image_url field  2. platform_data.facebook  3. campaign_content
+                _raw_image_url = (request.data.get("image_url") or "").strip()
+                if _raw_image_url:
+                    _extracted, _ = _extract_image_url(_raw_image_url)
+                    image_url_field = _extracted or None
+                    if image_url_field != _raw_image_url:
+                        print(f"image_url cleaned: {repr(_raw_image_url[:80])} -> {image_url_field}")
+                else:
+                    image_url_field = None
 
-                if not image_url_field:
-                    if _campaign_content and _is_direct_image_url(_campaign_content):
-                        image_url_field = _campaign_content
-                        facebook_message = ""
-                        print(f"🖼️  image_url resolved from campaign_content: {image_url_field}")
+                if not image_url_field and _fb_extracted_url:
+                    image_url_field = _fb_extracted_url
+                    print(f"image_url extracted from platform_data.facebook: {image_url_field}")
+
+                if not image_url_field and _cc_extracted_url:
+                    image_url_field = _cc_extracted_url
+                    print(f"image_url extracted from campaign_content: {image_url_field}")
 
                 print("=" * 60)
                 print("DEBUG raw platform_data   :", raw_platform_data)
@@ -2165,10 +2200,10 @@ class SocialMediaCampaignCreateAPIView(APIView):
                 print("DEBUG image_url            :", image_url_field)
                 print("=" * 60)
 
-                # ── Build selected_start / selected_end ────────────────────
+                # Build selected_start / selected_end
                 from datetime import datetime, time, date as date_type
                 start = data["start_date"]
-                end   = data["end_date"]
+                end = data["end_date"]
 
                 selected_start = timezone.make_aware(
                     datetime.combine(
@@ -2181,6 +2216,23 @@ class SocialMediaCampaignCreateAPIView(APIView):
                         end if isinstance(end, date_type) else datetime.strptime(end, "%Y-%m-%d").date(),
                         time(23, 59, 59)
                     )
+                )
+
+                # =====================================================
+                # FIX: Only store budget for SELECTED platforms
+                # Previously: budget_data=data.get("budget_data") or {}
+                # stored ALL platforms (instagram/facebook/linkedin)
+                # even when only 2 were selected — causing wrong totals.
+                # Now we filter to only the selected platforms + recompute total.
+                # =====================================================
+                selected_platforms = data["select_ad_accounts"]
+                raw_budget_data = data.get("budget_data") or {}
+                filtered_budget = {
+                    p: raw_budget_data.get(p, 0)
+                    for p in selected_platforms
+                }
+                filtered_budget["total"] = sum(
+                    v for k, v in filtered_budget.items() if k != "total"
                 )
 
                 campaign = Campaign.objects.create(
@@ -2197,7 +2249,7 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     selected_end=selected_end,
                     enter_time=data["enter_time"],
                     platform_data=raw_platform_data,
-                    budget_data=data.get("budget_data") or {},
+                    budget_data=filtered_budget,
                     image_url=image_url_field,
                     is_active=True,
                 )
@@ -2241,7 +2293,6 @@ class SocialMediaCampaignCreateAPIView(APIView):
                             status=400
                         )
 
-                    # Fallback: use campaign name if message is empty
                     if not facebook_message:
                         facebook_message = campaign.campaign_name
 
@@ -3445,7 +3496,7 @@ class ImageUploadAPIView(APIView):
             path = default_storage.save(f"campaign_images/{file.name}", file)
             url = request.build_absolute_uri(settings.MEDIA_URL + path)
 
-            print(f"✅ Image uploaded: {url} | path: {path}")
+            print(f"Image uploaded: {url} | path: {path}")
 
             return Response({"url": url, "path": path}, status=status.HTTP_200_OK)
 
