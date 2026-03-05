@@ -122,7 +122,11 @@ USE_TZ = True
 # ================================
 STATIC_URL = '/static/'                      # ← UPDATED
 STATIC_ROOT = BASE_DIR / 'static'           # ← ADDED (IMPORTANT)           #  ADDED (REQUIRED for collectstatic)
-
+# ================================
+#  MEDIA FILES (NEW)
+# ================================
+MEDIA_URL  = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 #  REMOVED old STATIC_ROOT using os.path.join
 #  REMOVED missing STATIC_ROOT error cause
 
