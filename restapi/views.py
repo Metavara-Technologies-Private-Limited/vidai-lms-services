@@ -2652,7 +2652,9 @@ class TicketStatusUpdateAPIView(APIView):
             type=openapi.TYPE_OBJECT,
             required=["status"],
             properties={
-                "status": openapi.Schema(type=openapi.TYPE_STRING)
+                "status": openapi.Schema(type=openapi.TYPE_STRING),
+                "priority": openapi.Schema(type=openapi.TYPE_STRING),
+                "assigned_to": openapi.Schema(type=openapi.TYPE_INTEGER)
             },
         ),
         responses={
@@ -2676,11 +2678,20 @@ class TicketStatusUpdateAPIView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
+            # -------- OLD VALUES --------
+            old_status = ticket.status
+            old_priority = ticket.priority
+            old_assigned = ticket.assigned_to_id
+
+            # -------- REQUEST VALUES --------
             new_status = request.data.get("status")
+            new_priority = request.data.get("priority")
+            new_assigned = request.data.get("assigned_to")
 
             if not new_status:
                 raise ValidationError("status field is required")
 
+            # -------- UPDATE STATUS --------
             ticket.status = new_status
 
             if new_status == "resolved":
@@ -2689,13 +2700,38 @@ class TicketStatusUpdateAPIView(APIView):
             if new_status == "closed":
                 ticket.closed_at = timezone.now()
 
+            # -------- UPDATE PRIORITY --------
+            if new_priority:
+                ticket.priority = new_priority
+
+            # -------- UPDATE ASSIGN --------
+            if new_assigned:
+                ticket.assigned_to_id = new_assigned
+
             ticket.save()
 
-            TicketTimeline.objects.create(
-                ticket=ticket,
-                action=f"Status changed to {new_status}",
-                done_by=ticket.assigned_to
-            )
+            # -------- TIMELINE --------
+
+            if old_status != new_status:
+                TicketTimeline.objects.create(
+                    ticket=ticket,
+                    action=f"Status changed from {old_status} to {new_status}",
+                    done_by_id=ticket.assigned_to_id
+                )
+
+            if new_priority and old_priority != new_priority:
+                TicketTimeline.objects.create(
+                    ticket=ticket,
+                    action=f"Priority changed from {old_priority} to {new_priority}",
+                    done_by_id=ticket.assigned_to_id
+                )
+
+            if new_assigned and old_assigned != int(new_assigned):
+                TicketTimeline.objects.create(
+                    ticket=ticket,
+                    action="Ticket Assigned",
+                    done_by_id=new_assigned
+                )
 
             return Response(
                 TicketDetailSerializer(ticket).data,
