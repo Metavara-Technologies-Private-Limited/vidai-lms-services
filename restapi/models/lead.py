@@ -91,7 +91,6 @@ class Lead(models.Model):
         related_name="personal_leads"
     )
 
-    # ✅ NEW FIELD
     created_by = models.ForeignKey(
         Employee,
         on_delete=models.SET_NULL,
@@ -100,7 +99,6 @@ class Lead(models.Model):
         related_name="created_leads"
     )
 
-    # ✅ Recommended (audit purpose)
     updated_by = models.ForeignKey(
         Employee,
         on_delete=models.SET_NULL,
@@ -115,6 +113,13 @@ class Lead(models.Model):
 
     full_name = models.CharField(max_length=255)
     age = models.IntegerField(null=True, blank=True)
+
+    gender = models.CharField(          # ✅ ADDED
+        max_length=10,
+        choices=LeadChoices.GENDER,
+        null=True,
+        blank=True
+    )
 
     marital_status = models.CharField(
         max_length=20,
@@ -207,8 +212,9 @@ class Lead(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
-    
+
     converted_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         db_table = "restapi_lead"
         ordering = ["-created_at"]
@@ -219,7 +225,6 @@ class Lead(models.Model):
     from django.utils import timezone
 
     def save(self, *args, **kwargs):
-
         if self.lead_status == "converted" and not self.converted_at:
             self.converted_at = timezone.now()
 

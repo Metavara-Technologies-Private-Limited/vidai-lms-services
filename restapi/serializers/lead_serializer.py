@@ -40,15 +40,9 @@ class LeadReadSerializer(serializers.ModelSerializer):
     personal_id = serializers.IntegerField(source="personal.id", read_only=True)
     personal_name = serializers.CharField(source="personal.emp_name", read_only=True)
 
-    # =====================================================
-    # ✅ NEW: created_by exposed in READ ONLY
-    # =====================================================
     created_by_id = serializers.IntegerField(source="created_by.id", read_only=True)
     created_by_name = serializers.CharField(source="created_by.emp_name", read_only=True)
 
-    # =====================================================
-    # ✅ NEW: Multiple Documents Support
-    # =====================================================
     documents = serializers.SerializerMethodField()
 
     class Meta:
@@ -62,12 +56,12 @@ class LeadReadSerializer(serializers.ModelSerializer):
             "assigned_to_id", "assigned_to_name",
             "personal_id", "personal_name",
 
-            # ✅ NEW
             "created_by_id",
             "created_by_name",
 
             "full_name",
             "age",
+            "gender",              # ✅ ADDED
             "marital_status",
             "email",
             "contact_no",
@@ -90,7 +84,6 @@ class LeadReadSerializer(serializers.ModelSerializer):
             "slot",
             "remark",
 
-            # ✅ NEW
             "documents",
 
             "created_at",
@@ -99,7 +92,6 @@ class LeadReadSerializer(serializers.ModelSerializer):
             "converted_at",
         ]
 
-    # ✅ NEW: return document list
     def get_documents(self, obj):
         return [
             {
@@ -123,9 +115,6 @@ class LeadSerializer(serializers.ModelSerializer):
     personal_id = serializers.IntegerField(required=False, allow_null=True)
     campaign_id = serializers.UUIDField(required=False, allow_null=True)
 
-    # =====================================================
-    # ✅ NEW: Multi File Upload Support
-    # =====================================================
     documents = serializers.ListField(
         child=serializers.FileField(),
         write_only=True,
@@ -146,6 +135,7 @@ class LeadSerializer(serializers.ModelSerializer):
 
             "full_name",
             "age",
+            "gender",              # ✅ ADDED
             "marital_status",
             "email",
             "contact_no",
@@ -208,10 +198,6 @@ class LeadSerializer(serializers.ModelSerializer):
     # CREATE
     # =====================================================
     def create(self, validated_data):
-
-        # =====================================================
-        # ✅ NEW: Auto set created_by from logged-in user
-        # =====================================================
         request = self.context.get("request")
         if request and hasattr(request.user, "employee"):
             validated_data["created_by"] = request.user.employee
