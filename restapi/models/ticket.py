@@ -1,9 +1,9 @@
 import uuid
 from django.db import models
+
 from .lab import Lab
 from .department import Department
 from .employee import Employee
-
 
 class Ticket(models.Model):
 
@@ -20,6 +20,15 @@ class Ticket(models.Model):
         ("low", "Low"),
         ("medium", "Medium"),
         ("high", "High"),
+    ]
+
+    TYPE_CHOICES = [
+        ("Question", "Question"),
+        ("Bugs", "Bugs"),
+        ("Problems", "Problems"),
+        ("Incident", "Incident"),
+        ("Custom Integration", "Custom Integration"),
+        ("Login creation", "Login creation"),
     ]
 
     ticket_no = models.CharField(max_length=20, unique=True)
@@ -50,10 +59,18 @@ class Ticket(models.Model):
     )
 
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES)
+
     status = models.CharField(
         max_length=10,
         choices=STATUS_CHOICES,
         default="new"
+    )
+
+    # ✅ ADD THIS FIELD
+    type = models.CharField(
+        max_length=50,
+        choices=TYPE_CHOICES,
+        default="Question"
     )
 
     due_date = models.DateField(null=True, blank=True)
@@ -63,8 +80,9 @@ class Ticket(models.Model):
 
     resolved_at = models.DateTimeField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
-    
+
     is_deleted = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return self.ticket_no

@@ -91,7 +91,7 @@ DATABASES = {
         'NAME': 'stage5_db',
         'USER': 'postgres',
         'PASSWORD': 'saimohan',
-        'HOST': 'host.docker.internal',
+        'HOST': 'host.docker.internal', # ✅ UPDATED (important for Docker) host.docker.internal
         'PORT': '5432',   # ✅ ADDED (important)
     }
 }

@@ -29,7 +29,7 @@ from .views import (
     ClinicEmployeesAPIView,
     EmployeeCreateAPIView,
     UserCreateAPIView,
-
+    EmployeeUpdateAPIView,
     # ==================================================
     # Lead APIs
     # ==================================================
@@ -144,17 +144,11 @@ urlpatterns = [
 # EMPLOYEE / USER APIs
 # ==================================================
 
-    # Get all employees under a specific clinic
-    path(
-        "clinics/<int:clinic_id>/employees/",
-        ClinicEmployeesAPIView.as_view(),
-        name="clinic-employees",
-    ),
-
-    # Create employee
+    # EMPLOYEE / USER APIs
+    # ==================================================
+    path("clinics/<int:clinic_id>/employees/", ClinicEmployeesAPIView.as_view(), name="clinic-employees"),
     path("employees/", EmployeeCreateAPIView.as_view(), name="employee-create"),
-
-    # Create system user
+    path("employees/<int:employee_id>/update/", EmployeeUpdateAPIView.as_view(), name="employee-update"),  # ✅ FIXED
     path("users/", UserCreateAPIView.as_view(), name="user-create"),
 
 

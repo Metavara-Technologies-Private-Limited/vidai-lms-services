@@ -91,6 +91,7 @@ from restapi.serializers.employee import (
     EmployeeCreateSerializer,
     EmployeeReadSerializer,
     UserCreateSerializer,
+    EmployeeUpdateSerializer,
 )
 
 # Lead
@@ -620,6 +621,42 @@ class EmployeeCreateAPIView(APIView):
             EmployeeReadSerializer(employee).data,
             status=status.HTTP_201_CREATED
         )
+
+class EmployeeUpdateAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_summary="Update Employee",
+        operation_description="Update an existing employee's details (email, contact, type, etc.)",
+        request_body=EmployeeUpdateSerializer,
+        responses={
+            200: EmployeeReadSerializer,
+            400: "Validation Error",
+            404: "Employee not found",
+        },
+        tags=["Employee"]
+    )
+    def put(self, request, employee_id):
+        try:
+            employee = Employee.objects.get(id=employee_id)
+        except Employee.DoesNotExist:
+            return Response(
+                {"error": "Employee not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = EmployeeUpdateSerializer(
+            employee,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        updated_employee = serializer.save()
+
+        return Response(
+            EmployeeReadSerializer(updated_employee).data,
+            status=status.HTTP_200_OK,
+        )
+
 
 # =====================================================
 # CREATE LEAD NOTE API
@@ -2654,7 +2691,8 @@ class TicketStatusUpdateAPIView(APIView):
             properties={
                 "status": openapi.Schema(type=openapi.TYPE_STRING),
                 "priority": openapi.Schema(type=openapi.TYPE_STRING),
-                "assigned_to": openapi.Schema(type=openapi.TYPE_INTEGER)
+                "assigned_to": openapi.Schema(type=openapi.TYPE_INTEGER),
+                "type": openapi.Schema(type=openapi.TYPE_STRING),
             },
         ),
         responses={
@@ -2682,11 +2720,13 @@ class TicketStatusUpdateAPIView(APIView):
             old_status = ticket.status
             old_priority = ticket.priority
             old_assigned = ticket.assigned_to_id
+            old_type = ticket.type
 
             # -------- REQUEST VALUES --------
             new_status = request.data.get("status")
             new_priority = request.data.get("priority")
             new_assigned = request.data.get("assigned_to")
+            new_type = request.data.get("type")
 
             if not new_status:
                 raise ValidationError("status field is required")
@@ -2708,6 +2748,10 @@ class TicketStatusUpdateAPIView(APIView):
             if new_assigned:
                 ticket.assigned_to_id = new_assigned
 
+            # -------- UPDATE TYPE --------
+            if new_type:
+                ticket.type = new_type
+
             ticket.save()
 
             # -------- TIMELINE --------
@@ -2726,10 +2770,31 @@ class TicketStatusUpdateAPIView(APIView):
                     done_by_id=ticket.assigned_to_id
                 )
 
-            if new_assigned and old_assigned != int(new_assigned):
+            if new_type and old_type != new_type:
                 TicketTimeline.objects.create(
                     ticket=ticket,
-                    action="Ticket Assigned",
+                    action=f"Type changed from {old_type} to {new_type}",
+                    done_by_id=ticket.assigned_to_id
+                )
+
+            # -------- ASSIGN TIMELINE (SAFE FIX) --------
+            if new_assigned and old_assigned != int(new_assigned):
+
+                old_user_name = "Unassigned"
+                new_user_name = "Unknown"
+
+                if old_assigned:
+                    old_user = Employee.objects.filter(id=old_assigned).first()
+                    if old_user:
+                        old_user_name = old_user.emp_name
+
+                new_user = Employee.objects.filter(id=new_assigned).first()
+                if new_user:
+                    new_user_name = new_user.emp_name
+
+                TicketTimeline.objects.create(
+                    ticket=ticket,
+                    action=f"Assigned changed from {old_user_name} to {new_user_name}",
                     done_by_id=new_assigned
                 )
 
@@ -2751,7 +2816,6 @@ class TicketStatusUpdateAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
 # -------------------------------------------------------------------
 # Ticket Document Upload API View (POST)
 # -------------------------------------------------------------------

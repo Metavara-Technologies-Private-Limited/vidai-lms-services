@@ -22,7 +22,7 @@ def create_employee(validated_data):
     except Department.DoesNotExist:
         raise serializers.ValidationError({"department_id": "Invalid department_id"})
 
-    # ❗ prevent duplicate employee for same user
+    # Prevent duplicate employee for same user
     if Employee.objects.filter(user=user).exists():
         raise serializers.ValidationError({
             "user_id": "Employee already exists for this user"
@@ -33,9 +33,46 @@ def create_employee(validated_data):
         clinic=clinic,
         dep=department,
         emp_type=validated_data["emp_type"],
-        emp_name=validated_data["emp_name"]
+        emp_name=validated_data["emp_name"],
+        email=validated_data.get("email"),
+        contact_no=validated_data.get("contact_no"),
     )
 
+    return employee
+
+
+def update_employee(employee, validated_data):
+    """
+    Update an existing employee's details.
+    Only updates fields that are present in validated_data.
+    """
+    if "emp_name" in validated_data:
+        employee.emp_name = validated_data["emp_name"]
+
+    if "emp_type" in validated_data:
+        employee.emp_type = validated_data["emp_type"]
+
+    if "email" in validated_data:
+        employee.email = validated_data["email"]
+
+    if "contact_no" in validated_data:
+        employee.contact_no = validated_data["contact_no"]
+
+    if "department_id" in validated_data:
+        try:
+            department = Department.objects.get(id=validated_data["department_id"])
+            employee.dep = department
+        except Department.DoesNotExist:
+            raise serializers.ValidationError({"department_id": "Invalid department_id"})
+
+    if "clinic_id" in validated_data:
+        try:
+            clinic = Clinic.objects.get(id=validated_data["clinic_id"])
+            employee.clinic = clinic
+        except Clinic.DoesNotExist:
+            raise serializers.ValidationError({"clinic_id": "Invalid clinic_id"})
+
+    employee.save()
     return employee
 
 
