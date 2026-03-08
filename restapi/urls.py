@@ -1,15 +1,22 @@
 """
-Main API URL Configuration
+Main API URL Configuration — restapi/urls.py
 
-Structure:
-- Clinics
-- Employees / Users
-- Leads
-- Campaigns
-- Pipelines
-- Tickets
-
-Each section is grouped logically for clarity and maintainability.
+Sections:
+  1.  Clinic
+  2.  Employee / User
+  3.  Lead
+  4.  Lead Notes
+  5.  Twilio (SMS + Calls)
+  6.  Campaign
+  7.  Sales Pipeline
+  8.  Ticket
+  9.  Lab
+  10. Template
+  11. Mail Insights          ← Zapier webhook receiver + KPI getter + Reset
+  12. Interaction Counts     ← CommunicationChart real data
+  13. Debug                  ← Temporary Twilio status checker
+  14. Social Auth (LinkedIn + Facebook)
+  15. Image Upload
 """
 
 from django.urls import path
@@ -30,6 +37,7 @@ from .views import (
     EmployeeCreateAPIView,
     UserCreateAPIView,
     EmployeeUpdateAPIView,
+
     # ==================================================
     # Lead APIs
     # ==================================================
@@ -51,7 +59,6 @@ from .views import (
     LeadNoteDeleteAPIView,
     LeadNoteListAPIView,
 
-
     # ==================================================
     # Campaign APIs
     # ==================================================
@@ -66,11 +73,15 @@ from .views import (
     EmailCampaignCreateAPIView,
     CampaignZapierCallbackAPIView,
     MailchimpWebhookAPIView,
+
+    # ==================================================
+    # Twilio APIs
+    # ==================================================
     SendSMSAPIView,
     MakeCallAPIView,
     TwilioMessageListAPIView,
     TwilioCallListAPIView,
-    
+
     # ==================================================
     # Sales Pipeline APIs
     # ==================================================
@@ -95,11 +106,9 @@ from .views import (
     TicketDeleteAPIView,
     TicketDashboardCountAPIView,
 
-    
     # ==================================================
     # Lab APIs
     # ==================================================
-
     LabListAPIView,
     LabCreateAPIView,
     LabUpdateAPIView,
@@ -115,300 +124,199 @@ from .views import (
     TemplateDetailAPIView,
     TemplateDocumentUploadAPIView,
 
+    # ==================================================
+    # Social Auth
+    # ==================================================
     LinkedInLoginAPIView,
     LinkedInCallbackAPIView,
     LinkedInStatusAPIView,
     FacebookLoginAPIView,
     FacebookCallbackAPIView,
     FacebookStatusAPIView,
-    
+
+    # ==================================================
+    # Image Upload
+    # ==================================================
+    ImageUploadAPIView,
+
+    # ==================================================
+    # Mail Insights (Zapier → Django cache → Dashboard KPIs)
+    # FIXED: MailInsightsReceiveAPIView now accumulates counts
+    #        instead of overwriting — appointments_booked never
+    #        gets wiped when a lead_created event fires.
+    # ==================================================
+    MailInsightsReceiveAPIView,    # POST  /api/mail-insights/
+    MailInsightsGetAPIView,        # GET   /api/mail-insights/get/
+    MailInsightsResetAPIView,      # POST  /api/mail-insights/reset/
+
+    # ==================================================
+    # Interaction Counts (CommunicationChart real data)
+    # Email→SMS→Call→WhatsApp→Chatbot
+    # ==================================================
+    InteractionCountsAPIView,      # GET   /api/interactions/counts/
+
+    # ==================================================
+    # Debug — temporary, remove after confirming call statuses
+    # Open: http://localhost:8000/api/debug/twilio-status/
+    # ==================================================
+    TwilioDebugAPIView,            # GET   /api/debug/twilio-status/
+    MailInsightsDebugAPIView,      # GET   /api/debug/mail-insights-log/
 )
+
 
 urlpatterns = [
 
-# ==================================================
-# CLINIC APIs
-# ==================================================
+    # ==================================================
+    # CLINIC APIs
+    # ==================================================
+    path("clinics/",                        ClinicCreateAPIView.as_view(),    name="clinic-create"),
+    path("clinics/<int:clinic_id>/",        ClinicUpdateAPIView.as_view(),    name="clinic-update"),
+    path("clinics/<int:clinic_id>/detail/", GetClinicView.as_view(),          name="clinic-get"),
 
-    # Create a new clinic
-    path("clinics/", ClinicCreateAPIView.as_view(), name="clinic-create"),
-
-    # Update existing clinic (full update)
-    path("clinics/<int:clinic_id>/", ClinicUpdateAPIView.as_view(), name="clinic-update"),
-
-    # Get clinic details by ID
-    path("clinics/<int:clinic_id>/detail/", GetClinicView.as_view(), name="clinic-get"),
-
-
-# ==================================================
-# EMPLOYEE / USER APIs
-# ==================================================
-
+    # ==================================================
     # EMPLOYEE / USER APIs
     # ==================================================
-    path("clinics/<int:clinic_id>/employees/", ClinicEmployeesAPIView.as_view(), name="clinic-employees"),
-    path("employees/", EmployeeCreateAPIView.as_view(), name="employee-create"),
-    path("employees/<int:employee_id>/update/", EmployeeUpdateAPIView.as_view(), name="employee-update"),  # ✅ FIXED
-    path("users/", UserCreateAPIView.as_view(), name="user-create"),
-
-
-# ==================================================
-# LEAD APIs
-# ==================================================
-
-    # Create lead
-    path("leads/", LeadCreateAPIView.as_view(), name="lead-create"),
-
-    # Update lead (full update)
-    path("leads/<uuid:lead_id>/update/", LeadUpdateAPIView.as_view(), name="lead-update"),
-
-    # List all leads
-    path("leads/list/", LeadListAPIView.as_view(), name="lead-list"),
-
-    # Get single lead details
-    path("leads/<uuid:lead_id>/", LeadGetAPIView.as_view(), name="lead-get"),
-
-    # Activate lead
-    path("leads/<uuid:lead_id>/activate/", LeadActivateAPIView.as_view(), name="lead-activate"),
-
-    # Inactivate lead
-    path("leads/<uuid:lead_id>/inactivate/", LeadInactivateAPIView.as_view(), name="lead-inactivate"),
-
-    # Soft delete lead
-    path("leads/<uuid:lead_id>/delete/", LeadSoftDeleteAPIView.as_view(), name="lead-soft-delete"),
-    
-    # Send lead email
-    path("lead-email/", LeadEmailAPIView.as_view(), name="lead-email"),
-
-    # GET: Retrieve mail
-    # Example:
-    # /api/lead-mail/?lead_uuid=<lead_uuid>
-    # lead_uuid is REQUIRED
-    path("lead-mail/", LeadMailListAPIView.as_view(), name="lead-mail-list"),
-    
-    # send sms using Twilio
-    path("twilio/send-sms/", SendSMSAPIView.as_view()),
-    # make call using Twilio
-    path("twilio/make-call/", MakeCallAPIView.as_view()),
-
-# GET: Retrieve SMS
-# Example:
-# /api/twilio/sms/?lead_uuid=<lead_uuid>
-# lead_uuid is REQUIRED
-path("twilio/sms/", TwilioMessageListAPIView.as_view(), name="twilio-sms-list"),
-
-# GET: Retrieve Calls
-# Example:
-# /api/twilio/calls/?lead_uuid=<lead_uuid>
-# lead_uuid is REQUIRED
-path("twilio/calls/", TwilioCallListAPIView.as_view(), name="twilio-call-list"),  
-
-# ==================================================
-# LEAD NOTES APIs
-# ==================================================
-
-# Create a new note for a lead
-path("leads/notes/", LeadNoteCreateAPIView.as_view(), name="lead-note-create"),
-
-# Update existing note (partial update supported)
-path("leads/notes/<uuid:note_id>/update/", LeadNoteUpdateAPIView.as_view(), name="lead-note-update"),
-
-# Soft delete a note
-path("leads/notes/<uuid:note_id>/delete/", LeadNoteDeleteAPIView.as_view(), name="lead-note-delete"),
-
-# List all notes for a specific lead
-path("leads/<uuid:lead_id>/notes/", LeadNoteListAPIView.as_view(), name="lead-note-list"),
-
-
-# ==================================================
-# CAMPAIGN APIs
-# ==================================================
-
-    # Create campaign
-    path("campaigns/", CampaignCreateAPIView.as_view(), name="campaign-create"),
-
-    # Update campaign
-    path("campaigns/<uuid:campaign_id>/update/", CampaignUpdateAPIView.as_view(), name="campaign-update"),
-
-    # List campaigns
-    path("campaigns/list/", CampaignListAPIView.as_view(), name="campaign-list"),
-
-    # Get campaign details
-    path("campaigns/<uuid:campaign_id>/", CampaignGetAPIView.as_view(), name="campaign-get"),
-
-    # Activate campaign
-    path("campaigns/<uuid:campaign_id>/activate/", CampaignActivateAPIView.as_view(), name="campaign-activate"),
-
-    # Inactivate campaign
-    path("campaigns/<uuid:campaign_id>/inactivate/", CampaignInactivateAPIView.as_view(), name="campaign-inactivate"),
-
-    # Soft delete campaign
-    path("campaigns/<uuid:campaign_id>/delete/", CampaignSoftDeleteAPIView.as_view(), name="campaign-soft-delete"),
-
-    # Create social media campaign
-    path(
-        "social-media-campaign/create/",
-        SocialMediaCampaignCreateAPIView.as_view(),
-        name="social-media-campaign-create",
-    ),
-    # Create email campaign
-    path(
-        "campaigns/email/create/",
-        EmailCampaignCreateAPIView.as_view(),
-        name="email-campaign-create",
-    ),
-
-    path(
-    "campaigns/zapier-callback/",
-    CampaignZapierCallbackAPIView.as_view(),
-    name="campaign-zapier-callback",
-),
-    # Mailchimp webhook receiver
-    path(
-        "mailchimp/webhook/",
-        MailchimpWebhookAPIView.as_view(),
-        name="mailchimp-webhook",
-    ),
-    
-    path("twilio/send-sms/", SendSMSAPIView.as_view()),
-    path("twilio/make-call/", MakeCallAPIView.as_view()),
-
-
-    # GET: Retrieve SMS
-# Example:
-# /api/twilio/sms/?lead_uuid=<lead_uuid>
-# lead_uuid is REQUIRED
-path("twilio/sms/", TwilioMessageListAPIView.as_view(), name="twilio-sms-list"),
-
-# GET: Retrieve Calls
-# Example:
-# /api/twilio/calls/?lead_uuid=<lead_uuid>
-# lead_uuid is REQUIRED
-path("twilio/calls/", TwilioCallListAPIView.as_view(), name="twilio-call-list"),  
-
-
-
-
-    
-
-# ==================================================
-# SALES PIPELINE APIs
-# ==================================================
-
-    # Create pipeline
-    path("pipelines/create/", PipelineCreateAPIView.as_view(), name="pipeline-create"),
-
-    # List pipelines
-    path("pipelines/", PipelineListAPIView.as_view(), name="pipeline-list"),
-
-    # Get pipeline with stages
-    path("pipelines/<uuid:pipeline_id>/", PipelineDetailAPIView.as_view(), name="pipeline-detail"),
-
-    # Create pipeline stage
-    path("pipelines/stages/create/", PipelineStageCreateAPIView.as_view(), name="pipeline-stage-create"),
-
-    # Update pipeline stage
-    path("pipelines/stages/<uuid:stage_id>/update/", PipelineStageUpdateAPIView.as_view(), name="pipeline-stage-update"),
-
-    # Save stage rules
-    path("pipelines/stages/<uuid:stage_id>/rules/", StageRuleSaveAPIView.as_view(), name="pipeline-stage-rules-save"),
-
-    # Save stage fields (data capture)
-    path("pipelines/stages/<uuid:stage_id>/fields/", StageFieldSaveAPIView.as_view(), name="pipeline-stage-fields-save"),
-
-
-# ==================================================
-# TICKET APIs
-# ==================================================
-
-    # List tickets (with filters + pagination)
-    path("tickets/", TicketListAPIView.as_view(), name="ticket-list"),
-
-    # Get single ticket details
-    path("tickets/<uuid:ticket_id>/", TicketDetailAPIView.as_view(), name="ticket-detail"),
-
-    # Create new ticket
-    path("tickets/create/", TicketCreateAPIView.as_view(), name="ticket-create"),
-
-    # Update ticket (full update)
-    path("tickets/<uuid:ticket_id>/update/", TicketUpdateAPIView.as_view(), name="ticket-update"),
-
-    # Assign ticket to employee
-    path("tickets/<uuid:ticket_id>/assign/", TicketAssignAPIView.as_view(), name="ticket-assign"),
-
-    # Update ticket status
-    path("tickets/<uuid:ticket_id>/status/", TicketStatusUpdateAPIView.as_view(), name="ticket-status-update"),
-
-    # Upload document to ticket
-    path("tickets/<uuid:ticket_id>/documents/", TicketDocumentUploadAPIView.as_view(), name="ticket-document-upload"),
-
-    # Soft delete ticket
-    path("tickets/<uuid:ticket_id>/delete/", TicketDeleteAPIView.as_view(), name="ticket-delete"),
-
-    # Dashboard count for tickets
-    path("tickets/dashboard-count/", TicketDashboardCountAPIView.as_view(), name="ticket-dashboard-count"),
-
-# ==================================================
-# LAB APIs
-# ==================================================
-
-# List all active labs (used for dropdown selection in ticket creation)
-path(
-    "labs/", LabListAPIView.as_view(), name="lab-list"),
-
-# Create a new lab under a clinic
-path(
-    "labs/create/", LabCreateAPIView.as_view(), name="lab-create"),
-
-# Update existing lab details (Full Update using PUT)
-path(
-    "labs/<uuid:lab_id>/update/", LabUpdateAPIView.as_view(), name="lab-update"),
-
-# Soft delete lab (marks lab as inactive and deleted)
-path(
-    "labs/<uuid:lab_id>/delete/", LabSoftDeleteAPIView.as_view(), name="lab-delete" ),
-
-
-# ==================================================
-# TEMPLATE APIs
-# ==================================================
-    
-    path(
-        "templates/<str:template_type>/<uuid:template_id>/documents/",
-        TemplateDocumentUploadAPIView.as_view(),
-        name="template-document-upload",
-    ),
-
-    # List templates by type (mail / sms / whatsapp)
-    path(
-        "templates/<str:template_type>/", TemplateListAPIView.as_view(), name="template-list" ),
-
-    # Get single template by ID
-    path( "templates/<str:template_type>/<uuid:template_id>/", TemplateDetailAPIView.as_view(),
-    name="template-detail"),
-
-    # Create template by type
-    path("templates/<str:template_type>/create/", TemplateCreateAPIView.as_view(), name="template-create"),
-
-    # Update template by type
-    path(
-        "templates/<str:template_type>/<uuid:template_id>/update/", TemplateUpdateAPIView.as_view(), 
-        name="template-update",
-    ),
-
-    # Soft delete template by type
-    path(
-        "templates/<str:template_type>/<uuid:template_id>/delete/", TemplateDeleteAPIView.as_view(),
-        name="template-delete",
-    ),
-
-    # LinkedIn Integration
-    path("linkedin/login/", LinkedInLoginAPIView.as_view()),
-    path("linkedin/callback/", LinkedInCallbackAPIView.as_view()),
-    path("linkedin/status/", LinkedInStatusAPIView.as_view()),
-
-    path("facebook/login/", FacebookLoginAPIView.as_view()),
-    path("facebook/callback/", FacebookCallbackAPIView.as_view()),
-    path("facebook/status/", FacebookStatusAPIView.as_view()),
-    
+    path("clinics/<int:clinic_id>/employees/",       ClinicEmployeesAPIView.as_view(),  name="clinic-employees"),
+    path("employees/",                               EmployeeCreateAPIView.as_view(),   name="employee-create"),
+    path("employees/<int:employee_id>/update/",      EmployeeUpdateAPIView.as_view(),   name="employee-update"),
+    path("users/",                                   UserCreateAPIView.as_view(),       name="user-create"),
+
+    # ==================================================
+    # LEAD APIs
+    # ==================================================
+    path("leads/",                           LeadCreateAPIView.as_view(),      name="lead-create"),
+    path("leads/<uuid:lead_id>/update/",     LeadUpdateAPIView.as_view(),      name="lead-update"),
+    path("leads/list/",                      LeadListAPIView.as_view(),        name="lead-list"),
+    path("leads/<uuid:lead_id>/",            LeadGetAPIView.as_view(),         name="lead-get"),
+    path("leads/<uuid:lead_id>/activate/",   LeadActivateAPIView.as_view(),    name="lead-activate"),
+    path("leads/<uuid:lead_id>/inactivate/", LeadInactivateAPIView.as_view(),  name="lead-inactivate"),
+    path("leads/<uuid:lead_id>/delete/",     LeadSoftDeleteAPIView.as_view(),  name="lead-soft-delete"),
+    path("lead-email/",                      LeadEmailAPIView.as_view(),       name="lead-email"),
+    path("lead-mail/",                       LeadMailListAPIView.as_view(),    name="lead-mail-list"),
+
+    # ==================================================
+    # LEAD NOTES APIs
+    # ==================================================
+    path("leads/notes/",                            LeadNoteCreateAPIView.as_view(), name="lead-note-create"),
+    path("leads/notes/<uuid:note_id>/update/",      LeadNoteUpdateAPIView.as_view(), name="lead-note-update"),
+    path("leads/notes/<uuid:note_id>/delete/",      LeadNoteDeleteAPIView.as_view(), name="lead-note-delete"),
+    path("leads/<uuid:lead_id>/notes/",             LeadNoteListAPIView.as_view(),   name="lead-note-list"),
+
+    # ==================================================
+    # TWILIO APIs
+    # (registered once only — no duplicates)
+    # ==================================================
+    path("twilio/send-sms/",  SendSMSAPIView.as_view(),          name="twilio-send-sms"),
+    path("twilio/make-call/", MakeCallAPIView.as_view(),          name="twilio-make-call"),
+    path("twilio/sms/",       TwilioMessageListAPIView.as_view(), name="twilio-sms-list"),
+    path("twilio/calls/",     TwilioCallListAPIView.as_view(),    name="twilio-call-list"),
+
+    # ==================================================
+    # CAMPAIGN APIs
+    # ==================================================
+    path("campaigns/",                              CampaignCreateAPIView.as_view(),         name="campaign-create"),
+    path("campaigns/<uuid:campaign_id>/update/",    CampaignUpdateAPIView.as_view(),         name="campaign-update"),
+    path("campaigns/list/",                         CampaignListAPIView.as_view(),           name="campaign-list"),
+    path("campaigns/<uuid:campaign_id>/",           CampaignGetAPIView.as_view(),            name="campaign-get"),
+    path("campaigns/<uuid:campaign_id>/activate/",  CampaignActivateAPIView.as_view(),       name="campaign-activate"),
+    path("campaigns/<uuid:campaign_id>/inactivate/",CampaignInactivateAPIView.as_view(),     name="campaign-inactivate"),
+    path("campaigns/<uuid:campaign_id>/delete/",    CampaignSoftDeleteAPIView.as_view(),     name="campaign-soft-delete"),
+    path("social-media-campaign/create/",           SocialMediaCampaignCreateAPIView.as_view(), name="social-media-campaign-create"),
+    path("campaigns/email/create/",                 EmailCampaignCreateAPIView.as_view(),    name="email-campaign-create"),
+    path("campaigns/zapier-callback/",              CampaignZapierCallbackAPIView.as_view(), name="campaign-zapier-callback"),
+    path("mailchimp/webhook/",                      MailchimpWebhookAPIView.as_view(),       name="mailchimp-webhook"),
+
+    # ==================================================
+    # SALES PIPELINE APIs
+    # ==================================================
+    path("pipelines/create/",                               PipelineCreateAPIView.as_view(),       name="pipeline-create"),
+    path("pipelines/",                                      PipelineListAPIView.as_view(),          name="pipeline-list"),
+    path("pipelines/<uuid:pipeline_id>/",                   PipelineDetailAPIView.as_view(),        name="pipeline-detail"),
+    path("pipelines/stages/create/",                        PipelineStageCreateAPIView.as_view(),   name="pipeline-stage-create"),
+    path("pipelines/stages/<uuid:stage_id>/update/",        PipelineStageUpdateAPIView.as_view(),   name="pipeline-stage-update"),
+    path("pipelines/stages/<uuid:stage_id>/rules/",         StageRuleSaveAPIView.as_view(),         name="pipeline-stage-rules-save"),
+    path("pipelines/stages/<uuid:stage_id>/fields/",        StageFieldSaveAPIView.as_view(),        name="pipeline-stage-fields-save"),
+
+    # ==================================================
+    # TICKET APIs
+    # ==================================================
+    path("tickets/",                                TicketListAPIView.as_view(),            name="ticket-list"),
+    path("tickets/create/",                         TicketCreateAPIView.as_view(),          name="ticket-create"),
+    path("tickets/dashboard-count/",                TicketDashboardCountAPIView.as_view(),  name="ticket-dashboard-count"),
+    path("tickets/<uuid:ticket_id>/",               TicketDetailAPIView.as_view(),          name="ticket-detail"),
+    path("tickets/<uuid:ticket_id>/update/",        TicketUpdateAPIView.as_view(),          name="ticket-update"),
+    path("tickets/<uuid:ticket_id>/assign/",        TicketAssignAPIView.as_view(),          name="ticket-assign"),
+    path("tickets/<uuid:ticket_id>/status/",        TicketStatusUpdateAPIView.as_view(),    name="ticket-status-update"),
+    path("tickets/<uuid:ticket_id>/documents/",     TicketDocumentUploadAPIView.as_view(),  name="ticket-document-upload"),
+    path("tickets/<uuid:ticket_id>/delete/",        TicketDeleteAPIView.as_view(),          name="ticket-delete"),
+
+    # ==================================================
+    # LAB APIs
+    # ==================================================
+    path("labs/",                       LabListAPIView.as_view(),       name="lab-list"),
+    path("labs/create/",                LabCreateAPIView.as_view(),     name="lab-create"),
+    path("labs/<uuid:lab_id>/update/",  LabUpdateAPIView.as_view(),     name="lab-update"),
+    path("labs/<uuid:lab_id>/delete/",  LabSoftDeleteAPIView.as_view(), name="lab-delete"),
+
+    # ==================================================
+    # TEMPLATE APIs
+    # (document upload path must come BEFORE the generic detail path)
+    # ==================================================
+    path("templates/<str:template_type>/<uuid:template_id>/documents/", TemplateDocumentUploadAPIView.as_view(), name="template-document-upload"),
+    path("templates/<str:template_type>/",                               TemplateListAPIView.as_view(),           name="template-list"),
+    path("templates/<str:template_type>/create/",                        TemplateCreateAPIView.as_view(),         name="template-create"),
+    path("templates/<str:template_type>/<uuid:template_id>/",            TemplateDetailAPIView.as_view(),         name="template-detail"),
+    path("templates/<str:template_type>/<uuid:template_id>/update/",     TemplateUpdateAPIView.as_view(),         name="template-update"),
+    path("templates/<str:template_type>/<uuid:template_id>/delete/",     TemplateDeleteAPIView.as_view(),         name="template-delete"),
+
+    # ==================================================
+    # IMAGE UPLOAD
+    # ==================================================
+    path("upload/image/", ImageUploadAPIView.as_view(), name="image-upload"),
+
+    # ==================================================
+    # MAIL INSIGHTS APIs
+    #
+    # How it works:
+    #   Zapier "Appointment Booked" Zap → POST /api/mail-insights/
+    #       body: { "appointments_booked": 1 }
+    #   Zapier "Lead Created" Zap       → POST /api/mail-insights/
+    #       body: { "leads_created": 1 }
+    #   Django ADDS to existing cache (never overwrites)
+    #   React Dashboard               → GET  /api/mail-insights/get/
+    #   Reset counts for testing      → POST /api/mail-insights/reset/
+    # ==================================================
+    path("mail-insights/",        MailInsightsReceiveAPIView.as_view(), name="mail-insights-receive"),
+    path("mail-insights/get/",    MailInsightsGetAPIView.as_view(),     name="mail-insights-get"),
+    path("mail-insights/reset/",  MailInsightsResetAPIView.as_view(),   name="mail-insights-reset"),
+
+    # ==================================================
+    # INTERACTION COUNTS API
+    # Powers the CommunicationChart in the React dashboard.
+    # Returns: Email | SMS | Call | WhatsApp | Chatbot
+    # ==================================================
+    path("interactions/counts/", InteractionCountsAPIView.as_view(), name="interaction-counts"),
+
+    # ==================================================
+    # DEBUG — TEMPORARY
+    # Open in browser: http://localhost:8000/api/debug/twilio-status/
+    # Shows every status value stored in TwilioCall + TwilioMessage tables.
+    # Remove this path once you've confirmed call statuses are correct.
+    # ==================================================
+    path("debug/twilio-status/",      TwilioDebugAPIView.as_view(),      name="twilio-debug"),
+    path("debug/mail-insights-log/",  MailInsightsDebugAPIView.as_view(), name="mail-insights-debug"),
+
+    # ==================================================
+    # SOCIAL AUTH — LinkedIn
+    # ==================================================
+    path("linkedin/login/",     LinkedInLoginAPIView.as_view()),
+    path("linkedin/callback/",  LinkedInCallbackAPIView.as_view()),
+    path("linkedin/status/",    LinkedInStatusAPIView.as_view()),
+
+    # ==================================================
+    # SOCIAL AUTH — Facebook
+    # ==================================================
+    path("facebook/login/",     FacebookLoginAPIView.as_view()),
+    path("facebook/callback/",  FacebookCallbackAPIView.as_view()),
+    path("facebook/status/",    FacebookStatusAPIView.as_view()),
 ]

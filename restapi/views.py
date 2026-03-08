@@ -1,214 +1,110 @@
 # =====================================================
 # Python Standard Library
 # =====================================================
-
 import logging
 import traceback
 import requests
 import secrets
 from datetime import datetime
 
-
 # =====================================================
 # Django Imports
 # =====================================================
-
 from django.conf import settings
+from django.core.cache import cache
+from django.core.mail import send_mail
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django.http import HttpResponseRedirect
 from django.utils.html import strip_tags
 
-
 # =====================================================
 # Third-Party Imports (DRF + Swagger)
 # =====================================================
-
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 
-
 # =====================================================
-# Project Imports – Models
+# Project Imports - Models
 # =====================================================
-
 from restapi.models import (
-    Clinic,
-    Ticket,
-    Employee,
-    Document,
-    LeadNote,
-    TicketTimeline,
-    CampaignSocialMediaConfig,
-    Pipeline,
-    PipelineStage,
-    LeadEmail,
-
-    TemplateMail,
-    TemplateSMS,
-    TemplateWhatsApp,
-    TemplateWhatsAppDocument,
-    TemplateMailDocument,
-    TemplateSMSDocument,
-    CampaignEmailConfig,
-    TwilioMessage,
-    TwilioCall,
+    Clinic, Ticket, Employee, Document, LeadNote, TicketTimeline,
+    CampaignSocialMediaConfig, Pipeline, PipelineStage, LeadEmail,
+    TemplateMail, TemplateSMS, TemplateWhatsApp,
+    TemplateWhatsAppDocument, TemplateMailDocument, TemplateSMSDocument,
+    CampaignEmailConfig, TwilioMessage, TwilioCall,
 )
 from restapi.models.social_account import SocialAccount
-from django.http import HttpResponseRedirect
-
 from .models import Lead, Campaign, Lab
 
-
 # =====================================================
-# Project Imports – Serializers
+# Project Imports - Serializers
 # =====================================================
-
-# Ticket
 from restapi.serializers.ticket_serializer import (
-    TicketListSerializer,
-    TicketDetailSerializer,
-    TicketWriteSerializer,
-    LabReadSerializer,
-    LabWriteSerializer,
+    TicketListSerializer, TicketDetailSerializer, TicketWriteSerializer,
+    LabReadSerializer, LabWriteSerializer,
 )
-
-# Clinic
-from restapi.serializers.clinic import (
-    ClinicSerializer,
-    ClinicReadSerializer,
-)
-
-# Employee
+from restapi.serializers.clinic import ClinicSerializer, ClinicReadSerializer
 from restapi.serializers.employee import (
-    EmployeeCreateSerializer,
-    EmployeeReadSerializer,
-    UserCreateSerializer,
-    EmployeeUpdateSerializer,
+    EmployeeCreateSerializer, EmployeeReadSerializer,
+    UserCreateSerializer, EmployeeUpdateSerializer,
 )
-
-# Lead
-from restapi.serializers.lead_serializer import (
-    LeadSerializer,
-    LeadReadSerializer,
-)
-
-# Lead Notes
-from restapi.serializers.lead_note_serializers import (
-    LeadNoteSerializer,
-    LeadNoteReadSerializer,
-)
-
-# Lead Email / Mail
-from restapi.serializers.lead_email_serializer import (
-    LeadEmailSerializer,
-    LeadMailListSerializer,
-)
-
-# Campaign
+from restapi.serializers.lead_serializer import LeadSerializer, LeadReadSerializer
+from restapi.serializers.lead_note_serializers import LeadNoteSerializer, LeadNoteReadSerializer
+from restapi.serializers.lead_email_serializer import LeadEmailSerializer, LeadMailListSerializer
 from restapi.serializers.campaign_serializer import (
-    CampaignSerializer,
-    CampaignReadSerializer,
-    SocialMediaCampaignSerializer,
-    EmailCampaignCreateSerializer,
+    CampaignSerializer, CampaignReadSerializer,
+    SocialMediaCampaignSerializer, EmailCampaignCreateSerializer,
 )
-
-# Mailchimp
-from restapi.serializers.mailchimp_serializer import (
-    MailchimpWebhookSerializer,
-)
-
-# Social Media Callback
-from restapi.serializers.campaign_social_post_serializer import (
-    CampaignSocialPostCallbackSerializer,
-)
-
-# Twilio
+from restapi.serializers.mailchimp_serializer import MailchimpWebhookSerializer
+from restapi.serializers.campaign_social_post_serializer import CampaignSocialPostCallbackSerializer
 from restapi.serializers.twilio_serializers import (
-    SendSMSSerializer,
-    MakeCallSerializer,
-    TwilioMessageListSerializer,
-    TwilioCallListSerializer,
+    SendSMSSerializer, MakeCallSerializer,
+    TwilioMessageListSerializer, TwilioCallListSerializer,
 )
-
-# Pipeline
-from restapi.serializers.pipeline_serializer import (
-    PipelineSerializer,
-    PipelineReadSerializer,
-)
-
-# Templates
+from restapi.serializers.pipeline_serializer import PipelineSerializer, PipelineReadSerializer
 from restapi.serializers.template_serializers import (
-    TemplateMailSerializer,
-    TemplateSMSSerializer,
-    TemplateWhatsAppSerializer,
-    TemplateMailReadSerializer,
-    TemplateSMSReadSerializer,
-    TemplateWhatsAppReadSerializer,
+    TemplateMailSerializer, TemplateSMSSerializer, TemplateWhatsAppSerializer,
+    TemplateMailReadSerializer, TemplateSMSReadSerializer, TemplateWhatsAppReadSerializer,
 )
 
-
 # =====================================================
-# Project Imports – Services
+# Project Imports - Services
 # =====================================================
-
 from restapi.services.lead_email_service import send_lead_email
 from restapi.services.mailchimp_service import create_mailchimp_event
 from restapi.services.campaign_social_post_service import handle_zapier_callback
 from restapi.services.twilio_service import send_sms, make_call
 from restapi.services.zapier_service import send_to_zapier
-from restapi.services.pipeline_service import (
-    add_stage,
-    update_stage,
-    save_stage_rules,
-    save_stage_fields,
-)
-from restapi.services.lead_note_service import (
-    create_lead_note,
-    update_lead_note,
-    delete_lead_note,
-)
+from restapi.services.pipeline_service import add_stage, update_stage, save_stage_rules, save_stage_fields
+from restapi.services.lead_note_service import create_lead_note, update_lead_note, delete_lead_note
 
 logger = logging.getLogger(__name__)
-
 
 # =====================================================
 # HELPERS
 # =====================================================
-
 _IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.tiff', '.bmp')
 
 
 def _is_direct_image_url(url: str) -> bool:
-    """
-    Return True when the URL is likely a direct image:
-    - Path ends with a known image extension, OR
-    - URL is from a known image CDN (Unsplash, Pexels, Imgur, Cloudinary, etc.)
-    """
+    """Return True when the URL is likely a direct image."""
     if not url:
         return False
     clean = url.split("?")[0].split("#")[0].lower()
     if clean.endswith(_IMAGE_EXTENSIONS):
         return True
-    # Known image CDN domains that serve images without file extensions
     _IMAGE_CDN_HOSTS = (
-        "images.unsplash.com",
-        "images.pexels.com",
-        "i.imgur.com",
-        "res.cloudinary.com",
-        "cdn.pixabay.com",
-        "media.istockphoto.com",
-        "images.squarespace-cdn.com",
-        "cdn.shopify.com",
-        "storage.googleapis.com",
-        "s3.amazonaws.com",
+        "images.unsplash.com", "images.pexels.com", "i.imgur.com",
+        "res.cloudinary.com", "cdn.pixabay.com", "media.istockphoto.com",
+        "images.squarespace-cdn.com", "cdn.shopify.com",
+        "storage.googleapis.com", "s3.amazonaws.com",
     )
     try:
         import urllib.parse
@@ -221,18 +117,15 @@ def _is_direct_image_url(url: str) -> bool:
 def _download_image(image_url: str):
     """
     Download image bytes from a public URL.
-    Returns (image_bytes, filename, content_type) on success.
-    Returns (None, None, None) on any failure.
+    Returns (image_bytes, filename, content_type) or (None, None, None).
     """
     import re
     import urllib.parse
 
-    # 1. Reject non-image URLs immediately
     if not _is_direct_image_url(image_url):
-        print(f"Skipping non-image URL (not a direct image file): {image_url}")
+        print(f"Skipping non-image URL: {image_url}")
         return None, None, None
 
-    # 2. Fix Wikipedia/Wikimedia URLs via MD5 recompute + API fallback
     wiki_upload_pattern = re.compile(
         r"https://upload\.wikimedia\.org/wikipedia/(?:commons|en)/"
         r"(?:thumb/[^/]+/[^/]+/|[^/]+/[^/]+/)([^/?#]+?)(?:/\d+px-[^/?#]+)?(?:[?#].*)?$",
@@ -241,43 +134,30 @@ def _download_image(image_url: str):
     wiki_match = wiki_upload_pattern.match(image_url)
     if wiki_match:
         import hashlib
-
         raw_filename = urllib.parse.unquote(wiki_match.group(1))
-        clean_filename = re.sub(r"^\d+px-", "", raw_filename)
-        clean_filename = clean_filename.replace(" ", "_")
+        clean_filename = re.sub(r"^\d+px-", "", raw_filename).replace(" ", "_")
         if clean_filename:
             clean_filename = clean_filename[0].upper() + clean_filename[1:]
-
         md5 = hashlib.md5(clean_filename.encode("utf-8")).hexdigest()
         md5_url = (
             f"https://upload.wikimedia.org/wikipedia/commons/"
             f"{md5[0]}/{md5[:2]}/{urllib.parse.quote(clean_filename, safe='')}"
         )
-        print(f"Wikipedia URL detected.")
-        print(f"   Original : {image_url}")
-        print(f"   Filename : {clean_filename}")
-        print(f"   MD5 dirs : {md5[0]}/{md5[:2]}/")
-        print(f"   MD5 URL  : {md5_url}")
-
+        print(f"Wikipedia URL detected. Filename: {clean_filename}, MD5 URL: {md5_url}")
         try:
-            head = requests.head(md5_url, timeout=8, allow_redirects=True, headers={
-                "User-Agent": "Mozilla/5.0 (compatible; LMS-Bot/1.0)"
-            })
+            head = requests.head(md5_url, timeout=8, allow_redirects=True,
+                                 headers={"User-Agent": "Mozilla/5.0 (compatible; LMS-Bot/1.0)"})
             if head.status_code == 200:
-                print("MD5 URL exists")
                 image_url = md5_url
             else:
-                print(f"MD5 URL HTTP {head.status_code} - querying Wikimedia Commons API...")
                 api_url = (
                     "https://commons.wikimedia.org/w/api.php"
                     f"?action=query&titles=File:{urllib.parse.quote(clean_filename)}"
                     "&prop=imageinfo&iiprop=url&format=json&redirects=1"
                 )
-                api_resp = requests.get(api_url, timeout=10, headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; LMS-Bot/1.0)"
-                })
-                api_data = api_resp.json()
-                pages = api_data.get("query", {}).get("pages", {})
+                api_resp = requests.get(api_url, timeout=10,
+                                        headers={"User-Agent": "Mozilla/5.0 (compatible; LMS-Bot/1.0)"})
+                pages = api_resp.json().get("query", {}).get("pages", {})
                 resolved_url = None
                 for page_id, page in pages.items():
                     if page_id != "-1":
@@ -286,19 +166,16 @@ def _download_image(image_url: str):
                             resolved_url = imageinfo[0].get("url")
                             break
                 if resolved_url:
-                    print(f"Wikimedia API resolved: {resolved_url}")
                     image_url = resolved_url
                 else:
-                    print(f"File '{clean_filename}' not found on Wikimedia Commons.")
                     return None, None, None
         except Exception as wiki_err:
-            print(f"Wikipedia HEAD/API check failed: {wiki_err}. Trying MD5 URL anyway.")
+            print(f"Wikipedia check failed: {wiki_err}. Trying MD5 URL.")
             image_url = md5_url
 
-    # 3. Build headers (Referer = same origin to bypass hotlink guards)
-    parsed = urllib.parse.urlparse(image_url)
+    import urllib.parse as _up
+    parsed = _up.urlparse(image_url)
     referer = f"{parsed.scheme}://{parsed.netloc}/"
-
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -312,55 +189,32 @@ def _download_image(image_url: str):
         "sec-fetch-mode": "no-cors",
         "sec-fetch-site": "cross-site",
     }
-
-    # 4. Download
     try:
         resp = requests.get(image_url, timeout=20, headers=headers, allow_redirects=True)
-        print(f"Image download status: {resp.status_code}  from  {image_url}")
-
+        print(f"Image download status: {resp.status_code} from {image_url}")
         if resp.status_code != 200:
-            print(f"Image download failed: HTTP {resp.status_code}")
             return None, None, None
-
         image_bytes = resp.content
-
-        # 5. Derive filename & content-type
         raw_filename = image_url.split("?")[0].split("/")[-1]
-        image_filename = urllib.parse.unquote(raw_filename) or "image.jpg"
+        image_filename = _up.unquote(raw_filename) or "image.jpg"
         image_filename = re.sub(r"\s+", "_", image_filename)
-
         ext = image_filename.split(".")[-1].lower()
         content_type_map = {
-            "jpg": "image/jpeg",
-            "jpeg": "image/jpeg",
-            "png": "image/png",
-            "gif": "image/gif",
-            "webp": "image/webp",
-            "tiff": "image/tiff",
-            "bmp": "image/bmp",
+            "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+            "gif": "image/gif", "webp": "image/webp", "tiff": "image/tiff", "bmp": "image/bmp",
         }
         content_type = content_type_map.get(ext, "image/jpeg")
-
-        print(f"Image filename : {image_filename}")
-        print(f"Image size     : {len(image_bytes)} bytes")
-        print(f"Content type   : {content_type}")
-
+        print(f"Image: {image_filename} | {len(image_bytes)} bytes | {content_type}")
         return image_bytes, image_filename, content_type
-
     except Exception as e:
         print(f"Failed to download image: {e}")
         return None, None, None
 
-
 # =====================================================
-# FACEBOOK POST HELPER FUNCTION
+# FACEBOOK POST HELPER
 # =====================================================
-
 def post_to_facebook(page_id, page_token, message, image_url=None):
-    """
-    Post a message (with optional image) to a Facebook Page.
-    """
-
+    """Post a message (with optional image) to a Facebook Page."""
     print("=" * 60)
     print("FACEBOOK POST DEBUG")
     print(f"Page ID    : {page_id}")
@@ -371,20 +225,13 @@ def post_to_facebook(page_id, page_token, message, image_url=None):
 
     if image_url:
         image_bytes, image_filename, content_type = _download_image(image_url)
-
         if image_bytes:
             url = f"https://graph.facebook.com/v19.0/{page_id}/photos"
             print(f"Posting WITH image to: {url}")
-
             response = requests.post(
                 url,
-                data={
-                    "caption": message,
-                    "access_token": page_token,
-                },
-                files={
-                    "source": (image_filename, image_bytes, content_type),
-                },
+                data={"caption": message, "access_token": page_token},
+                files={"source": (image_filename, image_bytes, content_type)},
             )
         else:
             print("Image download failed. Falling back to text-only post.")
@@ -393,33 +240,68 @@ def post_to_facebook(page_id, page_token, message, image_url=None):
     if not image_url:
         url = f"https://graph.facebook.com/v19.0/{page_id}/feed"
         print(f"Posting TEXT-ONLY to: {url}")
+        response = requests.post(url, data={"message": message, "access_token": page_token})
 
-        response = requests.post(
-            url,
-            data={
-                "message": message,
-                "access_token": page_token,
-            },
-        )
-
-    print(f"HTTP Status Code : {response.status_code}")
-    print(f"Raw Response     : {response.text}")
-
+    print(f"HTTP Status : {response.status_code}")
+    print(f"Response    : {response.text}")
     try:
         result = response.json()
-    except Exception as parse_err:
-        print(f"Failed to parse JSON response: {parse_err}")
+    except Exception:
         return {}
-
-    print(f"Parsed JSON: {result}")
-
     if "id" in result:
         print(f"Facebook Post ID: {result['id']}")
     else:
         print(f"Facebook Post Failed: {result.get('error', result)}")
-
     print("=" * 60)
     return result
+
+
+# =====================================================
+# MAIL NOTIFICATION HELPERS
+# =====================================================
+def _send_lead_created_mail(lead):
+    """Send internal notification email when a new lead is created."""
+    try:
+        send_mail(
+            subject=f"Lead Created - {lead.full_name}",
+            message=(
+                f"New lead has been created in the system.\n\n"
+                f"Name    : {lead.full_name}\n"
+                f"Contact : {lead.contact_no}\n"
+                f"Email   : {lead.email}\n"
+                f"Status  : {lead.lead_status}\n"
+                f"Lead ID : {lead.id}\n"
+            ),
+            from_email=settings.EMAIL_HOST_USER,
+            recipient_list=[settings.EMAIL_HOST_USER],
+            fail_silently=True,
+        )
+        print(f"Lead Created mail sent for: {lead.full_name}")
+    except Exception as e:
+        print(f"Lead Created mail failed: {e}")
+
+
+def _send_appointment_booked_mail(lead):
+    """Send internal notification email when a lead status becomes Appointment."""
+    try:
+        send_mail(
+            subject=f"Appointment Booked at Clinic - {lead.full_name}",
+            message=(
+                f"An appointment has been booked.\n\n"
+                f"Patient Name : {lead.full_name}\n"
+                f"Contact      : {lead.contact_no}\n"
+                f"Email        : {lead.email}\n"
+                f"Lead ID      : {lead.id}\n"
+                f"Booked At    : {timezone.now().strftime('%d-%m-%Y %H:%M')}\n"
+            ),
+            from_email=settings.EMAIL_HOST_USER,
+            recipient_list=[settings.EMAIL_HOST_USER],
+            fail_silently=True,
+        )
+        print(f"Appointment Booked mail sent for: {lead.full_name}")
+    except Exception as e:
+        print(f"Appointment Booked mail failed: {e}")
+
 
 
 # -------------------------------------------------------------------
@@ -3534,9 +3416,9 @@ class TemplateDeleteAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-# -------------------------------------------------------------------
-# LINKEDIN LOGIN API
-# -------------------------------------------------------------------
+# =====================================================
+# SOCIAL AUTH - LINKEDIN
+# =====================================================
 class LinkedInLoginAPIView(APIView):
     def get(self, request):
         auth_url = (
@@ -3549,15 +3431,11 @@ class LinkedInLoginAPIView(APIView):
         )
         return redirect(auth_url)
 
-# -------------------------------------------------------------------
-# LINKEDIN CALLBACK API
-# -------------------------------------------------------------------
+
 class LinkedInCallbackAPIView(APIView):
     def get(self, request):
         code = request.GET.get("code")
-
         token_url = "https://www.linkedin.com/oauth/v2/accessToken"
-
         data = {
             "grant_type": "authorization_code",
             "code": code,
@@ -3565,66 +3443,47 @@ class LinkedInCallbackAPIView(APIView):
             "client_id": settings.LINKEDIN_CLIENT_ID,
             "client_secret": settings.LINKEDIN_CLIENT_SECRET,
         }
-
         response = requests.post(token_url, data=data)
         token_data = response.json()
-
         access_token = token_data.get("access_token")
-
         if access_token:
             request.session["linkedin_token"] = access_token
-
-        return HttpResponseRedirect(
-            f"{settings.FRONTEND_URL}?linkedin=connected"
-        )
+        return HttpResponseRedirect(f"{settings.FRONTEND_URL}?linkedin=connected")
 
 
+class LinkedInStatusAPIView(APIView):
+    def get(self, request):
+        return Response({"connected": bool(request.session.get("linkedin_token"))})
+
+
+# =====================================================
+# IMAGE UPLOAD API
+# =====================================================
 class ImageUploadAPIView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
         try:
             file = request.FILES.get("file")
-
             if not file:
-                return Response(
-                    {"error": "No file provided"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
+                return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
             from django.core.files.storage import default_storage
             path = default_storage.save(f"campaign_images/{file.name}", file)
             url = request.build_absolute_uri(settings.MEDIA_URL + path)
-
             print(f"Image uploaded: {url} | path: {path}")
-
             return Response({"url": url, "path": path}, status=status.HTTP_200_OK)
-
         except Exception:
             logger.error("Image Upload Error:\n" + traceback.format_exc())
-            return Response(
-                {"error": "Internal Server Error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-# -------------------------------------------------------------------
-# LINKEDIN STATUS API
-# -------------------------------------------------------------------
-class LinkedInStatusAPIView(APIView):
-    def get(self, request):
-        return Response({
-            "connected": bool(request.session.get("linkedin_token"))
-        })
+            return Response({"error": "Internal Server Error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# -------------------------------------------------------------------
-# FACEBOOK LOGIN API
-# -------------------------------------------------------------------
+# =====================================================
+# SOCIAL AUTH - FACEBOOK
+# =====================================================
 class FacebookLoginAPIView(APIView):
     def get(self, request):
         state = secrets.token_urlsafe(16)
         request.session["facebook_state"] = state
-
         auth_url = (
             "https://www.facebook.com/v19.0/dialog/oauth"
             "?response_type=code"
@@ -3638,45 +3497,30 @@ class FacebookLoginAPIView(APIView):
         return redirect(auth_url)
 
 
-# -------------------------------------------------------------------
-# FACEBOOK CALLBACK API
-# -------------------------------------------------------------------
 class FacebookCallbackAPIView(APIView):
     def get(self, request):
         try:
             code = request.GET.get("code")
-
-            token_url = "https://graph.facebook.com/v19.0/oauth/access_token"
-
             params = {
                 "client_id": settings.FACEBOOK_CLIENT_ID,
                 "client_secret": settings.FACEBOOK_CLIENT_SECRET,
                 "redirect_uri": settings.FACEBOOK_REDIRECT_URI,
                 "code": code,
             }
-
-            response = requests.get(token_url, params=params)
+            response = requests.get("https://graph.facebook.com/v19.0/oauth/access_token", params=params)
             data = response.json()
-
             if "access_token" not in data:
                 return Response(data)
-
             user_token = data["access_token"]
-
             pages_response = requests.get(
                 "https://graph.facebook.com/v19.0/me/accounts",
                 params={"access_token": user_token},
             )
-
             pages_data = pages_response.json()
-
             if not pages_data.get("data"):
                 return Response({"error": "No pages found"})
-
             page = pages_data["data"][0]
-
             clinic = Clinic.objects.first()
-
             SocialAccount.objects.update_or_create(
                 clinic=clinic,
                 platform="facebook",
@@ -3687,25 +3531,332 @@ class FacebookCallbackAPIView(APIView):
                     "is_active": True,
                 },
             )
-
             return HttpResponseRedirect(
                 f"{settings.FRONTEND_URL}?facebook=connected&page={page['name']}"
             )
-
         except Exception as e:
             traceback.print_exc()
             return Response({"error": str(e)})
 
 
-# -------------------------------------------------------------------
-# FACEBOOK STATUS API
-# -------------------------------------------------------------------
 class FacebookStatusAPIView(APIView):
     def get(self, request):
         clinic = Clinic.objects.first()
-
-        connected = SocialAccount.objects.filter(
-            clinic=clinic, platform="facebook", is_active=True
-        ).exists()
-
+        connected = SocialAccount.objects.filter(clinic=clinic, platform="facebook", is_active=True).exists()
         return Response({"connected": connected})
+
+
+# =====================================================
+# MAIL INSIGHTS APIs
+# =====================================================
+class MailInsightsReceiveAPIView(APIView):
+    """
+    POST /api/mail-insights/
+
+    Receives mail insight counts pushed from Zapier.
+
+    CRITICAL FIX — accumulate, never overwrite:
+      Each Zapier Zap sends only ITS own field, e.g.:
+        Appointment Booked Zap  →  { "appointments_booked": 1 }
+        Lead Created Zap        →  { "leads_created": 1 }
+
+      We READ the existing cache first, then ADD the incoming delta.
+      A "leads_created=1" POST can NEVER reset appointments_booked to 0.
+
+    Cache TTL: 30 days (2592000 seconds) — survives server restarts longer.
+    """
+
+    def post(self, request):
+        try:
+            data = request.data
+
+            # ── Step 1: Load whatever is currently cached ──────────────────
+            existing = cache.get("mail_insights") or {
+                "leads_created":       0,
+                "appointments_booked": 0,
+                "leads_updated":       0,
+                "last_synced":         None,
+            }
+
+            # ── Step 2: Only add what Zapier actually sent this time ───────
+            # If key is absent from POST body → default 0 → no change to total
+            incoming_leads        = int(data.get("leads_created", 0))
+            incoming_appointments = int(data.get("appointments_booked", 0))
+            incoming_updated      = int(data.get("leads_updated", 0))
+
+            payload = {
+                "leads_created":       existing["leads_created"]       + incoming_leads,
+                "appointments_booked": existing["appointments_booked"] + incoming_appointments,
+                "leads_updated":       existing["leads_updated"]       + incoming_updated,
+                "last_synced":         timezone.now().isoformat(),
+            }
+
+            # ── Step 3: Save accumulated totals for 30 days ───────────────
+            cache.set("mail_insights", payload, timeout=2592000)
+
+            logger.info(
+                f"[MailInsights] POST received | "
+                f"incoming appts={incoming_appointments} leads={incoming_leads} | "
+                f"new totals={payload}"
+            )
+            return Response({"status": "received", "data": payload}, status=status.HTTP_200_OK)
+
+        except Exception:
+            logger.error("Mail Insights Receive Error:\n" + traceback.format_exc())
+            return Response({"error": "Internal Server Error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class MailInsightsGetAPIView(APIView):
+    """
+    GET /api/mail-insights/get/
+
+    Returns accumulated mail insight counts for the React dashboard KPI cards.
+
+    DB FALLBACK (so KPI cards NEVER show 0 even if cache is cleared):
+      1. Try cache first  → fast, always current after Zapier fires
+      2. Cache miss?      → count Lead rows directly from DB
+                            leads_created       = total non-deleted leads
+                            appointments_booked = leads where status contains "appointment"
+         Also repopulates cache so the next request is fast again.
+    """
+
+    def get(self, request):
+        try:
+            payload = cache.get("mail_insights")
+
+            if not payload:
+                # ── Cache miss: rebuild counts from DB ─────────────────────
+                appointments_count = Lead.objects.filter(
+                    is_deleted=False,
+                    lead_status__icontains="appointment"
+                ).count()
+
+                leads_count = Lead.objects.filter(is_deleted=False).count()
+
+                payload = {
+                    "leads_created":       leads_count,
+                    "appointments_booked": appointments_count,
+                    "leads_updated":       0,
+                    "last_synced":         None,
+                    "_source":             "db_fallback",  # visible in API response for debugging
+                }
+
+                # Repopulate cache so next call is fast
+                cache.set("mail_insights", payload, timeout=2592000)
+                logger.info(f"[MailInsights] Cache miss — rebuilt from DB: {payload}")
+
+            return Response(payload, status=status.HTTP_200_OK)
+
+        except Exception:
+            logger.error("Mail Insights Get Error:\n" + traceback.format_exc())
+            return Response({"error": "Internal Server Error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class MailInsightsResetAPIView(APIView):
+    """
+    POST /api/mail-insights/reset/
+
+    Resets all mail insight counts back to 0.
+    Use this if counts get corrupted or for testing a fresh start.
+
+    Example:
+      POST http://localhost:8000/api/mail-insights/reset/
+      → { "status": "reset", "data": { "leads_created": 0, ... } }
+    """
+
+    def post(self, request):
+        try:
+            payload = {
+                "leads_created":       0,
+                "appointments_booked": 0,
+                "leads_updated":       0,
+                "last_synced":         timezone.now().isoformat(),
+            }
+            cache.set("mail_insights", payload, timeout=604800)
+            logger.info("Mail Insights cache reset to 0.")
+            return Response({"status": "reset", "data": payload}, status=status.HTTP_200_OK)
+        except Exception:
+            logger.error("Mail Insights Reset Error:\n" + traceback.format_exc())
+            return Response({"error": "Internal Server Error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# =====================================================
+# DEBUG API — Temporary: check what Twilio statuses are in DB
+# GET /api/debug/twilio-status/
+# Remove this endpoint once you've confirmed the status values.
+# =====================================================
+class TwilioDebugAPIView(APIView):
+    """
+    GET /api/debug/twilio-status/
+    Shows all status values stored in TwilioCall and TwilioMessage tables.
+    Use this to confirm what statuses Twilio is saving so we can map them correctly.
+    Remove after debugging.
+    """
+    def get(self, request):
+        from django.db.models import Count
+
+        call_statuses = (
+            TwilioCall.objects
+            .values("status")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+        )
+
+        sms_statuses = (
+            TwilioMessage.objects
+            .values("status")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+        )
+
+        return Response({
+            "total_calls":    TwilioCall.objects.count(),
+            "total_messages": TwilioMessage.objects.count(),
+            "call_statuses":  list(call_statuses),
+            "sms_statuses":   list(sms_statuses),
+        }, status=status.HTTP_200_OK)
+
+
+
+# =====================================================
+# MAIL INSIGHTS DEBUG API — Temporary diagnostic tool
+# GET /api/debug/mail-insights-log/
+# Open in browser to see if Zapier is hitting Django.
+# Remove after confirming flow works end-to-end.
+# =====================================================
+class MailInsightsDebugAPIView(APIView):
+    """
+    GET /api/debug/mail-insights-log/
+    Shows current cache state + DB lead counts.
+    Use this to verify Zapier is actually posting to your endpoint.
+    """
+
+    def get(self, request):
+        try:
+            cached = cache.get("mail_insights")
+
+            appointments_in_db = Lead.objects.filter(
+                is_deleted=False,
+                lead_status__icontains="appointment"
+            ).count()
+
+            all_leads_in_db = Lead.objects.filter(is_deleted=False).count()
+
+            recent_statuses = list(
+                Lead.objects.filter(is_deleted=False)
+                .order_by("-created_at")
+                .values("full_name", "lead_status", "created_at")[:5]
+            )
+
+            return Response({
+                "cache_state": cached or "EMPTY — Zapier has not posted yet (or cache was cleared)",
+                "db_counts": {
+                    "total_leads":       all_leads_in_db,
+                    "appointment_leads": appointments_in_db,
+                },
+                "recent_lead_statuses": recent_statuses,
+                "instructions": {
+                    "appointment_zap_body": {"appointments_booked": 1},
+                    "lead_created_zap_body": {"leads_created": 1},
+                    "zapier_must_post_to": "http://YOUR_PUBLIC_IP:8000/api/mail-insights/",
+                    "note": "Zapier cannot reach localhost — use ngrok or public IP",
+                },
+            }, status=status.HTTP_200_OK)
+
+        except Exception:
+            logger.error("Mail Insights Debug Error:\n" + traceback.format_exc())
+            return Response({"error": "Internal Server Error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# =====================================================
+# INTERACTION COUNTS API
+# GET /api/interactions/counts/
+# Feeds the CommunicationChart with REAL data from:
+#   Email    → Zapier cache  (mail_insights)
+#   SMS      → TwilioMessage DB
+#   Call     → TwilioCall    DB
+#   WhatsApp → 0  (future scope)
+#   Chatbot  → 0  (future scope)
+#
+# Engagement mapping:
+#   Email:  appointments_booked → high | leads_created → low | 0 → no
+#   SMS:    delivered/sent → high | failed/undelivered → low | queued/accepted → no
+#   Call:   completed/in-progress/ringing → high | busy/no-answer → low | failed/canceled → no
+#           Fallback: if no status matches but records exist → all go to high
+# =====================================================
+class InteractionCountsAPIView(APIView):
+    """
+    GET /api/interactions/counts/
+
+    Returns per-platform interaction counts for the Communication chart.
+    Order: Email → SMS → Call → WhatsApp → Chatbot
+
+    Response shape:
+    [
+      { "platform": "Email",    "high": 1, "low": 0, "no": 0 },
+      { "platform": "SMS",      "high": 3, "low": 2, "no": 1 },
+      { "platform": "Call",     "high": 5, "low": 1, "no": 0 },
+      { "platform": "WhatsApp", "high": 0, "low": 0, "no": 0 },
+      { "platform": "Chatbot",  "high": 0, "low": 0, "no": 0 },
+    ]
+    """
+
+    def get(self, request):
+        try:
+            # ── EMAIL — from Zapier cache ──────────────────────────────────
+            mail_insights = cache.get("mail_insights") or {}
+            email_high    = int(mail_insights.get("appointments_booked", 0))
+            email_low     = int(mail_insights.get("leads_created", 0))
+            email_no      = 0
+
+            # ── SMS — from TwilioMessage DB ────────────────────────────────
+            sms_high = TwilioMessage.objects.filter(
+                status__in=["delivered", "sent"]
+            ).count()
+
+            sms_low = TwilioMessage.objects.filter(
+                status__in=["failed", "undelivered"]
+            ).count()
+
+            sms_no = TwilioMessage.objects.filter(
+                status__in=["queued", "accepted", "sending", "receiving", "received"]
+            ).count()
+
+            # ── CALLS — from TwilioCall DB ─────────────────────────────────
+            # HIGH: completed or any active/ongoing call
+            call_high = TwilioCall.objects.filter(
+                status__in=["completed", "in-progress", "ringing", "in_progress"]
+            ).count()
+
+            # LOW: attempted but didn't connect
+            call_low = TwilioCall.objects.filter(
+                status__in=["busy", "no-answer", "no_answer"]
+            ).count()
+
+            # NO: failed or canceled
+            call_no = TwilioCall.objects.filter(
+                status__in=["failed", "canceled"]
+            ).count()
+
+            # Fallback: if total calls exist but none matched above statuses
+            # (e.g. status = "initiated" or "queued"), count all as high
+            total_calls = TwilioCall.objects.count()
+            if call_high == 0 and call_low == 0 and call_no == 0 and total_calls > 0:
+                call_high = total_calls
+
+            # ── WHATSAPP & CHATBOT — future scope (kept at 0) ──────────────
+            data = [
+                {"platform": "Email",    "high": email_high, "low": email_low, "no": email_no},
+                {"platform": "SMS",      "high": sms_high,   "low": sms_low,   "no": sms_no},
+                {"platform": "Call",     "high": call_high,  "low": call_low,  "no": call_no},
+                {"platform": "WhatsApp", "high": 0,          "low": 0,         "no": 0},
+                {"platform": "Chatbot",  "high": 0,          "low": 0,         "no": 0},
+            ]
+
+            return Response(data, status=status.HTTP_200_OK)
+
+        except Exception:
+            logger.error("Interaction Counts Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

@@ -24,7 +24,7 @@ SECRET_KEY = 'django-insecure-b#--p%6fpdr-ub523h198vs!#-2%fvtv+at(_@tzr#kaazchp=
 DEBUG = True
 
 #  IMPORTANT FOR SERVER ACCESS
-ALLOWED_HOSTS = ["0.0.0.0", "127.0.0.1", "72.62.227.137","localhost"]  #  ADDED VPS IP "0.0.0.0", "127.0.0.1", "72.62.227.137","localhost"
+ALLOWED_HOSTS = ['*']  #  WARNING: In production, specify allowed hosts for security
 
 
 # ================================
