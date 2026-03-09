@@ -16,6 +16,7 @@ class SocialAccount(models.Model):
     access_token = models.TextField()
     page_id = models.CharField(max_length=100, null=True, blank=True)
     page_name = models.CharField(max_length=255, null=True, blank=True)
+    user_token = models.TextField(blank=True, null=True)
 
     is_active = models.BooleanField(default=True)
 

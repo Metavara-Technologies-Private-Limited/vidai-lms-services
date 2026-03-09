@@ -5,7 +5,8 @@ import logging
 import traceback
 import requests
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
+import time
 
 # =====================================================
 # Django Imports
@@ -79,6 +80,11 @@ from restapi.serializers.template_serializers import (
 # =====================================================
 from restapi.services.lead_email_service import send_lead_email
 from restapi.services.mailchimp_service import create_mailchimp_event
+from restapi.services.mailchimp_service import (
+    sync_contacts_to_mailchimp,
+    create_and_send_mailchimp_campaign,
+    get_mailchimp_campaign_report,
+)
 from restapi.services.campaign_social_post_service import handle_zapier_callback
 from restapi.services.twilio_service import send_sms, make_call
 from restapi.services.zapier_service import send_to_zapier
@@ -256,6 +262,73 @@ def post_to_facebook(page_id, page_token, message, image_url=None):
     return result
 
 
+def create_instagram_media(ig_user_id, access_token, image_url, caption):
+    url = f"https://graph.facebook.com/v19.0/{ig_user_id}/media"
+    payload = {
+        "image_url": image_url,
+        "caption": caption,
+        "access_token": access_token,
+    }
+    response = requests.post(url, data=payload)
+    return response.json()
+
+
+def publish_instagram_media(ig_user_id, access_token, creation_id):
+    url = f"https://graph.facebook.com/v19.0/{ig_user_id}/media_publish"
+    payload = {
+        "creation_id": creation_id,
+        "access_token": access_token,
+    }
+    response = requests.post(url, data=payload)
+    return response.json()
+
+
+def post_to_instagram(ig_user_id, access_token, message, image_url):
+    print("POSTING TO INSTAGRAM")
+    media = create_instagram_media(ig_user_id, access_token, image_url, message)
+    creation_id = media.get("id")
+    if not creation_id:
+        print("Failed to create media:", media)
+        return media
+    publish = publish_instagram_media(ig_user_id, access_token, creation_id)
+    print("Instagram publish response:", publish)
+    return publish
+
+
+def post_to_linkedin(access_token, author_urn, message, image_url=None):
+    print("=" * 60)
+    print("LINKEDIN POST DEBUG")
+    print("Author URN:", author_urn)
+    print("Message:", message)
+    print("Image URL:", image_url)
+    print("=" * 60)
+
+    url = "https://api.linkedin.com/v2/ugcPosts"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "X-Restli-Protocol-Version": "2.0.0",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "author": author_urn,
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {
+            "com.linkedin.ugc.ShareContent": {
+                "shareCommentary": {"text": message},
+                "shareMediaCategory": "NONE",
+            }
+        },
+        "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
+    }
+    response = requests.post(url, headers=headers, json=payload)
+    print("LinkedIn Status:", response.status_code)
+    print("LinkedIn Response:", response.text)
+    try:
+        return response.json()
+    except Exception:
+        return {}
+
+
 # =====================================================
 # MAIL NOTIFICATION HELPERS
 # =====================================================
@@ -301,7 +374,6 @@ def _send_appointment_booked_mail(lead):
         print(f"Appointment Booked mail sent for: {lead.full_name}")
     except Exception as e:
         print(f"Appointment Booked mail failed: {e}")
-
 
 
 # -------------------------------------------------------------------
@@ -1301,6 +1373,28 @@ class CampaignListAPIView(APIView):
         for campaign in campaigns:
             campaign_data = CampaignReadSerializer(campaign).data
             campaign_data["lead_generated"] = campaign.leads.count()
+
+            if campaign.mailchimp_campaign_id:
+                report = get_mailchimp_campaign_report(campaign.mailchimp_campaign_id)
+                if report:
+                    campaign_data["impressions"] = report["opens"]
+                    campaign_data["clicks"] = report["clicks"]
+                    campaign_data["emails_sent"] = report["emails_sent"]
+                    campaign_data["bounces"] = report["bounces"]
+                    campaign_data["unsubscribes"] = report["unsubscribes"]
+                else:
+                    campaign_data["impressions"] = 0
+                    campaign_data["clicks"] = 0
+                    campaign_data["emails_sent"] = 0
+                    campaign_data["bounces"] = 0
+                    campaign_data["unsubscribes"] = 0
+            else:
+                campaign_data["impressions"] = 0
+                campaign_data["clicks"] = 0
+                campaign_data["emails_sent"] = 0
+                campaign_data["bounces"] = 0
+                campaign_data["unsubscribes"] = 0
+
             data.append(campaign_data)
 
         return Response(data, status=status.HTTP_200_OK)
@@ -1321,7 +1415,140 @@ class CampaignGetAPIView(APIView):
         data = CampaignReadSerializer(campaign).data
         data["lead_generated"] = campaign.leads.count()
 
+        if campaign.mailchimp_campaign_id:
+            report = get_mailchimp_campaign_report(campaign.mailchimp_campaign_id)
+            if report:
+                data["impressions"] = report["opens"]
+                data["clicks"] = report["clicks"]
+                data["emails_sent"] = report["emails_sent"]
+                data["bounces"] = report["bounces"]
+                data["unsubscribes"] = report["unsubscribes"]
+                data["conversion_rate"] = (
+                    round((data["lead_generated"] / report["emails_sent"]) * 100, 2)
+                    if report["emails_sent"] > 0
+                    else 0
+                )
+            else:
+                data["impressions"] = 0
+                data["clicks"] = 0
+                data["emails_sent"] = 0
+                data["bounces"] = 0
+                data["unsubscribes"] = 0
+        else:
+            data["impressions"] = 0
+            data["clicks"] = 0
+            data["emails_sent"] = 0
+            data["bounces"] = 0
+            data["unsubscribes"] = 0
+
+        if campaign.post_id:
+            social = SocialAccount.objects.filter(
+                clinic=campaign.clinic, platform="facebook", is_active=True
+            ).first()
+            if social:
+                fb = get_facebook_post_insights(campaign.post_id, social.access_token)
+                data["fb_likes"] = fb.get("likes", 0)
+                data["fb_comments"] = fb.get("comments", 0)
+                data["fb_shares"] = fb.get("shares", 0)
+                data["fb_impressions"] = fb.get("impressions", 0)
+                data["fb_reach"] = fb.get("reach", 0)
+                data["fb_clicks"] = fb.get("clicks", 0)
+            else:
+                data["fb_likes"] = data["fb_comments"] = data["fb_shares"] = 0
+                data["fb_impressions"] = data["fb_reach"] = data["fb_clicks"] = 0
+        else:
+            data["fb_likes"] = data["fb_comments"] = data["fb_shares"] = 0
+            data["fb_impressions"] = data["fb_reach"] = data["fb_clicks"] = 0
+
         return Response(data, status=status.HTTP_200_OK)
+
+
+class FacebookDebugAPIView(APIView):
+    def get(self, request, campaign_id):
+        campaign = get_object_or_404(Campaign, id=campaign_id)
+        social = SocialAccount.objects.filter(
+            clinic=campaign.clinic, platform="facebook", is_active=True
+        ).first()
+
+        if not social:
+            return Response({"error": "No Facebook account"})
+
+        post_id = campaign.post_id
+
+        token_debug = requests.get(
+            "https://graph.facebook.com/debug_token",
+            params={
+                "input_token": social.access_token,
+                "access_token": f"{settings.FACEBOOK_CLIENT_ID}|{settings.FACEBOOK_CLIENT_SECRET}",
+            },
+        ).json()
+
+        page_id = social.page_id
+        full_post_id = f"{page_id}_{post_id}" if "_" not in str(post_id) else post_id
+
+        basic_raw = requests.get(
+            f"https://graph.facebook.com/v19.0/{post_id}",
+            params={
+                "fields": "id,likes.summary(true),comments.summary(true),shares",
+                "access_token": social.access_token,
+            },
+        ).json()
+
+        basic_full = requests.get(
+            f"https://graph.facebook.com/v19.0/{full_post_id}",
+            params={
+                "fields": "id,likes.summary(true),comments.summary(true),shares",
+                "access_token": social.access_token,
+            },
+        ).json()
+
+        insights_full = requests.get(
+            f"https://graph.facebook.com/v19.0/{full_post_id}/insights",
+            params={
+                "metric": "post_impressions_unique,post_engaged_users,post_clicks_unique",
+                "access_token": social.access_token,
+            },
+        ).json()
+
+        user_token = getattr(social, "user_token", None) or social.access_token
+        me_accounts = requests.get(
+            "https://graph.facebook.com/v19.0/me/accounts",
+            params={"access_token": user_token},
+        ).json()
+
+        page_token = None
+        for page in me_accounts.get("data", []):
+            if page.get("id") == page_id:
+                page_token = page.get("access_token")
+                break
+
+        basic_with_page_token = {}
+        if page_token:
+            basic_with_page_token = requests.get(
+                f"https://graph.facebook.com/v19.0/{full_post_id}",
+                params={
+                    "fields": "id,likes.summary(true),comments.summary(true)",
+                    "access_token": page_token,
+                },
+            ).json()
+
+        return Response(
+            {
+                "post_id_raw": post_id,
+                "post_id_full": full_post_id,
+                "page_id": page_id,
+                "token_scopes": token_debug.get("data", {}).get("scopes", []),
+                "token_is_valid": token_debug.get("data", {}).get("is_valid"),
+                "token_expires_at": token_debug.get("data", {}).get("expires_at"),
+                "basic_raw_format": basic_raw,
+                "basic_full_format": basic_full,
+                "insights_full_format": insights_full,
+                "me_accounts": me_accounts,
+                "page_token_found": page_token is not None,
+                "basic_with_page_token": basic_with_page_token,
+            }
+        )
+
 
 # -------------------------------------------------------------------
 # Campaign Activate API (Post)
@@ -1730,6 +1957,11 @@ class StageFieldSaveAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+CAMPAIGN_OBJECTIVES = {
+    "awareness": "Brand Awareness",
+    "leads": "Lead Generation",
+}
+
 
 class EmailCampaignCreateAPIView(APIView):
 
@@ -1750,6 +1982,28 @@ class EmailCampaignCreateAPIView(APIView):
             serializer.is_valid(raise_exception=True)
             data = serializer.validated_data
 
+            selected_start = data.get("selected_start")
+            enter_time = data.get("enter_time")
+
+            now = timezone.now()
+
+            scheduled_datetime = None
+
+            if not selected_start or not enter_time:
+                campaign_status = "draft"
+                is_active_value = False
+            else:
+                scheduled_datetime = timezone.make_aware(
+                    datetime.combine(selected_start, enter_time)
+                )
+
+                if scheduled_datetime > now:
+                    campaign_status = "scheduled"
+                    is_active_value = True
+                else:
+                    campaign_status = "live"
+                    is_active_value = True
+
             campaign = Campaign.objects.create(
                 clinic_id=data["clinic"],
                 campaign_name=data["campaign_name"],
@@ -1759,10 +2013,17 @@ class EmailCampaignCreateAPIView(APIView):
                 start_date=data["start_date"],
                 end_date=data["end_date"],
                 campaign_mode=Campaign.EMAIL,
-                selected_start=data["selected_start"],
-                selected_end=data["selected_end"],
-                enter_time=data["enter_time"],
-                is_active=True,
+                selected_start=data.get("selected_start"),
+                selected_end=data.get("selected_end"),
+                enter_time=data.get("enter_time"),
+                status=campaign_status,
+                is_active=is_active_value,
+            )
+
+            emails = list(
+                Lead.objects.filter(clinic=campaign.clinic, email__isnull=False)
+                .exclude(email="")
+                .values_list("email", flat=True)
             )
 
             created_email_configs = []
@@ -1775,29 +2036,79 @@ class EmailCampaignCreateAPIView(APIView):
                     email_body=email_data["email_body"],
                     template_name=email_data.get("template_name"),
                     sender_email=email_data["sender_email"],
-                    scheduled_at=email_data.get("scheduled_at"),
+                    scheduled_at=scheduled_datetime,
                     is_active=True,
                 )
 
-                send_to_zapier({
-                    "event": "email_campaign_created",
-                    "campaign_id": str(campaign.id),
-                    "campaign_name": campaign.campaign_name,
-                    "campaign_description": campaign.campaign_description,
-                    "campaign_objective": campaign.campaign_objective,
-                    "target_audience": campaign.target_audience,
-                    "start_date": campaign.start_date.isoformat(),
-                    "end_date": campaign.end_date.isoformat(),
-                    "subject": email_config.subject,
-                    "email_body": email_config.email_body,
-                    "sender_email": email_config.sender_email,
-                    "scheduled_at": email_config.scheduled_at.isoformat() if email_config.scheduled_at else None,
-                })
+                sync_contacts_to_mailchimp(emails)
 
-                created_email_configs.append({
-                    "email_config_id": email_config.id,
-                    "audience_name": email_config.audience_name,
-                })
+                mailchimp_id = create_and_send_mailchimp_campaign(
+                    campaign_id=str(campaign.id),
+                    subject=email_config.subject,
+                    email_body=email_config.email_body,
+                    sender_email=email_config.sender_email,
+                    campaign_name=campaign.campaign_name,
+                    scheduled_at=scheduled_datetime,
+                )
+
+                # 3. Save mailchimp_campaign_id on campaign for later metric fetching
+                campaign.mailchimp_campaign_id = mailchimp_id
+                campaign.save(update_fields=["mailchimp_campaign_id"])
+
+                # ---------------------------------------------------------
+                # FUTURE: Fetch template attachments and send file URLs
+                # ---------------------------------------------------------
+                attachments = []
+
+                # Uncomment later when template attachments are enabled
+                # try:
+                #     from restapi.models import TemplateMailDocument  # adjust import
+                #
+                #     template_docs = TemplateMailDocument.objects.filter(
+                #         template__name=email_config.template_name
+                #     )
+                #
+                #     for doc in template_docs:
+                #         attachments.append({
+                #             "file_url": request.build_absolute_uri(doc.file.url),
+                #             "file_name": doc.file.name.split("/")[-1],
+                #         })
+                #
+                # except Exception:
+                #     logger.warning("Failed to fetch template attachments")
+                # ---------------------------------------------------------
+
+                send_to_zapier(
+                    {
+                        "event": "email_campaign_created",
+                        "emails": emails,
+                        "campaign_id": str(campaign.id),
+                        "campaign_name": campaign.campaign_name,
+                        "campaign_description": campaign.campaign_description,
+                        "campaign_objective": CAMPAIGN_OBJECTIVES.get(
+                            campaign.campaign_objective
+                        ),
+                        "target_audience": campaign.target_audience,
+                        "start_date": campaign.start_date.isoformat(),
+                        "end_date": campaign.end_date.isoformat(),
+                        "subject": email_config.subject,
+                        "email_body": email_config.email_body,
+                        "sender_email": email_config.sender_email,
+                        "scheduled_at": (
+                            email_config.scheduled_at.isoformat()
+                            if email_config.scheduled_at
+                            else None
+                        ),
+                        # "attachments": attachments
+                    }
+                )
+
+                created_email_configs.append(
+                    {
+                        "email_config_id": email_config.id,
+                        "audience_name": email_config.audience_name,
+                    }
+                )
 
             return Response(
                 {
@@ -1812,9 +2123,7 @@ class EmailCampaignCreateAPIView(APIView):
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception:
-            logger.error(
-                "Email Campaign Error:\n" + traceback.format_exc()
-            )
+            logger.error("Email Campaign Error:\n" + traceback.format_exc())
             return Response(
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2030,6 +2339,7 @@ class TwilioCallListAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+
 # -------------------------------------------------------------------
 # Social Media Campaign Create API View (POST)
 # -------------------------------------------------------------------
@@ -2072,7 +2382,11 @@ class SocialMediaCampaignCreateAPIView(APIView):
                         return None, text
                     text = text.strip()
                     # Case 1: entire string is just a URL
-                    if _is_direct_image_url(text) and "\n" not in text and " " not in text:
+                    if (
+                        _is_direct_image_url(text)
+                        and "\n" not in text
+                        and " " not in text
+                    ):
                         return text, ""
                     # Case 2: URL embedded inside text
                     tokens = text.replace("\n", " ").split()
@@ -2084,12 +2398,18 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     return None, text
 
                 # Resolve facebook message text
-                _platform_facebook = strip_tags(raw_platform_data.get("facebook", "") or "").strip()
+                _platform_facebook = strip_tags(
+                    raw_platform_data.get("facebook", "") or ""
+                ).strip()
                 _campaign_content = strip_tags(raw_campaign_content).strip()
 
                 # Extract any embedded image URL from the text fields
-                _fb_extracted_url, _platform_facebook = _extract_image_url(_platform_facebook)
-                _cc_extracted_url, _campaign_content = _extract_image_url(_campaign_content)
+                _fb_extracted_url, _platform_facebook = _extract_image_url(
+                    _platform_facebook
+                )
+                _cc_extracted_url, _campaign_content = _extract_image_url(
+                    _campaign_content
+                )
 
                 facebook_message = _platform_facebook or _campaign_content
 
@@ -2100,17 +2420,23 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     _extracted, _ = _extract_image_url(_raw_image_url)
                     image_url_field = _extracted or None
                     if image_url_field != _raw_image_url:
-                        print(f"image_url cleaned: {repr(_raw_image_url[:80])} -> {image_url_field}")
+                        print(
+                            f"image_url cleaned: {repr(_raw_image_url[:80])} -> {image_url_field}"
+                        )
                 else:
                     image_url_field = None
 
                 if not image_url_field and _fb_extracted_url:
                     image_url_field = _fb_extracted_url
-                    print(f"image_url extracted from platform_data.facebook: {image_url_field}")
+                    print(
+                        f"image_url extracted from platform_data.facebook: {image_url_field}"
+                    )
 
                 if not image_url_field and _cc_extracted_url:
                     image_url_field = _cc_extracted_url
-                    print(f"image_url extracted from campaign_content: {image_url_field}")
+                    print(
+                        f"image_url extracted from campaign_content: {image_url_field}"
+                    )
 
                 print("=" * 60)
                 print("DEBUG raw platform_data   :", raw_platform_data)
@@ -2121,19 +2447,28 @@ class SocialMediaCampaignCreateAPIView(APIView):
 
                 # Build selected_start / selected_end
                 from datetime import datetime, time, date as date_type
+
                 start = data["start_date"]
                 end = data["end_date"]
 
                 selected_start = timezone.make_aware(
                     datetime.combine(
-                        start if isinstance(start, date_type) else datetime.strptime(start, "%Y-%m-%d").date(),
-                        time(0, 0, 0)
+                        (
+                            start
+                            if isinstance(start, date_type)
+                            else datetime.strptime(start, "%Y-%m-%d").date()
+                        ),
+                        time(0, 0, 0),
                     )
                 )
                 selected_end = timezone.make_aware(
                     datetime.combine(
-                        end if isinstance(end, date_type) else datetime.strptime(end, "%Y-%m-%d").date(),
-                        time(23, 59, 59)
+                        (
+                            end
+                            if isinstance(end, date_type)
+                            else datetime.strptime(end, "%Y-%m-%d").date()
+                        ),
+                        time(23, 59, 59),
                     )
                 )
 
@@ -2147,8 +2482,7 @@ class SocialMediaCampaignCreateAPIView(APIView):
                 selected_platforms = data["select_ad_accounts"]
                 raw_budget_data = data.get("budget_data") or {}
                 filtered_budget = {
-                    p: raw_budget_data.get(p, 0)
-                    for p in selected_platforms
+                    p: raw_budget_data.get(p, 0) for p in selected_platforms
                 }
                 filtered_budget["total"] = sum(
                     v for k, v in filtered_budget.items() if k != "total"
@@ -2191,26 +2525,26 @@ class SocialMediaCampaignCreateAPIView(APIView):
 
                 clinic_id = data["clinic"]
 
-                social = SocialAccount.objects.filter(
-                    clinic_id=clinic_id,
-                    platform="facebook",
-                    is_active=True
-                ).first()
+                # social = SocialAccount.objects.filter(
+                #     clinic_id=clinic_id,
+                #     platform="facebook",
+                #     is_active=True
+                # ).first()
 
-                fb_post_id = None
+                # fb_post_id = None
 
-                print("=" * 60)
-                print("CHANNELS:", channels)
-                print("SOCIAL ACCOUNT FOUND:", social)
-                print("=" * 60)
+                # print("=" * 60)
+                # print("CHANNELS:", channels)
+                # print("SOCIAL ACCOUNT FOUND:", social)
+                # print("=" * 60)
 
                 if "facebook" in channels:
-                    if not social:
-                        print("NO FACEBOOK SOCIAL ACCOUNT for clinic_id:", clinic_id)
-                        return Response(
-                            {"error": "Facebook not connected for this clinic"},
-                            status=400
-                        )
+                    # if not social:
+                    #     print("NO FACEBOOK SOCIAL ACCOUNT for clinic_id:", clinic_id)
+                    #     return Response(
+                    #         {"error": "Facebook not connected for this clinic"},
+                    #         status=400
+                    #     )
 
                     if not facebook_message:
                         facebook_message = campaign.campaign_name
@@ -2228,40 +2562,112 @@ class SocialMediaCampaignCreateAPIView(APIView):
                         f"#LMS #Campaign #{campaign.campaign_name.replace(' ', '')}"
                     )
 
+                    fb_post_id = None
+
                     print("=" * 60)
-                    print(">>> CALLING post_to_facebook()")
-                    print("Page ID   :", social.page_id)
-                    print("Page Name :", social.page_name)
-                    print("Token (20):", social.access_token[:20] if social.access_token else "NONE")
-                    print("Message   :", formatted_message[:80], "...")
-                    print("Image URL :", campaign.image_url)
+                    print("CHANNELS:", channels)
+                    print("FORMATTED MESSAGE:", formatted_message[:80], "...")
                     print("=" * 60)
 
-                    fb_response = post_to_facebook(
-                        page_id=social.page_id,
-                        page_token=social.access_token,
-                        message=formatted_message,
-                        image_url=campaign.image_url,
-                    )
+                    if "facebook" in channels:
+                        social_fb = SocialAccount.objects.filter(
+                            clinic_id=clinic_id, platform="facebook", is_active=True
+                        ).first()
 
-                    print("FB POST FULL RESPONSE:", fb_response)
+                        if not social_fb:
+                            print(
+                                "NO FACEBOOK SOCIAL ACCOUNT for clinic_id:", clinic_id
+                            )
+                            return Response(
+                                {"error": "Facebook not connected for this clinic"},
+                                status=400,
+                            )
 
-                    fb_post_id = fb_response.get("id")
-                    print("FB POST ID:", fb_post_id)
+                        print(">>> CALLING post_to_facebook()")
+                        print("Page ID   :", social_fb.page_id)
+                        print("Page Name :", social_fb.page_name)
+                        print(
+                            "Token (20):",
+                            (
+                                social_fb.access_token[:20]
+                                if social_fb.access_token
+                                else "NONE"
+                            ),
+                        )
+                        print("Image URL :", campaign.image_url)
 
-                    if fb_post_id:
-                        campaign.post_id = fb_post_id
-                        campaign.save(update_fields=["post_id"])
-                        print("FB POST ID SAVED:", fb_post_id)
-                    else:
-                        print("FB POST ID IS NONE — check FB error above")
+                        fb_response = post_to_facebook(
+                            page_id=social_fb.page_id,
+                            page_token=social_fb.access_token,
+                            message=formatted_message,
+                            image_url=campaign.image_url,
+                        )
 
-                created_campaigns.append({
-                    "campaign_id": campaign.id,
-                    "mode": mode,
-                    "platforms": channels,
-                    "fb_post_id": fb_post_id,
-                })
+                        print("FB POST FULL RESPONSE:", fb_response)
+                        # Use post_id (full page_post format) if available, else fall back to id
+                        fb_post_id = fb_response.get("post_id") or fb_response.get("id")
+                        print("FB POST ID:", fb_post_id)
+
+                        if fb_post_id:
+                            campaign.post_id = fb_post_id
+                            campaign.save(update_fields=["post_id"])
+                            print("FB POST ID SAVED:", fb_post_id)
+                        else:
+                            print("FB POST ID IS NONE — check FB error above")
+
+                    if "instagram" in channels:
+                        if not campaign.image_url:
+                            print(
+                                "Skipping Instagram: image_url is required for Instagram posts"
+                            )
+                        else:
+                            social_ig = SocialAccount.objects.filter(
+                                clinic_id=clinic_id, platform="facebook", is_active=True
+                            ).first()
+
+                            ig_user_id = getattr(social_ig, "instagram_id", None)
+
+                            if not social_ig or not ig_user_id:
+                                print(
+                                    "Instagram not connected or instagram_id missing on SocialAccount"
+                                )
+                            else:
+                                print(">>> CALLING post_to_instagram()")
+                                print("IG User ID :", ig_user_id)
+                                ig_response = post_to_instagram(
+                                    ig_user_id=ig_user_id,
+                                    access_token=social_ig.access_token,
+                                    message=formatted_message,
+                                    image_url=campaign.image_url,
+                                )
+                                print("IG POST RESPONSE:", ig_response)
+
+                    if "linkedin" in channels:
+                        social_li = SocialAccount.objects.filter(
+                            clinic_id=clinic_id, platform="linkedin", is_active=True
+                        ).first()
+
+                        if not social_li:
+                            print("LinkedIn not connected for clinic_id:", clinic_id)
+                        else:
+                            print(">>> CALLING post_to_linkedin()")
+                            print("Author URN :", social_li.linkedin_urn)
+                            li_response = post_to_linkedin(
+                                access_token=social_li.linkedin_token,
+                                author_urn=social_li.linkedin_urn,
+                                message=formatted_message,
+                                image_url=campaign.image_url,
+                            )
+                            print("LI POST RESPONSE:", li_response)
+
+                created_campaigns.append(
+                    {
+                        "campaign_id": campaign.id,
+                        "mode": mode,
+                        "platforms": channels,
+                        "fb_post_id": fb_post_id,
+                    }
+                )
 
             return Response(
                 {
@@ -2272,11 +2678,114 @@ class SocialMediaCampaignCreateAPIView(APIView):
             )
 
         except Exception as e:
-            return Response({
-                "error": str(e),
-                "type": type(e).__name__,
-                "trace": traceback.format_exc()
-            }, status=400)
+            return Response(
+                {
+                    "error": str(e),
+                    "type": type(e).__name__,
+                    "trace": traceback.format_exc(),
+                },
+                status=400,
+            )
+
+
+def get_facebook_post_insights(post_id, page_token):
+    print("=" * 60)
+    print("FB INSIGHTS: post_id =", post_id)
+
+    result = {
+        "post_id": post_id,
+        "likes": 0,
+        "comments": 0,
+        "shares": 0,
+        "impressions": 0,
+        "reach": 0,
+        "clicks": 0,
+        "pending_review": True,
+    }
+
+    try:
+        basic_url = f"https://graph.facebook.com/v19.0/{post_id}"
+        basic_params = {
+            "fields": "likes.summary(true),comments.summary(true)",
+            "access_token": page_token,
+        }
+        basic_resp = requests.get(basic_url, params=basic_params, timeout=10)
+        print("BASIC STATUS:", basic_resp.status_code, basic_resp.text[:200])
+
+        if basic_resp.status_code == 200:
+            basic_data = basic_resp.json()
+            result["likes"] = (
+                basic_data.get("likes", {}).get("summary", {}).get("total_count", 0)
+            )
+            result["comments"] = (
+                basic_data.get("comments", {}).get("summary", {}).get("total_count", 0)
+            )
+            result["pending_review"] = False
+    except Exception as e:
+        print(f"FB insights fetch failed: {e}")
+
+    print("FB INSIGHTS RESULT:", result)
+    print("=" * 60)
+    return result
+
+
+def list_available_metrics(post_id, page_token):
+    print("🚀 list_available_metrics CALLED")
+
+    candidates = [
+        "post_impressions",
+        "post_impressions_unique",
+        "post_engaged_users",
+        "post_clicks",
+        "post_reactions_by_type",
+        "post_video_views",
+        "post_video_complete_views_organic",
+        "post_activity",
+        "post_activity_unique",
+    ]
+
+    results = {}
+    for metric in candidates:
+        print(f"🔍 Testing metric: {metric}")
+        url = f"https://graph.facebook.com/v19.0/{post_id}/insights"
+        try:
+            r = requests.get(
+                url, params={"metric": metric, "access_token": page_token}, timeout=10
+            )
+            print(f"   Status: {r.status_code}")
+            if r.status_code == 200:
+                results[metric] = "✅ OK"
+            else:
+                error_msg = r.json().get("error", {}).get("message", "unknown error")
+                results[metric] = f"❌ {error_msg}"
+        except Exception as e:
+            print(f"   EXCEPTION: {e}")
+            results[metric] = f"💥 Exception: {str(e)}"
+
+    print("✅ list_available_metrics DONE:", results)
+    return results
+
+
+class CampaignFacebookInsightsAPIView(APIView):
+    def get(self, request, campaign_id):
+        campaign = get_object_or_404(Campaign, id=campaign_id)
+
+        if not campaign.post_id:
+            return Response({"error": "Campaign has no Facebook post"}, status=400)
+
+        social = SocialAccount.objects.filter(
+            clinic=campaign.clinic, platform="facebook", is_active=True
+        ).first()
+
+        if not social:
+            return Response({"error": "Facebook not connected"}, status=400)
+
+        token = social.access_token
+        print("🔑 Using token:", token[:30] if token else "NONE")
+
+        insights = get_facebook_post_insights(campaign.post_id, token)
+        return Response({"post_id": campaign.post_id, "insights": insights})
+
 
 # -------------------------------------------------------------------
 # Ticket Create API View (POST)
@@ -3489,7 +3998,7 @@ class FacebookLoginAPIView(APIView):
             "?response_type=code"
             f"&client_id={settings.FACEBOOK_CLIENT_ID}"
             f"&redirect_uri={settings.FACEBOOK_REDIRECT_URI}"
-            "&scope=public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts"
+            "&scope=public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts,read_insights"
             f"&state={state}"
             "&auth_type=rerequest"
         )
@@ -3526,6 +4035,7 @@ class FacebookCallbackAPIView(APIView):
                 platform="facebook",
                 defaults={
                     "access_token": page["access_token"],
+                    "user_token": user_token,
                     "page_id": page["id"],
                     "page_name": page["name"],
                     "is_active": True,
@@ -3715,7 +4225,6 @@ class TwilioDebugAPIView(APIView):
             "call_statuses":  list(call_statuses),
             "sms_statuses":   list(sms_statuses),
         }, status=status.HTTP_200_OK)
-
 
 
 # =====================================================

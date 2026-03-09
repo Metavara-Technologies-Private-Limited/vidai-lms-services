@@ -13,7 +13,6 @@ from restapi.services.campaign_service import (
 from restapi.services.campaign_service import update_campaign
 
 
-
 # =====================================================
 # Social Media Config Serializer
 # =====================================================
@@ -101,7 +100,7 @@ class SocialMediaCampaignSerializer(serializers.Serializer):
         default=""
     )
 
-    enter_time = serializers.TimeField()
+    enter_time = serializers.TimeField(required=False, allow_null=True, default=None)
 
     # ✅ ADDED: platform_data and budget_data support
     platform_data = serializers.JSONField(
@@ -123,6 +122,16 @@ class SocialMediaCampaignSerializer(serializers.Serializer):
         required=False,
         default=False
     )
+    image_url = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, default=None
+    )
+
+    selected_start = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, default=None
+    )
+    selected_end = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, default=None
+    )
 
 
 # =====================================================
@@ -136,10 +145,9 @@ class EmailCampaignCreateSerializer(serializers.Serializer):
     target_audience = serializers.CharField()
     start_date = serializers.DateField()
     end_date = serializers.DateField()
-    selected_start = serializers.DateField()
-    selected_end = serializers.DateField()
-    enter_time = serializers.TimeField()
-
+    selected_start = serializers.DateField(required=False, allow_null=True)
+    selected_end = serializers.DateField(required=False, allow_null=True)
+    enter_time = serializers.TimeField(required=False, allow_null=True)
     email = CampaignEmailSerializer(many=True)
 
 
