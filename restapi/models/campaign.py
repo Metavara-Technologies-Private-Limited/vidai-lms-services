@@ -58,9 +58,9 @@ class Campaign(models.Model):
         help_text="Public image URL attached to social media posts"
     )
 
-    selected_start = models.DateTimeField()
-    selected_end = models.DateTimeField()
-    enter_time = models.TimeField()
+    selected_start = models.DateTimeField(null=True, blank=True)
+    selected_end = models.DateTimeField(null=True, blank=True)
+    enter_time = models.TimeField(null=True, blank=True)
 
     # ----------------------------
     # ✅ JSONB COLUMN FOR SOCIAL PLATFORMS
@@ -79,6 +79,8 @@ class Campaign(models.Model):
         blank=True,
         help_text="Stores campaign budget structure (total, daily, split, spend, etc.)"
     )
+
+    mailchimp_campaign_id = models.CharField(max_length=100, null=True, blank=True)
 
     # ----------------------------
     # STATUS FIELD

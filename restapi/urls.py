@@ -73,6 +73,8 @@ from .views import (
     EmailCampaignCreateAPIView,
     CampaignZapierCallbackAPIView,
     MailchimpWebhookAPIView,
+    CampaignFacebookInsightsAPIView,
+    FacebookDebugAPIView,
 
     # ==================================================
     # Twilio APIs
@@ -225,6 +227,10 @@ urlpatterns = [
     path("campaigns/email/create/",                 EmailCampaignCreateAPIView.as_view(),    name="email-campaign-create"),
     path("campaigns/zapier-callback/",              CampaignZapierCallbackAPIView.as_view(), name="campaign-zapier-callback"),
     path("mailchimp/webhook/",                      MailchimpWebhookAPIView.as_view(),       name="mailchimp-webhook"),
+    path(
+        "campaigns/<uuid:campaign_id>/facebook-insights/",
+        CampaignFacebookInsightsAPIView.as_view(),
+    ),
 
     # ==================================================
     # SALES PIPELINE APIs
@@ -319,4 +325,5 @@ urlpatterns = [
     path("facebook/login/",     FacebookLoginAPIView.as_view()),
     path("facebook/callback/",  FacebookCallbackAPIView.as_view()),
     path("facebook/status/",    FacebookStatusAPIView.as_view()),
+    path("campaigns/<uuid:campaign_id>/facebook-debug/", FacebookDebugAPIView.as_view()),
 ]
