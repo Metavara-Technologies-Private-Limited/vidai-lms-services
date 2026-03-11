@@ -48,8 +48,17 @@ INSTALLED_APPS = [
     'restapi',
 ]
 
-ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/ucb1mwo/"
+ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/uxrz9r3/"
+ZAPIER_WEBHOOK_EMAIL_URL = "https://hooks.zapier.com/hooks/catch/25767405/ucb1mwo/"
 
+# ─── NEW: dedicated webhook for fetching Mailchimp campaign insights via Zapier ───
+# Ask Mohan to create a new Zap and replace the URL below with the real webhook URL.
+# This is called by CampaignMailchimpInsightsAPIView (GET /api/campaigns/<id>/mailchimp-insights/)
+# Zapier should POST insights back to: POST /api/mailchimp/insights-callback/
+ZAPIER_WEBHOOK_MAILCHIMP_INSIGHTS_URL = os.getenv(
+    "ZAPIER_WEBHOOK_MAILCHIMP_INSIGHTS_URL",
+    "https://hooks.zapier.com/hooks/catch/25767405/uxi208v/"
+)
 MIDDLEWARE = [
     'restapi.middleware.RequestIDMiddleware',   # Custom middleware
     'corsheaders.middleware.CorsMiddleware',
@@ -215,7 +224,7 @@ FACEBOOK_REDIRECT_URI = os.getenv("FACEBOOK_REDIRECT_URI")
 FRONTEND_URL = os.getenv("FRONTEND_URL")
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL")
 
-import os
+
 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
@@ -231,7 +240,11 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS") == "True"
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 
+# MAILCHIMP
+# ================================
 MAILCHIMP_API_KEY = os.getenv("MAILCHIMP_API_KEY")
 MAILCHIMP_SERVER = os.getenv("MAILCHIMP_SERVER")
+MAILCHIMP_DATA_CENTER = os.getenv("MAILCHIMP_DATA_CENTER")
+MAILCHIMP_EMAIL_LIST_ID = os.getenv("MAILCHIMP_EMAIL_LIST_ID")
 MAILCHIMP_AUDIENCE_ID = os.getenv("MAILCHIMP_AUDIENCE_ID")
 MAILCHIMP_SENDER_EMAIL = os.getenv("MAILCHIMP_SENDER_EMAIL")

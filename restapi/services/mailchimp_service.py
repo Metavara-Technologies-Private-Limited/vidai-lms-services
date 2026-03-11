@@ -28,9 +28,16 @@ def get_subscriber_hash(email):
 def sync_contacts_to_mailchimp(emails: list[str]):
     """
     Add/update a list of emails to Mailchimp audience.
-    Uses batch operation for efficiency.
+    Deduplicates emails before sending to avoid Mailchimp duplicate error.
     """
     client = get_mailchimp_client()
+
+    # ← Deduplicate: lowercase + unique only
+    unique_emails = list({email.lower().strip() for email in emails if email})
+
+    if not unique_emails:
+        logger.warning("sync_contacts_to_mailchimp called with empty email list")
+        return None
 
     members = [
         {
@@ -38,7 +45,7 @@ def sync_contacts_to_mailchimp(emails: list[str]):
             "status_if_new": "subscribed",
             "status": "subscribed",
         }
-        for email in emails
+        for email in unique_emails
     ]
 
     try:
@@ -47,8 +54,13 @@ def sync_contacts_to_mailchimp(emails: list[str]):
             {"members": members, "update_existing": True},
         )
         logger.info(
-            f"Mailchimp sync: {response.get('total_created')} created, {response.get('total_updated')} updated"
+            f"Mailchimp sync: {response.get('total_created')} created, "
+            f"{response.get('total_updated')} updated, "
+            f"{response.get('error_count')} errors"
         )
+        # Log any per-member errors (won't crash the whole batch)
+        for err in response.get("errors", []):
+            logger.warning(f"Mailchimp member error: {err}")
         return response
     except ApiClientError as e:
         logger.error(f"Mailchimp batch sync failed: {e.text}")
@@ -93,10 +105,8 @@ def create_and_send_mailchimp_campaign(
         # Step 2: Set email content
         client.campaigns.set_content(mailchimp_campaign_id, {"html": email_body})
 
-        # Step 3: Always send immediately
+        # Step 3: Send immediately
         # NOTE: Scheduling requires Mailchimp paid plan (Standard+)
-        # For now we send immediately regardless of scheduled_at
-        # TODO: Upgrade to paid plan to enable scheduling
         client.campaigns.send(mailchimp_campaign_id)
         logger.info(f"Mailchimp campaign sent: {mailchimp_campaign_id}")
 
@@ -108,24 +118,55 @@ def create_and_send_mailchimp_campaign(
 
 
 def get_mailchimp_campaign_report(mailchimp_campaign_id: str):
+    """
+    Fetch full campaign report from Mailchimp.
+
+    Returns:
+        emails_sent     — total emails sent
+        opens           — unique opens count
+        open_rate       — open rate percentage (e.g. 45.5)
+        clicks          — unique clicks count
+        click_rate      — click rate percentage (e.g. 12.3)
+        bounces         — hard + soft bounce count
+        unsubscribes    — unsubscribe count
+        last_open       — datetime of last open (or None)
+        last_click      — datetime of last click (or None)
+    """
     client = get_mailchimp_client()
 
     try:
         report = client.reports.get_campaign_report(mailchimp_campaign_id)
 
-        bounces = report.get("bounces", {})
+        # ── Bounces ───────────────────────────────────────────────────────
+        bounces      = report.get("bounces", {})
         hard_bounces = bounces.get("hard", {})
         soft_bounces = bounces.get("soft", {})
 
+        # ── Opens ─────────────────────────────────────────────────────────
+        opens_data   = report.get("opens", {})
+        unique_opens = opens_data.get("unique_opens", 0)
+        open_rate    = round(opens_data.get("open_rate", 0) * 100, 2)   # convert 0.45 → 45.0
+        last_open    = opens_data.get("last_open", None)
+
+        # ── Clicks ────────────────────────────────────────────────────────
+        clicks_data   = report.get("clicks", {})
+        unique_clicks = clicks_data.get("unique_clicks", 0)
+        click_rate    = round(clicks_data.get("click_rate", 0) * 100, 2)  # convert 0.12 → 12.0
+        last_click    = clicks_data.get("last_click", None)
+
         return {
-            "emails_sent": report.get("emails_sent", 0),
-            "opens": report.get("opens", {}).get("unique_opens", 0),
-            "clicks": report.get("clicks", {}).get("unique_clicks", 0),
-            "bounces": (
+            "emails_sent":   report.get("emails_sent", 0),
+            "opens":         unique_opens,
+            "open_rate":     open_rate,       # e.g. 45.5 means 45.5%
+            "clicks":        unique_clicks,
+            "click_rate":    click_rate,      # e.g. 12.3 means 12.3%
+            "bounces":       (
                 hard_bounces.get("bounce_count", 0)
                 + soft_bounces.get("bounce_count", 0)
             ),
-            "unsubscribes": report.get("unsubscribed", 0),
+            "unsubscribes":  report.get("unsubscribed", 0),
+            "last_open":     last_open,       # e.g. "2026-03-10T07:18:00+00:00"
+            "last_click":    last_click,      # e.g. "2026-03-10T07:20:00+00:00"
         }
 
     except ApiClientError as e:

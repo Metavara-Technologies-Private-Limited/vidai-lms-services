@@ -163,6 +163,10 @@ from .views import (
     # ==================================================
     TwilioDebugAPIView,            # GET   /api/debug/twilio-status/
     MailInsightsDebugAPIView,      # GET   /api/debug/mail-insights-log/
+
+    # In the Campaign APIs import block, add these two:
+   CampaignMailchimpInsightsAPIView,
+   MailchimpInsightsCallbackAPIView,
 )
 
 
@@ -318,6 +322,9 @@ urlpatterns = [
     path("linkedin/login/",     LinkedInLoginAPIView.as_view()),
     path("linkedin/callback/",  LinkedInCallbackAPIView.as_view()),
     path("linkedin/status/",    LinkedInStatusAPIView.as_view()),
+
+    path("campaigns/<uuid:campaign_id>/mailchimp-insights/", CampaignMailchimpInsightsAPIView.as_view(), name="campaign-mailchimp-insights"),
+    path("mailchimp/insights-callback/", MailchimpInsightsCallbackAPIView.as_view(), name="mailchimp-insights-callback"),
 
     # ==================================================
     # SOCIAL AUTH — Facebook
