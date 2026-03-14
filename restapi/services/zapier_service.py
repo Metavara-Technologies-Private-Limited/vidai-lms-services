@@ -6,7 +6,7 @@ def send_to_zapier(data):
     """
     Send data to the default Zapier webhook.
     Used for: lead events, campaign events, social media campaigns, etc.
-    Webhook: ZAPIER_WEBHOOK_URL
+    Webhook: ZAPIER_WEBHOOK_URL  (unchanged — same as before)
     """
     try:
         print("🔔 Sending to Zapier...")
@@ -31,17 +31,22 @@ def send_to_zapier(data):
 
 def send_to_zapier_email(data):
     """
-    Send data to the dedicated Email Campaign Zapier webhook.
-    Used for: EmailCampaignCreateAPIView — email_campaign_created events.
-    Webhook: ZAPIER_WEBHOOK_EMAIL_URL
+    Send email campaign data to the unified Mailchimp Zapier webhook.
+    Used for: EmailCampaignCreateAPIView — event: "email_campaign_created"
+
+    Previously used ZAPIER_WEBHOOK_EMAIL_URL (separate Zap — now deleted).
+    Now uses ZAPIER_WEBHOOK_MAILCHIMP_URL — the single merged Mailchimp Zap.
+    The Zap routes this to Path A based on event = "email_campaign_created".
+
+    Webhook: ZAPIER_WEBHOOK_MAILCHIMP_URL
     """
     try:
-        print("🔔 Sending to Zapier (Email Campaign)...")
-        print("🔹 Webhook URL:", settings.ZAPIER_WEBHOOK_EMAIL_URL)
+        print("🔔 Sending to Zapier (Email Campaign — Merged Mailchimp Zap)...")
+        print("🔹 Webhook URL:", settings.ZAPIER_WEBHOOK_MAILCHIMP_URL)
         print("🔹 Payload:", data)
 
         response = requests.post(
-            settings.ZAPIER_WEBHOOK_EMAIL_URL,
+            settings.ZAPIER_WEBHOOK_MAILCHIMP_URL,  # ✅ merged Mailchimp Zap
             json=data,
             timeout=8
         )
@@ -58,9 +63,14 @@ def send_to_zapier_email(data):
 
 def send_to_zapier_mailchimp_insights(data):
     """
-    Send campaign_id + pre-fetched Mailchimp insights to a dedicated Zapier webhook.
-    Used for: CampaignMailchimpInsightsAPIView — mailchimp_insights_requested events.
-    Webhook: ZAPIER_WEBHOOK_MAILCHIMP_INSIGHTS_URL
+    Send Mailchimp insights data to the unified Mailchimp Zapier webhook.
+    Used for: CampaignMailchimpInsightsAPIView — event: "mailchimp_insights_requested"
+
+    Previously used ZAPIER_WEBHOOK_MAILCHIMP_INSIGHTS_URL (separate Zap — now deleted).
+    Now uses ZAPIER_WEBHOOK_MAILCHIMP_URL — the single merged Mailchimp Zap.
+    The Zap routes this to Path B based on event = "mailchimp_insights_requested".
+
+    Webhook: ZAPIER_WEBHOOK_MAILCHIMP_URL
 
     Payload shape (all fields are pre-computed by the view before calling this):
         {
@@ -80,12 +90,12 @@ def send_to_zapier_mailchimp_insights(data):
         }
     """
     try:
-        print("🔔 Sending to Zapier (Mailchimp Insights)...")
-        print("🔹 Webhook URL:", settings.ZAPIER_WEBHOOK_MAILCHIMP_INSIGHTS_URL)
+        print("🔔 Sending to Zapier (Mailchimp Insights — Merged Mailchimp Zap)...")
+        print("🔹 Webhook URL:", settings.ZAPIER_WEBHOOK_MAILCHIMP_URL)
         print("🔹 Payload:", data)
 
         response = requests.post(
-            settings.ZAPIER_WEBHOOK_MAILCHIMP_INSIGHTS_URL,
+            settings.ZAPIER_WEBHOOK_MAILCHIMP_URL,  # ✅ merged Mailchimp Zap
             json=data,
             timeout=8
         )
