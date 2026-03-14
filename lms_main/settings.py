@@ -3,18 +3,17 @@ Django settings for django_rest_main project.
 """
 
 # ================================
-#  IMPORTS (FIXED)
+#  IMPORTS
 # ================================
 from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
-import os   # ADDED (needed for logging + general use)
+import os
 
 # ================================
-#  BASE DIR (FIXED – ONLY ONCE)
+#  BASE DIR
 # ================================
 BASE_DIR = Path(__file__).resolve().parent.parent
-#  REMOVED duplicate BASE_DIR definitions at bottom
 
 
 # ================================
@@ -23,8 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-b#--p%6fpdr-ub523h198vs!#-2%fvtv+at(_@tzr#kaazchp='
 DEBUG = True
 
-#  IMPORTANT FOR SERVER ACCESS
-ALLOWED_HOSTS = ['*']  #  WARNING: In production, specify allowed hosts for security
+ALLOWED_HOSTS = ['*']  # ✅ FIXED - allows Cloudflare tunnel + all hosts
 
 
 # ================================
@@ -48,19 +46,32 @@ INSTALLED_APPS = [
     'restapi',
 ]
 
-ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/uxrz9r3/"
-ZAPIER_WEBHOOK_EMAIL_URL = "https://hooks.zapier.com/hooks/catch/25767405/ucb1mwo/"
+# ================================
+# ZAPIER WEBHOOKS
+# ================================
 
-# ─── NEW: dedicated webhook for fetching Mailchimp campaign insights via Zapier ───
-# Ask Mohan to create a new Zap and replace the URL below with the real webhook URL.
-# This is called by CampaignMailchimpInsightsAPIView (GET /api/campaigns/<id>/mailchimp-insights/)
-# Zapier should POST insights back to: POST /api/mailchimp/insights-callback/
-ZAPIER_WEBHOOK_MAILCHIMP_INSIGHTS_URL = os.getenv(
-    "ZAPIER_WEBHOOK_MAILCHIMP_INSIGHTS_URL",
-    "https://hooks.zapier.com/hooks/catch/25767405/uxi208v/"
+# General webhook — lead events, campaign events, social media campaigns
+# (unchanged — keep as is)
+ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/uxrz9r3/"
+
+# ✅ SINGLE unified Mailchimp Zap URL.
+# Previously 2 separate Mailchimp Zaps:
+#   OLD Zap 1 — ZAPIER_WEBHOOK_EMAIL_URL              → ucb1mwo → event: email_campaign_created
+#   OLD Zap 2 — ZAPIER_WEBHOOK_MAILCHIMP_INSIGHTS_URL → uxi208v → event: mailchimp_insights_requested
+#
+# NOW merged into 1 Zap that handles both events using "Paths by Zapier":
+#   Path A: event = "email_campaign_created"        → Send email campaign actions
+#   Path B: event = "mailchimp_insights_requested"  → Log/notify insights actions
+#
+# ⚠️ After creating the new merged Zap in Zapier,
+#    replace the URL below with the new webhook URL.
+ZAPIER_WEBHOOK_MAILCHIMP_URL = os.getenv(
+    "ZAPIER_WEBHOOK_MAILCHIMP_URL",
+    "https://hooks.zapier.com/hooks/catch/25767405/uxkfmnd/"  # ← Replace with new merged Zap URL
 )
+
 MIDDLEWARE = [
-    'restapi.middleware.RequestIDMiddleware',   # Custom middleware
+    'restapi.middleware.RequestIDMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -76,7 +87,7 @@ ROOT_URLCONF = 'lms_main.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],   # keep empty for now
+        'DIRS': [],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -88,6 +99,7 @@ TEMPLATES = [
         },
     },
 ]
+
 WSGI_APPLICATION = 'lms_main.wsgi.application'
 
 
@@ -127,17 +139,17 @@ USE_TZ = True
 
 
 # ================================
-#  STATIC FILES (FIXED — MAIN ISSUE)
+# STATIC FILES
 # ================================
-STATIC_URL = '/static/'                      # ← UPDATED
-STATIC_ROOT = BASE_DIR / 'static'           # ← ADDED (IMPORTANT)           #  ADDED (REQUIRED for collectstatic)
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'static'
+
+
 # ================================
-#  MEDIA FILES (NEW)
+# MEDIA FILES
 # ================================
 MEDIA_URL  = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
-#  REMOVED old STATIC_ROOT using os.path.join
-#  REMOVED missing STATIC_ROOT error cause
 
 
 # ================================
@@ -161,7 +173,7 @@ REST_FRAMEWORK = {
 
 
 # ================================
-# LOGGING (CLEANED, BASE_DIR SAFE)
+# LOGGING
 # ================================
 LOGGING = {
     "version": 1,
@@ -212,6 +224,9 @@ SWAGGER_SETTINGS = {
         }
     }
 }
+
+
+
 
 LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID")
 LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET")
