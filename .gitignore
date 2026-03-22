@@ -1,0 +1,12 @@
+# virtual environment
+.venv/
+venv/
+.env
+
+
+# python cache
+__pycache__/
+*.pyc
+
+LMS-Project
+LMS-Project.pub
