@@ -81,5 +81,8 @@ jobs:
               -e ZAPIER_WEBHOOK_FB_INSIGHTS_URL="${{ secrets.ZAPIER_WEBHOOK_FB_INSIGHTS_URL }}" \
               ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
 
+            echo "Wait container boot"
+            sleep 12
+                   
             echo "Run database migrations"
             docker exec vidai-backend python manage.py migrate || true
