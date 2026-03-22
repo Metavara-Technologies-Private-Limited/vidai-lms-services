@@ -52,7 +52,7 @@ jobs:
               --restart always \
               --name vidai-backend \
               -p 8004:8000 \
-              --add-host=host.docker.internal:host-gateway \              
+              --add-host=host.docker.internal:host-gateway \
               -e EMAIL_BACKEND="${{ secrets.EMAIL_BACKEND }}" \
               -e EMAIL_HOST="${{ secrets.EMAIL_HOST }}" \
               -e EMAIL_PORT="${{ secrets.EMAIL_PORT }}" \
