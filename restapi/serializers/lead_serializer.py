@@ -33,6 +33,9 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
     campaign_id = serializers.UUIDField(source="campaign.id", read_only=True)
     campaign_name = serializers.CharField(source="campaign.campaign_name", read_only=True)
+    # ✅ ADDED: Computed from campaign.start_date and campaign.end_date
+    # Returns a human-readable string e.g. "18 days" or None if no campaign
+    campaign_duration = serializers.SerializerMethodField()
 
     assigned_to_id = serializers.IntegerField(source="assigned_to.id", read_only=True)
     assigned_to_name = serializers.CharField(source="assigned_to.emp_name", read_only=True)
@@ -52,7 +55,7 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
             "clinic_id", "clinic_name",
             "department_id", "department_name",
-            "campaign_id", "campaign_name",
+            "campaign_id", "campaign_name", "campaign_duration",
             "assigned_to_id", "assigned_to_name",
             "personal_id", "personal_name",
 
@@ -61,7 +64,7 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
             "full_name",
             "age",
-            "gender",              # ✅ ADDED
+            "gender",
             "marital_status",
             "email",
             "contact_no",
@@ -91,6 +94,17 @@ class LeadReadSerializer(serializers.ModelSerializer):
             "is_active",
             "converted_at",
         ]
+
+    def get_campaign_duration(self, obj):
+        """Return campaign date range as 'DD/MM/YYYY - DD/MM/YYYY'."""
+        campaign = obj.campaign
+        if not campaign:
+            return None
+        start = campaign.start_date
+        end = campaign.end_date
+        if not start or not end:
+            return None
+        return f"{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}"
 
     def get_documents(self, obj):
         return [
@@ -135,7 +149,7 @@ class LeadSerializer(serializers.ModelSerializer):
 
             "full_name",
             "age",
-            "gender",              # ✅ ADDED
+            "gender",
             "marital_status",
             "email",
             "contact_no",

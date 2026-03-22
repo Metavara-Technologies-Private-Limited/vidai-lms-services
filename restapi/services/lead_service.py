@@ -1,115 +1,83 @@
+from django.core.mail import send_mail
+from django.utils import timezone
+from django.utils.html import strip_tags
 from django.db import transaction
-from rest_framework.exceptions import ValidationError
+from django.shortcuts import get_object_or_404
 
-from restapi.models import (
-    Lead,
-    Clinic,
-    Department,
-    Employee,
-    Campaign,
-    LeadDocument,
-)
+from restapi.models import LeadEmail
 
 
-# =====================================================
-# CREATE
-# =====================================================
-@transaction.atomic
-def create_lead(validated_data):
+def _clean_body(text: str) -> str:
+    """
+    Convert any HTML in email_body to plain text before sending.
+    Handles:
+      - Normal HTML:          <p>hello</p>         → hello
+      - Double-encoded HTML:  &lt;p&gt;hello&lt;/p&gt; → hello
+      - Already plain text:   hello                 → hello
+    """
+    if not text:
+        return ""
 
-    # ✅ NEW: extract documents
-    documents = validated_data.pop("documents", [])
-
-    try:
-        clinic = Clinic.objects.get(id=validated_data.pop("clinic_id"))
-    except Clinic.DoesNotExist:
-        raise ValidationError({"clinic_id": "Invalid clinic_id"})
-
-    try:
-        department = Department.objects.get(
-            id=validated_data.pop("department_id"),
-            clinic=clinic
-        )
-    except Department.DoesNotExist:
-        raise ValidationError({"department_id": "Invalid department_id"})
-
-    campaign = None
-    campaign_id = validated_data.pop("campaign_id", None)
-    if campaign_id:
-        campaign = Campaign.objects.filter(id=campaign_id).first()
-
-    assigned_to = None
-    assigned_to_id = validated_data.pop("assigned_to_id", None)
-    if assigned_to_id:
-        assigned_to = Employee.objects.filter(
-            id=assigned_to_id,
-            clinic=clinic
-        ).first()
-        if not assigned_to:
-            raise ValidationError("Assigned employee not in clinic")
-
-    personal = None
-    personal_id = validated_data.pop("personal_id", None)
-    if personal_id:
-        personal = Employee.objects.filter(
-            id=personal_id,
-            clinic=clinic
-        ).first()
-        if not personal:
-            raise ValidationError("Personal employee not in clinic")
-
-    lead = Lead.objects.create(
-        clinic=clinic,
-        department=department,
-        campaign=campaign,
-        assigned_to=assigned_to,
-        personal=personal,
-        **validated_data
+    # Step 1 — decode double-encoded entities (&lt;p&gt; → <p>)
+    decoded_text = (
+        text
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+        .replace("&nbsp;", " ")
+        .replace("&quot;", '"')
+        .replace("&#39;", "'")
     )
 
-    # =====================================================
-    # ✅ NEW: Save uploaded documents
-    # =====================================================
-    for file in documents:
-        LeadDocument.objects.create(
-            lead=lead,
-            file=file
-        )
+    # Step 2 — strip all HTML tags using Django's built-in strip_tags
+    plain_text = strip_tags(decoded_text)
 
-    return lead
+    # Step 3 — collapse excessive blank lines
+    import re as regex
+    plain_text = regex.sub(r"\n{3,}", "\n\n", plain_text)
+
+    return plain_text.strip()
 
 
-# =====================================================
-# UPDATE
-# =====================================================
 @transaction.atomic
-def update_lead(instance, validated_data):
+def send_lead_email(email_id):
 
-    documents = validated_data.pop("documents", [])
+    email_object = get_object_or_404(LeadEmail, id=email_id)
 
-    IMMUTABLE_FIELDS = {
-        "clinic",
-        "department",
-        "campaign",
-        "clinic_id",
-        "department_id",
-        "campaign_id",
-    }
+    # Prevent resending
+    if email_object.status == "SENT":
+        raise Exception("Email already sent")
 
-    for field, value in validated_data.items():
-        if field in IMMUTABLE_FIELDS:
-            continue
-        if hasattr(instance, field):
-            setattr(instance, field, value)
+    # Check lead email exists
+    if not email_object.lead.email:
+        raise Exception("Lead does not have a valid email address")
 
-    instance.save()
+    try:
+        # Always send as plain text
+        plain_body_text = _clean_body(email_object.email_body)
 
-    # ✅ NEW: Add new documents if provided
-    for file in documents:
-        LeadDocument.objects.create(
-            lead=instance,
-            file=file
+        send_mail(
+            subject=email_object.subject,
+            message=plain_body_text,
+            from_email=email_object.sender_email,
+            recipient_list=[email_object.lead.email],
+            fail_silently=False,
         )
 
-    instance.refresh_from_db()
-    return instance
+        # Save cleaned body
+        email_object.email_body = plain_body_text
+        email_object.status = "SENT"
+        email_object.sent_at = timezone.now()
+        email_object.failed_reason = None
+        email_object.save(
+            update_fields=["email_body", "status", "sent_at", "failed_reason"]
+        )
+
+        return email_object
+
+    except Exception as exception:
+        email_object.status = "FAILED"
+        email_object.failed_reason = str(exception)
+        email_object.save(update_fields=["status", "failed_reason"])
+
+        raise exception
