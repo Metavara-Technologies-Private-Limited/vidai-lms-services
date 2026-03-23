@@ -54,6 +54,7 @@ from restapi.serializers.reputation_serializer import (
     ReviewRequestSerializer,
     ReviewSerializer
 )
+from restapi.models.reputation import ReviewRequest, Review, ReviewRequestLead
 
 # =====================================================
 # Project Imports - Serializers
@@ -5009,13 +5010,26 @@ class ReviewRequestCreateAPIView(APIView):
         serializer = ReviewRequestSerializer(data=request.data)
 
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        review_request = serializer.save()
+        delivery_report = getattr(review_request, "_delivery_report", None)
+
+        response_status = "success"
+        response_message = "Review request created"
+
+        if delivery_report and delivery_report.get("failed_count"):
+            if delivery_report.get("success_count"):
+                response_status = "partial_success"
+                response_message = "Review request created with some delivery failures"
+            else:
+                response_status = "error"
+                response_message = "Review request created but no messages were delivered"
 
         return Response(
             {
-                "status": "success",
-                "message": "Review request created",
-                "data": serializer.data
+                "status": response_status,
+                "message": response_message,
+                "data": serializer.data,
+                "delivery_report": delivery_report,
             },
             status=status.HTTP_201_CREATED
         )
@@ -5026,7 +5040,7 @@ class ReviewRequestListAPIView(APIView):
 
     def get(self, request):
 
-        review_requests = ReviewRequest.objects.all().order_by("-created_at")
+        review_requests = ReviewRequest.objects.all().prefetch_related("leads", "reviews").order_by("-created_at")
 
         serializer = ReviewRequestSerializer(review_requests, many=True)
 
@@ -5044,7 +5058,10 @@ class ReviewRequestDetailAPIView(APIView):
 
     def get(self, request, request_id):
 
-        review_request = get_object_or_404(ReviewRequest, id=request_id)
+        review_request = get_object_or_404(
+            ReviewRequest.objects.prefetch_related("leads", "reviews"),
+            id=request_id,
+        )
 
         serializer = ReviewRequestSerializer(review_request)
 
@@ -5083,6 +5100,11 @@ class ReviewCreateAPIView(APIView):
         if serializer.is_valid():
             serializer.save()
 
+            ReviewRequestLead.objects.filter(
+                review_request_id=serializer.instance.review_request_id,
+                lead_id=serializer.instance.lead_id,
+            ).update(review_submitted=True)
+
             return Response(
                 {
                     "status": "success",
@@ -5106,10 +5128,11 @@ class ReputationDashboardAPIView(APIView):
 
     def get(self, request):
 
-        from django.db.models import Avg, Count
-        from restapi.models.reputation import ReviewRequest, Review
+        from django.db.models import Avg
+        from restapi.models.reputation import ReviewRequest, Review, ReviewRequestLead
 
         total_requests = ReviewRequest.objects.count()
+        total_sent_requests = ReviewRequestLead.objects.filter(request_sent=True).count()
 
         total_reviews = Review.objects.count()
 
@@ -5118,16 +5141,17 @@ class ReputationDashboardAPIView(APIView):
         )["avg_rating"] or 0
 
         conversion_rate = 0
-        if total_requests > 0:
-            conversion_rate = (total_reviews / total_requests) * 100
+        if total_sent_requests > 0:
+            conversion_rate = (total_reviews / total_sent_requests) * 100
 
         return Response(
             {
                 "avg_rating": round(avg_rating, 1),
-                "requests_sent": total_requests,
+                "requests_sent": total_sent_requests,
                 "reviews_submitted": total_reviews,
                 "total_reviews": total_reviews,
+                "total_requests": total_requests,
                 "conversion_rate": round(conversion_rate, 1),
             }
         )
-    
+

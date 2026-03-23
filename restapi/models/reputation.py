@@ -67,6 +67,7 @@ class ReviewRequestLead(models.Model):
 
     request_sent = models.BooleanField(default=False)
     review_submitted = models.BooleanField(default=False)
+    sent_link = models.URLField(blank=True, null=True, help_text="The review link sent to the lead")
 
 
 class Review(models.Model):
