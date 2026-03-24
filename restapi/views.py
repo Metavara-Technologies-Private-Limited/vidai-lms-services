@@ -42,6 +42,7 @@ from restapi.models import (
     CampaignEmailConfig, TwilioMessage, TwilioCall,
     MarketingEvent,  # ← ADDED: needed for CampaignMailchimpInsightsAPIView + MailchimpInsightsCallbackAPIView
 )
+from django.db.models import Count, Q  
 from restapi.models import TicketReply
 from restapi.models.social_account import SocialAccount
 from .models import Lead, Campaign, Lab
@@ -4648,61 +4649,87 @@ class InteractionCountsAPIView(APIView):
 
     Returns per-platform interaction counts for the Communication chart.
     Order: Email → SMS → Call → WhatsApp → Chatbot
-
-    Response shape:
-    [
-      { "platform": "Email",    "high": 1, "low": 0, "no": 0 },
-      { "platform": "SMS",      "high": 3, "low": 2, "no": 1 },
-      { "platform": "Call",     "high": 5, "low": 1, "no": 0 },
-      { "platform": "WhatsApp", "high": 0, "low": 0, "no": 0 },
-      { "platform": "Chatbot",  "high": 0, "low": 0, "no": 0 },
-    ]
     """
 
     def get(self, request):
         try:
-            # ── EMAIL — from Zapier cache ──────────────────────────────────
-            mail_insights = cache.get("mail_insights") or {}
-            email_high    = int(mail_insights.get("appointments_booked", 0))
-            email_low     = int(mail_insights.get("leads_created", 0))
-            email_no      = 0
+            # ── EMAIL — from LeadEmail DB ────────────────────────────────
+            email_counts = LeadEmail.objects.aggregate(
+                high=Count(
+                    "id",
+                    filter=Q(
+                        status=LeadEmail.StatusChoices.SENT,
+                        sent_at__isnull=False
+                    )
+                ),
+                low=Count(
+                    "id",
+                    filter=Q(status=LeadEmail.StatusChoices.FAILED)
+                ),
+                no=Count(
+                    "id",
+                    filter=Q(
+                        status__in=[
+                            LeadEmail.StatusChoices.DRAFT,
+                            LeadEmail.StatusChoices.SCHEDULED
+                        ]
+                    )
+                )
+            )
 
-            # ── SMS — from TwilioMessage DB ────────────────────────────────
-            sms_high = TwilioMessage.objects.filter(
-                status__in=["delivered", "sent", "queued_via_zapier"]
-            ).count()
+            email_high = email_counts["high"] or 0
+            email_low  = email_counts["low"] or 0
+            email_no   = email_counts["no"] or 0
 
-            sms_low = TwilioMessage.objects.filter(
-                status__in=["failed", "undelivered"]
-            ).count()
 
-            sms_no = TwilioMessage.objects.filter(
-                status__in=["queued", "accepted", "sending", "receiving", "received"]
-            ).count()
+            # ── SMS — from TwilioMessage DB ──────────────────────────────
+            sms_counts = TwilioMessage.objects.aggregate(
+                high=Count(
+                    "id",
+                    filter=Q(status__in=["delivered", "sent", "queued_via_zapier"])
+                ),
+                low=Count(
+                    "id",
+                    filter=Q(status__in=["failed", "undelivered"])
+                ),
+                no=Count(
+                    "id",
+                    filter=Q(status__in=["queued", "accepted", "sending", "receiving", "received"])
+                )
+            )
 
-            # ── CALLS — from TwilioCall DB ─────────────────────────────────
-            # HIGH: completed or any active/ongoing call
-            call_high = TwilioCall.objects.filter(
-                status__in=["completed", "in-progress", "ringing", "in_progress"]
-            ).count()
+            sms_high = sms_counts["high"] or 0
+            sms_low  = sms_counts["low"] or 0
+            sms_no   = sms_counts["no"] or 0
 
-            # LOW: attempted but didn't connect
-            call_low = TwilioCall.objects.filter(
-                status__in=["busy", "no-answer", "no_answer"]
-            ).count()
 
-            # NO: failed or canceled
-            call_no = TwilioCall.objects.filter(
-                status__in=["failed", "canceled"]
-            ).count()
+            # ── CALLS — from TwilioCall DB ───────────────────────────────
+            call_counts = TwilioCall.objects.aggregate(
+                high=Count(
+                    "id",
+                    filter=Q(status__in=["completed", "in-progress", "ringing", "in_progress"])
+                ),
+                low=Count(
+                    "id",
+                    filter=Q(status__in=["busy", "no-answer", "no_answer"])
+                ),
+                no=Count(
+                    "id",
+                    filter=Q(status__in=["failed", "canceled"])
+                )
+            )
 
-            # Fallback: if total calls exist but none matched above statuses
-            # (e.g. status = "initiated" or "queued"), count all as high
+            call_high = call_counts["high"] or 0
+            call_low  = call_counts["low"] or 0
+            call_no   = call_counts["no"] or 0
+
+            # Fallback: if no categorized calls but records exist
             total_calls = TwilioCall.objects.count()
             if call_high == 0 and call_low == 0 and call_no == 0 and total_calls > 0:
                 call_high = total_calls
 
-            # ── WHATSAPP & CHATBOT — future scope (kept at 0) ──────────────
+
+            # ── FINAL RESPONSE ──────────────────────────────────────────
             data = [
                 {"platform": "Email",    "high": email_high, "low": email_low, "no": email_no},
                 {"platform": "SMS",      "high": sms_high,   "low": sms_low,   "no": sms_no},
