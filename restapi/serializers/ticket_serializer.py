@@ -2,7 +2,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from django.utils import timezone
 
-from restapi.models import Ticket, Document, TicketTimeline, Lab
+from restapi.models import Ticket, Document, TicketTimeline, Lab, TicketReply
 from restapi.services.ticket_service import (
     create_ticket_service,
     update_ticket_service,
@@ -228,3 +228,37 @@ class TicketWriteSerializer(serializers.ModelSerializer):
     # --------------------------------------------------------
     def update(self, instance, validated_data):
         return update_ticket_service(instance, validated_data)
+
+
+# ============================================================
+# TICKET REPLY SERIALIZER
+# ============================================================
+class TicketReplySerializer(serializers.ModelSerializer):
+    sent_by_name = serializers.CharField(source="sent_by.emp_name", read_only=True)
+
+    class Meta:
+        model = TicketReply
+        fields = [
+            "id",
+            "ticket",
+            "subject",
+            "message",
+            "to_emails",
+            "cc_emails",
+            "bcc_emails",
+            "sent_by",
+            "sent_by_name",
+            "status",
+            "failed_reason",
+            "created_at",
+        ]
+        read_only_fields = ["id", "status", "failed_reason", "created_at"]
+
+
+class TicketReplyWriteSerializer(serializers.Serializer):
+    subject = serializers.CharField(max_length=255)
+    message = serializers.CharField()
+    to = serializers.ListField(child=serializers.EmailField(), min_length=1)
+    cc = serializers.ListField(child=serializers.EmailField(), required=False, default=list)
+    bcc = serializers.ListField(child=serializers.EmailField(), required=False, default=list)
+    sent_by = serializers.IntegerField(required=False, allow_null=True)

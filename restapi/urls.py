@@ -183,6 +183,8 @@ ReviewListAPIView,
 ReputationDashboardAPIView,
 ReviewCreateAPIView,
 
+
+TicketReplyAPIView,
 )
 
 
@@ -278,7 +280,7 @@ urlpatterns = [
     path("tickets/<uuid:ticket_id>/status/",        TicketStatusUpdateAPIView.as_view(),    name="ticket-status-update"),
     path("tickets/<uuid:ticket_id>/documents/",     TicketDocumentUploadAPIView.as_view(),  name="ticket-document-upload"),
     path("tickets/<uuid:ticket_id>/delete/",        TicketDeleteAPIView.as_view(),          name="ticket-delete"),
-
+    path("tickets/<uuid:ticket_id>/reply/",         TicketReplyAPIView.as_view(),           name="ticket-reply"),
     # ==================================================
     # LAB APIs
     # ==================================================
@@ -361,8 +363,8 @@ urlpatterns = [
     path("fb/campaigns/create/", FBCampaignCreateAPIView.as_view(), name="fb-campaign-create"),
     path("fb/campaigns/<str:campaign_id>/insights/", FBCampaignInsightsAPIView.as_view(), name="fb-campaign-insights"),
 
-]
-        # ==================================================
+
+# ==================================================
 # REPUTATION MANAGEMENT APIs
 # ==================================================
 path("reputation/requests/create/", ReviewRequestCreateAPIView.as_view(), name="reputation-request-create"),
@@ -376,3 +378,6 @@ path("reputation/requests/<uuid:request_id>/reviews/", ReviewListAPIView.as_view
 path("reputation/dashboard/",ReputationDashboardAPIView.as_view(),name="reputation-dashboard"),
 
 path("reputation/reviews/create/", ReviewCreateAPIView.as_view(), name="reputation-review-create"),
+
+]
+       

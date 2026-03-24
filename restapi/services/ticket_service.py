@@ -1,9 +1,11 @@
 import uuid
+from django.core.mail import EmailMessage
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from restapi.models import Ticket, Document, TicketTimeline, Lab
+from restapi.models import Ticket, Document, TicketTimeline, Lab, TicketReply
 
 # ============================================================
 # CREATE LAB
@@ -129,3 +131,46 @@ def update_ticket_service(ticket_instance, validated_data):
     ticket_instance.refresh_from_db()
 
     return ticket_instance
+
+
+# ============================================================
+# SEND TICKET REPLY SERVICE (Email with CC / BCC)
+# ============================================================
+@transaction.atomic
+def send_ticket_reply_service(ticket, subject, message, to_emails, cc_emails, bcc_emails, sent_by=None):
+    reply = TicketReply.objects.create(
+        ticket=ticket,
+        subject=subject,
+        message=message,
+        to_emails=to_emails,
+        cc_emails=cc_emails,
+        bcc_emails=bcc_emails,
+        sent_by=sent_by,
+        status="sent",
+    )
+
+    try:
+        email = EmailMessage(
+            subject=subject,
+            body=message,
+            from_email=settings.EMAIL_HOST_USER,
+            to=to_emails,
+            cc=cc_emails,
+            bcc=bcc_emails,
+        )
+        email.content_subtype = "html"
+        email.send(fail_silently=False)
+
+        TicketTimeline.objects.create(
+            ticket=ticket,
+            action="Reply sent via email",
+            done_by=sent_by,
+        )
+
+    except Exception as exc:
+        reply.status = "failed"
+        reply.failed_reason = str(exc)
+        reply.save(update_fields=["status", "failed_reason"])
+        raise exc
+
+    return reply
