@@ -81,9 +81,10 @@ from .views import (
     # ==================================================
     SendSMSAPIView,
     MakeCallAPIView,
+    TwilioSMSStatusCallbackAPIView,
+    TwilioCallStatusCallbackAPIView,
     TwilioMessageListAPIView,
     TwilioCallListAPIView,
-
     # ==================================================
     # Sales Pipeline APIs
     # ==================================================
@@ -232,12 +233,14 @@ urlpatterns = [
     # ==================================================
     # TWILIO APIs
     # (registered once only — no duplicates)
-    # ==================================================
     path("twilio/send-sms/",  SendSMSAPIView.as_view(),          name="twilio-send-sms"),
     path("twilio/make-call/", MakeCallAPIView.as_view(),          name="twilio-make-call"),
+    path("twilio/sms-status-callback/",  TwilioSMSStatusCallbackAPIView.as_view(),  name="twilio-sms-status-callback"),
+    path("twilio/call-status-callback/", TwilioCallStatusCallbackAPIView.as_view(), name="twilio-call-status-callback"),
     path("twilio/sms/",       TwilioMessageListAPIView.as_view(), name="twilio-sms-list"),
     path("twilio/calls/",     TwilioCallListAPIView.as_view(),    name="twilio-call-list"),
 
+    # ==================================================
     # ==================================================
     # CAMPAIGN APIs
     # ==================================================

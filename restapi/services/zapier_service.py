@@ -1,8 +1,40 @@
-import requests
 import logging
+import requests
+
 from django.conf import settings
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("restapi")
+
+
+def _safe_text(value, limit=250):
+    """Limit response text in logs to avoid noisy terminal output."""
+    if value is None:
+        return ""
+    text = str(value)
+    return text if len(text) <= limit else text[:limit] + "..."
+
+
+def _post_to_webhook(label: str, webhook_url: str, payload: dict, timeout: int):
+    """Send payload to a Zapier webhook and log request/response details."""
+    if not webhook_url:
+        logger.warning("[%s] Webhook URL is not configured. Skipping request.", label)
+        return None
+
+    try:
+        logger.info("[%s] Sending webhook | url=%s | payload=%s", label, webhook_url, payload)
+        response = requests.post(webhook_url, json=payload, timeout=timeout)
+        logger.info(
+            "[%s] Response | status_code=%s | body=%s",
+            label,
+            response.status_code,
+            _safe_text(response.text),
+        )
+        if not response.ok:
+            logger.warning("[%s] Non-2xx response from Zapier: %s", label, response.status_code)
+        return response
+    except requests.exceptions.RequestException:
+        logger.exception("[%s] Zapier request failed", label)
+        return None
 
 
 def send_to_zapier(data):
@@ -11,25 +43,13 @@ def send_to_zapier(data):
     Used for: lead events, campaign events, social media campaigns, etc.
     Webhook: ZAPIER_WEBHOOK_URL
     """
-    try:
-        print("🔔 Sending to Zapier...")
-        print("🔹 Webhook URL:", settings.ZAPIER_WEBHOOK_URL)
-        print("🔹 Payload:", data)
-
-        response = requests.post(
-            settings.ZAPIER_WEBHOOK_URL,
-            json=data,
-            timeout=8
-        )
-
-        print("✅ Zapier Status Code:", response.status_code)
-        print("✅ Zapier Response:", response.text)
-
-        return response.status_code
-
-    except requests.exceptions.RequestException as e:
-        print("❌ Zapier error:", str(e))
-        return None
+    response = _post_to_webhook(
+        label="Zapier General",
+        webhook_url=getattr(settings, "ZAPIER_WEBHOOK_URL", ""),
+        payload=data,
+        timeout=8,
+    )
+    return response.status_code if response else None
 
 
 def send_to_zapier_email(data):
@@ -38,25 +58,13 @@ def send_to_zapier_email(data):
     Used for: EmailCampaignCreateAPIView — event: "email_campaign_created"
     Webhook: ZAPIER_WEBHOOK_MAILCHIMP_URL
     """
-    try:
-        print("🔔 Sending to Zapier (Email Campaign — Merged Mailchimp Zap)...")
-        print("🔹 Webhook URL:", settings.ZAPIER_WEBHOOK_MAILCHIMP_URL)
-        print("🔹 Payload:", data)
-
-        response = requests.post(
-            settings.ZAPIER_WEBHOOK_MAILCHIMP_URL,
-            json=data,
-            timeout=8
-        )
-
-        print("✅ Zapier Email Status Code:", response.status_code)
-        print("✅ Zapier Email Response:", response.text)
-
-        return response.status_code
-
-    except requests.exceptions.RequestException as e:
-        print("❌ Zapier Email error:", str(e))
-        return None
+    response = _post_to_webhook(
+        label="Zapier Mailchimp Email",
+        webhook_url=getattr(settings, "ZAPIER_WEBHOOK_MAILCHIMP_URL", ""),
+        payload=data,
+        timeout=8,
+    )
+    return response.status_code if response else None
 
 
 def send_to_zapier_mailchimp_insights(data):
@@ -65,25 +73,13 @@ def send_to_zapier_mailchimp_insights(data):
     Used for: CampaignMailchimpInsightsAPIView — event: "mailchimp_insights_requested"
     Webhook: ZAPIER_WEBHOOK_MAILCHIMP_URL
     """
-    try:
-        print("🔔 Sending to Zapier (Mailchimp Insights — Merged Mailchimp Zap)...")
-        print("🔹 Webhook URL:", settings.ZAPIER_WEBHOOK_MAILCHIMP_URL)
-        print("🔹 Payload:", data)
-
-        response = requests.post(
-            settings.ZAPIER_WEBHOOK_MAILCHIMP_URL,
-            json=data,
-            timeout=8
-        )
-
-        print("✅ Zapier Insights Status Code:", response.status_code)
-        print("✅ Zapier Insights Response:", response.text)
-
-        return response.status_code
-
-    except requests.exceptions.RequestException as e:
-        print("❌ Zapier Insights error:", str(e))
-        return None
+    response = _post_to_webhook(
+        label="Zapier Mailchimp Insights",
+        webhook_url=getattr(settings, "ZAPIER_WEBHOOK_MAILCHIMP_URL", ""),
+        payload=data,
+        timeout=8,
+    )
+    return response.status_code if response else None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -106,29 +102,19 @@ def send_to_zapier_sms(payload: dict):
             "clinic_id":  1
         }
     """
-    try:
-        print("🔔 Sending to Zapier (SMS → MSG91)...")
-        print("🔹 Webhook URL:", settings.ZAPIER_WEBHOOK_SMS_URL)
-        print("🔹 Payload:", payload)
+    response = _post_to_webhook(
+        label="Zapier SMS",
+        webhook_url=getattr(settings, "ZAPIER_WEBHOOK_SMS_URL", ""),
+        payload=payload,
+        timeout=15,
+    )
 
-        response = requests.post(
-            settings.ZAPIER_WEBHOOK_SMS_URL,
-            json=payload,
-            timeout=15,
-        )
-
-        print("✅ Zapier SMS Status Code:", response.status_code)
-        print("✅ Zapier SMS Response:", response.text)
-
+    if response is not None:
         logger.info(
-            f"[Zapier SMS] Fired | to={payload.get('to')} "
-            f"| lead={payload.get('lead_uuid')} "
-            f"| status={response.status_code}"
+            "[Zapier SMS] Fired | to=%s | lead=%s | status=%s",
+            payload.get("to"),
+            payload.get("lead_uuid"),
+            response.status_code,
         )
 
-        return response
-
-    except requests.exceptions.RequestException as e:
-        print("❌ Zapier SMS error:", str(e))
-        logger.warning(f"[Zapier SMS] Webhook failed: {e}")
-        return None
+    return response
