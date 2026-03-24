@@ -7,12 +7,11 @@ from restapi.services.clinic_service import create_clinic, update_clinic
 # Clinic Create / Update Serializer
 # =========================
 class ClinicSerializer(serializers.ModelSerializer):
-    # department → list of departments
     department = serializers.ListField(required=False)
 
     class Meta:
         model = Clinic
-        fields = ["id", "name", "department"]
+        fields = ["id", "name", "email", "department"]  # ✅ email added
 
     def create(self, validated_data):
         return create_clinic(validated_data)
@@ -41,4 +40,4 @@ class ClinicReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Clinic
-        fields = ["id", "name", "department"]
+        fields = ["id", "name", "email", "department"]  # ✅ email added

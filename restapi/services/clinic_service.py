@@ -9,8 +9,10 @@ from restapi.models import Clinic, Department
 def create_clinic(validated_data):
     departments_data = validated_data.pop("department", [])
 
+    # Create clinic (email included automatically)
     clinic = Clinic.objects.create(**validated_data)
 
+    # Create departments
     for department_data in departments_data:
         Department.objects.create(
             clinic=clinic,
@@ -30,8 +32,10 @@ def update_clinic(instance, validated_data):
 
     # Update clinic fields
     instance.name = validated_data.get("name", instance.name)
+    instance.email = validated_data.get("email", instance.email)  # ✅ added
     instance.save()
 
+    # Handle departments
     for department_data in departments_data:
         department_id = department_data.get("id")
 
