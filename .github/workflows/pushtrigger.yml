@@ -80,6 +80,7 @@ jobs:
               -e TWILIO_PHONE_NUMBER="${{ secrets.TWILIO_PHONE_NUMBER }}" \
               -e ZAPIER_WEBHOOK_FB_INSIGHTS_URL="${{ secrets.ZAPIER_WEBHOOK_FB_INSIGHTS_URL }}" \
               -e ZAPIER_WEBHOOK_TWILIO_URL="${{ secrets.ZAPIER_WEBHOOK_TWILIO_URL }}" \
+              -e STAGE_LOGIN_URL="${{ secrets.STAGE_LOGIN_URL }}" \
               ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
 
             echo "Wait container boot"
