@@ -5582,3 +5582,61 @@ class LoginProxyAPIView(APIView):
                 {"error": "Login failed", "details": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+ 
+        
+class ProfileProxyAPIView(APIView):
+    def get(self, request):
+        token = request.headers.get("Authorization")
+
+        try:
+            resp = requests.get(
+                "https://stage-api.vidaisolutions.com/api/me/profile",
+                headers={
+                    "Authorization": token
+                },
+                timeout=10
+            )
+
+            return Response(resp.json(), status=resp.status_code)
+
+        except requests.exceptions.Timeout:
+            return Response(
+                {"error": "Profile service timeout"},
+                status=504
+            )
+
+class UsersProxyAPIView(APIView):
+
+    def get(self, request):
+        try:
+            token = request.headers.get("Authorization")
+
+            params = {
+                "limit": request.query_params.get("limit", 10),
+                "offset": request.query_params.get("offset", 0),
+                "search": request.query_params.get("search", ""),
+            }
+
+            resp = requests.get(
+                settings.STAGE_USERS_URL,
+                headers={
+                    "Authorization": token,
+                },
+                params=params,
+                timeout=10,
+            )
+
+            return Response(resp.json(), status=resp.status_code)
+
+        except requests.exceptions.Timeout:
+            return Response(
+                {"error": "Users service timeout"},
+                status=504
+            )
+
+        except Exception as e:
+            return Response(
+                {"error": "Users fetch failed", "details": str(e)},
+                status=500
+            )

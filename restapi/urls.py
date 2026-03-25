@@ -35,6 +35,7 @@ from .views import (
     # ==================================================
     ClinicEmployeesAPIView,
     EmployeeCreateAPIView,
+    
     UserCreateAPIView,
     EmployeeUpdateAPIView,
 
@@ -187,7 +188,12 @@ ReviewCreateAPIView,
 
 
 
-LoginProxyAPIView
+LoginProxyAPIView,
+UsersProxyAPIView,
+ProfileProxyAPIView,
+
+
+
 
 )
 
@@ -387,6 +393,11 @@ path("reputation/reviews/create/", ReviewCreateAPIView.as_view(), name="reputati
 
 #login proxy for social auth testing (temporary, remove after tests)
 path("login/", LoginProxyAPIView.as_view(), name="login-proxy"),
+
+
+path("me/profile", ProfileProxyAPIView.as_view()),
+path("users-search/", UsersProxyAPIView.as_view(), name="users-proxy"),
+
 
 ]
        
