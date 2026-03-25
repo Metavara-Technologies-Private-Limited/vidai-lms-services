@@ -5525,3 +5525,60 @@ class TicketReplyAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+
+class LoginProxyAPIView(APIView):
+
+    def post(self, request):
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        if not username or not password:
+            return Response(
+                {"error": "Username and password required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            resp = requests.post(
+                settings.STAGE_LOGIN_URL,
+                json={
+                    "username": username,
+                    "password": password
+                },
+                timeout=10
+            )
+
+            data = resp.json()
+
+            # Pass through error from external API
+            if resp.status_code != 200:
+                return Response(data, status=resp.status_code)
+
+            # Return only required data
+            return Response(
+                {
+                    "token": data.get("access"),
+                    "user": {
+                        "username": data.get("username"),
+                        "first_name": data.get("first_name"),
+                        "last_name": data.get("last_name"),
+                        "email": data.get("email"),
+                        "designation": data.get("designation"),
+                    }
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except requests.exceptions.Timeout:
+            return Response(
+                {"error": "Login service timeout"},
+                status=status.HTTP_504_GATEWAY_TIMEOUT
+            )
+
+        except Exception as e:
+            return Response(
+                {"error": "Login failed", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

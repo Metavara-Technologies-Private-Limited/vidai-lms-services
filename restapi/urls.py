@@ -108,6 +108,7 @@ from .views import (
     TicketDocumentUploadAPIView,
     TicketDeleteAPIView,
     TicketDashboardCountAPIView,
+    TicketReplyAPIView,
     
     # ==================================================
     # Lab APIs
@@ -185,7 +186,9 @@ ReputationDashboardAPIView,
 ReviewCreateAPIView,
 
 
-TicketReplyAPIView,
+
+LoginProxyAPIView
+
 )
 
 
@@ -381,6 +384,9 @@ path("reputation/requests/<uuid:request_id>/reviews/", ReviewListAPIView.as_view
 path("reputation/dashboard/",ReputationDashboardAPIView.as_view(),name="reputation-dashboard"),
 
 path("reputation/reviews/create/", ReviewCreateAPIView.as_view(), name="reputation-review-create"),
+
+#login proxy for social auth testing (temporary, remove after tests)
+path("login/", LoginProxyAPIView.as_view(), name="login-proxy"),
 
 ]
        
