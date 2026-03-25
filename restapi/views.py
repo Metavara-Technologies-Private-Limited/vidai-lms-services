@@ -5583,27 +5583,44 @@ class LoginProxyAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
- 
-        
+
+
 class ProfileProxyAPIView(APIView):
     def get(self, request):
         token = request.headers.get("Authorization")
 
+        if not token:
+            return Response(
+                {"error": "Authorization token missing"},
+                status=401
+            )
+
         try:
             resp = requests.get(
-                "https://stage-api.vidaisolutions.com/api/me/profile",
+                settings.STAGE_PROFILE_URL,
                 headers={
                     "Authorization": token
                 },
                 timeout=10
             )
 
-            return Response(resp.json(), status=resp.status_code)
+            data = resp.json() if resp.content else {}
+
+            if resp.status_code != 200:
+                return Response(data, status=resp.status_code)
+
+            return Response(data, status=200)
 
         except requests.exceptions.Timeout:
             return Response(
                 {"error": "Profile service timeout"},
                 status=504
+            )
+
+        except Exception as e:
+            return Response(
+                {"error": "Profile fetch failed", "details": str(e)},
+                status=500
             )
 
 class UsersProxyAPIView(APIView):
