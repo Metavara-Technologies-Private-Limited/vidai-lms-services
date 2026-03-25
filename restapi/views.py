@@ -5591,42 +5591,75 @@ class ProfileProxyAPIView(APIView):
 
         if not token:
             return Response(
-                {"error": "Authorization token missing"},
-                status=401
+                {
+                    "error": "Authorization token missing",
+                    "debug": {
+                        "received_headers": dict(request.headers),
+                    },
+                },
+                status=401,
             )
 
         try:
-            auth_header = token
-            if token and not token.startswith("Bearer "):
-                auth_header = f"Bearer {token}"
+            auth_header = token if token.startswith("Bearer ") else f"Bearer {token}"
 
             resp = requests.get(
                 settings.STAGE_PROFILE_URL,
-                headers={
-                    "Authorization": auth_header
-                },
-                timeout=10
+                headers={"Authorization": auth_header},
+                timeout=10,
             )
 
-            data = resp.json() if resp.content else {}
+            # Safe JSON parse
+            try:
+                data = resp.json() if resp.content else {}
+            except Exception:
+                data = {"raw": resp.text}
 
-            if resp.status_code != 200:
-                return Response(data, status=resp.status_code)
-
-            return Response(data, status=200)
+            return Response(
+                {
+                    "success": resp.status_code == 200,
+                    "status_code": resp.status_code,
+                    "data": data,
+                    "debug": {
+                        "upstream_url": settings.STAGE_PROFILE_URL,
+                        "sent_auth_header": auth_header[:20] + "...",
+                    },
+                },
+                status=resp.status_code,
+            )
 
         except requests.exceptions.Timeout:
             return Response(
-                {"error": "Profile service timeout"},
-                status=504
+                {
+                    "error": "Profile service timeout",
+                    "debug": {
+                        "upstream_url": settings.STAGE_PROFILE_URL,
+                        "timeout": 10,
+                    },
+                },
+                status=504,
+            )
+
+        except requests.exceptions.RequestException as e:
+            return Response(
+                {
+                    "error": "Upstream request failed",
+                    "details": str(e),
+                },
+                status=502,
             )
 
         except Exception as e:
             return Response(
-                {"error": "Profile fetch failed", "details": str(e)},
-                status=500
+                {
+                    "error": "Internal server error",
+                    "details": str(e),
+                },
+                status=500,
             )
 
+
+            
 class UsersProxyAPIView(APIView):
 
     def get(self, request):
