@@ -5596,10 +5596,14 @@ class ProfileProxyAPIView(APIView):
             )
 
         try:
+            auth_header = token
+            if token and not token.startswith("Bearer "):
+                auth_header = f"Bearer {token}"
+
             resp = requests.get(
                 settings.STAGE_PROFILE_URL,
                 headers={
-                    "Authorization": token
+                    "Authorization": auth_header
                 },
                 timeout=10
             )
