@@ -1,7 +1,9 @@
 import requests
 import logging
+import uuid
 
 from twilio.rest import Client
+from twilio.twiml.voice_response import VoiceResponse, Dial
 from django.conf import settings
 
 from restapi.models import TwilioMessage, TwilioCall
@@ -85,6 +87,25 @@ def notify_zapier_event(event: str, payload: dict):
     _notify_zapier(event, payload)
 
 
+def _build_call_twiml(agent_number: str = "") -> str:
+    """
+    Build TwiML for outbound voice calls.
+    - If agent_number exists, bridge the lead and agent for live conversation.
+    - Otherwise, fallback to the previous informational message.
+    """
+    response = VoiceResponse()
+
+    if agent_number:
+        dial = Dial(callerId=settings.TWILIO_PHONE_NUMBER, answerOnBridge=True, timeout=30)
+        dial.number(agent_number)
+        response.append(dial)
+        response.say("We could not connect your call right now. Please try again later.")
+    else:
+        response.say("Hello, this is a call from your clinic. We will be in touch with you shortly. Thank you.")
+
+    return str(response)
+
+
 # ============================================================
 # SEND SMS
 # ============================================================
@@ -93,12 +114,57 @@ def send_sms(lead_uuid, to_number, message_body):
 
     lead = Lead.objects.get(id=lead_uuid)
 
+    formatted_to_number = _format_phone(to_number)
+    lead_phone = _format_phone(lead.contact_no or formatted_to_number)
+    sms_via_zapier = bool(getattr(settings, "TWILIO_SMS_VIA_ZAPIER", False))
+
+    if sms_via_zapier:
+        zap_sid = f"ZAP-SMS-{uuid.uuid4().hex}"
+        zap_status = "queued_in_zapier"
+
+        _notify_zapier("sms_sent", {
+            "lead_uuid": str(lead_uuid),
+            "lead_name": lead.full_name,
+            "lead_email": lead.email or "",
+            "lead_phone": lead_phone,
+            "from_number": settings.TWILIO_PHONE_NUMBER,
+            "to_number": formatted_to_number,
+            "message_body": message_body,
+            "sid": zap_sid,
+            "status": zap_status,
+        })
+
+        logger.info(
+            "SMS dispatched via Zapier: lead_uuid=%s sid=%s from=%s to=%s status=%s",
+            lead_uuid,
+            zap_sid,
+            settings.TWILIO_PHONE_NUMBER,
+            formatted_to_number,
+            zap_status,
+        )
+
+        message_log = TwilioMessage.objects.create(
+            lead=lead,
+            sid=zap_sid,
+            from_number=settings.TWILIO_PHONE_NUMBER,
+            to_number=formatted_to_number,
+            body=message_body,
+            status=zap_status,
+            direction="outbound",
+            raw_payload={
+                "sid": zap_sid,
+                "status": zap_status,
+                "source": "zapier",
+            },
+        )
+
+        return message_log
+
     client = Client(
         settings.TWILIO_ACCOUNT_SID,
         settings.TWILIO_AUTH_TOKEN
     )
 
-    formatted_to_number = _format_phone(to_number)
     sms_status_callback_url = getattr(settings, "TWILIO_SMS_STATUS_CALLBACK_URL", "").strip()
 
     sms_kwargs = {
@@ -132,8 +198,6 @@ def send_sms(lead_uuid, to_number, message_body):
         raw_payload={"sid": message.sid, "status": message.status}
     )
 
-    lead_phone = _format_phone(lead.contact_no or formatted_to_number)
-
     _notify_zapier("sms_sent", {
         "lead_uuid"   : str(lead_uuid),
         "lead_name"   : lead.full_name,
@@ -153,22 +217,67 @@ def send_sms(lead_uuid, to_number, message_body):
 # MAKE CALL
 # ============================================================
 
-def make_call(lead_uuid, to_number):
+def make_call(lead_uuid, to_number, agent_number=None):
 
     lead = Lead.objects.get(id=lead_uuid)
+
+    formatted_to_number = _format_phone(to_number)
+    formatted_agent_number = _format_phone(agent_number or getattr(settings, "TWILIO_BRIDGE_NUMBER", ""))
+    lead_phone = _format_phone(lead.contact_no or formatted_to_number)
+    call_via_zapier = bool(getattr(settings, "TWILIO_CALL_VIA_ZAPIER", False))
+
+    if call_via_zapier:
+        zap_sid = f"ZAP-CALL-{uuid.uuid4().hex}"
+        zap_status = "queued_in_zapier"
+
+        _notify_zapier("call_initiated", {
+            "lead_uuid": str(lead_uuid),
+            "lead_name": lead.full_name,
+            "lead_email": lead.email or "",
+            "lead_phone": lead_phone,
+            "from_number": settings.TWILIO_PHONE_NUMBER,
+            "to_number": formatted_to_number,
+            "agent_number": formatted_agent_number,
+            "sid": zap_sid,
+            "status": zap_status,
+        })
+
+        logger.info(
+            "Call dispatched via Zapier: lead_uuid=%s sid=%s from=%s to=%s status=%s",
+            lead_uuid,
+            zap_sid,
+            settings.TWILIO_PHONE_NUMBER,
+            formatted_to_number,
+            zap_status,
+        )
+
+        call_log = TwilioCall.objects.create(
+            lead=lead,
+            sid=zap_sid,
+            from_number=settings.TWILIO_PHONE_NUMBER,
+            to_number=formatted_to_number,
+            status=zap_status,
+            raw_payload={
+                "sid": zap_sid,
+                "status": zap_status,
+                "agent_number": formatted_agent_number or None,
+                "source": "zapier",
+            },
+        )
+
+        return call_log
 
     client = Client(
         settings.TWILIO_ACCOUNT_SID,
         settings.TWILIO_AUTH_TOKEN
     )
 
-    formatted_to_number = _format_phone(to_number)
     call_status_callback_url = getattr(settings, "TWILIO_CALL_STATUS_CALLBACK_URL", "").strip()
 
     call_kwargs = {
         "to": formatted_to_number,
         "from_": settings.TWILIO_PHONE_NUMBER,
-        "twiml": '<Response><Say>Hello, this is a call from your clinic. We will be in touch with you shortly. Thank you.</Say></Response>',
+        "twiml": _build_call_twiml(formatted_agent_number),
     }
     if call_status_callback_url:
         call_kwargs["status_callback"] = call_status_callback_url
@@ -186,6 +295,10 @@ def make_call(lead_uuid, to_number):
         formatted_to_number,
         call.status,
     )
+    if formatted_agent_number:
+        logger.info("Twilio call bridge target configured: %s", formatted_agent_number)
+    else:
+        logger.info("Twilio call bridge target missing; using message-only TwiML fallback.")
 
     TwilioCall.objects.create(
         lead=lead,
@@ -193,10 +306,12 @@ def make_call(lead_uuid, to_number):
         from_number=settings.TWILIO_PHONE_NUMBER,
         to_number=formatted_to_number,
         status=call.status,
-        raw_payload={"sid": call.sid, "status": call.status}
+        raw_payload={
+            "sid": call.sid,
+            "status": call.status,
+            "agent_number": formatted_agent_number or None,
+        }
     )
-
-    lead_phone = _format_phone(lead.contact_no or formatted_to_number)
 
     _notify_zapier("call_initiated", {
         "lead_uuid" : str(lead_uuid),
@@ -205,6 +320,7 @@ def make_call(lead_uuid, to_number):
         "lead_phone": lead_phone,
         "from_number": settings.TWILIO_PHONE_NUMBER,
         "to_number" : formatted_to_number,
+        "agent_number": formatted_agent_number,
         "sid"       : call.sid,
         "status"    : call.status,
     })
