@@ -2,7 +2,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from django.utils import timezone
 
-from restapi.models import Ticket, Document, TicketTimeline, Lab, TicketReply
+from restapi.models import Ticket, Document, TicketTimeline, Lab, TicketReply, Employee
 from restapi.services.ticket_service import (
     create_ticket_service,
     update_ticket_service,
@@ -166,10 +166,14 @@ class TicketDetailSerializer(serializers.ModelSerializer):
 class TicketWriteSerializer(serializers.ModelSerializer):
 
     documents = TicketDocumentSerializer(many=True, required=False)
-
-    # ✅ NEW FIELDS
-    assigned_to_id = serializers.IntegerField(required=False, allow_null=True)
-    assigned_to_name = serializers.CharField(required=False, allow_null=True)
+    assigned_to = serializers.IntegerField(
+        source="assigned_to_id",
+        required=False,
+        allow_null=True,
+        write_only=True,
+    )
+    assigned_to_id = serializers.IntegerField(read_only=True)
+    assigned_to_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = Ticket
@@ -179,6 +183,7 @@ class TicketWriteSerializer(serializers.ModelSerializer):
             "lab",
             "department",
             "requested_by",
+            "assigned_to",
             "assigned_to_id",
             "assigned_to_name",
             "priority",
@@ -192,7 +197,40 @@ class TicketWriteSerializer(serializers.ModelSerializer):
             raise ValidationError("Due date cannot be set in the past.")
         return value
 
-    # ❌ REMOVED FK VALIDATION
+    def validate(self, validated_data):
+        assigned_employee_id = validated_data.get("assigned_to_id")
+        selected_department = validated_data.get("department")
+
+        if not assigned_employee_id:
+            validated_data["assigned_to_name"] = None
+            return validated_data
+
+        try:
+            assigned_employee = Employee.objects.select_related("dep").get(
+                id=assigned_employee_id,
+            )
+        except Employee.DoesNotExist:
+            fallback_name_raw = self.initial_data.get("assigned_to_name")
+            fallback_name = (
+                str(fallback_name_raw).strip()
+                if fallback_name_raw is not None
+                else ""
+            )
+            validated_data["assigned_to_name"] = fallback_name or f"User {assigned_employee_id}"
+            return validated_data
+
+        if selected_department and assigned_employee.dep_id != selected_department.id:
+            fallback_name_raw = self.initial_data.get("assigned_to_name")
+            fallback_name = (
+                str(fallback_name_raw).strip()
+                if fallback_name_raw is not None
+                else ""
+            )
+            validated_data["assigned_to_name"] = fallback_name or assigned_employee.emp_name
+            return validated_data
+
+        validated_data["assigned_to_name"] = assigned_employee.emp_name
+        return validated_data
 
     def create(self, validated_data):
         return create_ticket_service(validated_data)
@@ -235,5 +273,3 @@ class TicketReplyWriteSerializer(serializers.Serializer):
     cc = serializers.ListField(child=serializers.EmailField(), required=False, default=list)
     bcc = serializers.ListField(child=serializers.EmailField(), required=False, default=list)
     sent_by = serializers.IntegerField(required=False, allow_null=True)
-
-

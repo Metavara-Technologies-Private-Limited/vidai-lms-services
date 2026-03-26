@@ -45,6 +45,7 @@ from restapi.models import (
 from django.db.models import Count, Q  
 from restapi.models import TicketReply
 from restapi.models.social_account import SocialAccount
+from restapi.services.ticket_service import send_ticket_reply_service
 from .models import Lead, Campaign, Lab
 
 # Reputation Management 
@@ -101,7 +102,7 @@ from restapi.services.mailchimp_service import (
     get_mailchimp_campaign_report,
 )
 from restapi.services.campaign_social_post_service import handle_zapier_callback
-from restapi.services.twilio_service import send_sms, make_call
+from restapi.services.twilio_service import notify_zapier_event, send_sms, make_call
 from restapi.services.zapier_service import (
     send_to_zapier,
     send_to_zapier_email,
@@ -3641,17 +3642,29 @@ class TicketAssignAPIView(APIView):
                 )
 
             assigned_to_id = request.data.get("assigned_to_id")
+            assigned_to_name_raw = request.data.get("assigned_to_name")
 
             if not assigned_to_id:
                 raise ValidationError("assigned_to_id is required")
 
+            assigned_employee = Employee.objects.filter(id=assigned_to_id).first()
+            assigned_to_name = (
+                assigned_employee.emp_name
+                if assigned_employee
+                else str(assigned_to_name_raw).strip()
+                if assigned_to_name_raw is not None
+                else f"User {assigned_to_id}"
+            )
+
             ticket.assigned_to_id = assigned_to_id
+            ticket.assigned_to_name = assigned_to_name
             ticket.save()
 
             TicketTimeline.objects.create(
                 ticket=ticket,
                 action="Ticket Assigned",
-                done_by_id=assigned_to_id
+                done_by_id=assigned_to_id,
+                done_by_name=assigned_to_name,
             )
 
             return Response(
@@ -3687,6 +3700,7 @@ class TicketStatusUpdateAPIView(APIView):
                 "status": openapi.Schema(type=openapi.TYPE_STRING),
                 "priority": openapi.Schema(type=openapi.TYPE_STRING),
                 "assigned_to": openapi.Schema(type=openapi.TYPE_INTEGER),
+                "assigned_to_name": openapi.Schema(type=openapi.TYPE_STRING),
                 "type": openapi.Schema(type=openapi.TYPE_STRING),
             },
         ),
@@ -3715,13 +3729,31 @@ class TicketStatusUpdateAPIView(APIView):
             old_status = ticket.status
             old_priority = ticket.priority
             old_assigned = ticket.assigned_to_id
+            old_assigned_name = ticket.assigned_to_name or "Unassigned"
             old_type = ticket.type
 
             # -------- REQUEST VALUES --------
             new_status = request.data.get("status")
             new_priority = request.data.get("priority")
             new_assigned = request.data.get("assigned_to")
+            new_assigned_name_raw = request.data.get("assigned_to_name")
             new_type = request.data.get("type")
+            has_assigned_field = "assigned_to" in request.data
+
+            def resolve_assignee_name(assignee_id, fallback_name):
+                if not assignee_id:
+                    return None
+
+                employee = Employee.objects.filter(id=assignee_id).first()
+                if employee:
+                    return employee.emp_name
+
+                fallback = (
+                    str(fallback_name).strip()
+                    if fallback_name is not None
+                    else ""
+                )
+                return fallback or f"User {assignee_id}"
 
             if not new_status:
                 raise ValidationError("status field is required")
@@ -3740,8 +3772,17 @@ class TicketStatusUpdateAPIView(APIView):
                 ticket.priority = new_priority
 
             # -------- UPDATE ASSIGN --------
-            if new_assigned:
-                ticket.assigned_to_id = new_assigned
+            if has_assigned_field:
+                normalized_assigned = (
+                    None
+                    if new_assigned in (None, "")
+                    else int(new_assigned)
+                )
+                ticket.assigned_to_id = normalized_assigned
+                ticket.assigned_to_name = resolve_assignee_name(
+                    normalized_assigned,
+                    new_assigned_name_raw,
+                )
 
             # -------- UPDATE TYPE --------
             if new_type:
@@ -3755,43 +3796,38 @@ class TicketStatusUpdateAPIView(APIView):
                 TicketTimeline.objects.create(
                     ticket=ticket,
                     action=f"Status changed from {old_status} to {new_status}",
-                    done_by_id=ticket.assigned_to_id
+                    done_by_id=ticket.assigned_to_id,
+                    done_by_name=ticket.assigned_to_name,
                 )
 
             if new_priority and old_priority != new_priority:
                 TicketTimeline.objects.create(
                     ticket=ticket,
                     action=f"Priority changed from {old_priority} to {new_priority}",
-                    done_by_id=ticket.assigned_to_id
+                    done_by_id=ticket.assigned_to_id,
+                    done_by_name=ticket.assigned_to_name,
                 )
 
             if new_type and old_type != new_type:
                 TicketTimeline.objects.create(
                     ticket=ticket,
                     action=f"Type changed from {old_type} to {new_type}",
-                    done_by_id=ticket.assigned_to_id
+                    done_by_id=ticket.assigned_to_id,
+                    done_by_name=ticket.assigned_to_name,
                 )
 
             # -------- ASSIGN TIMELINE (SAFE FIX) --------
-            if new_assigned and old_assigned != int(new_assigned):
+            if has_assigned_field:
+                normalized_assigned = ticket.assigned_to_id
+                if old_assigned != normalized_assigned:
+                    new_user_name = ticket.assigned_to_name or "Unassigned"
 
-                old_user_name = "Unassigned"
-                new_user_name = "Unknown"
-
-                if old_assigned:
-                    old_user = Employee.objects.filter(id=old_assigned).first()
-                    if old_user:
-                        old_user_name = old_user.emp_name
-
-                new_user = Employee.objects.filter(id=new_assigned).first()
-                if new_user:
-                    new_user_name = new_user.emp_name
-
-                TicketTimeline.objects.create(
-                    ticket=ticket,
-                    action=f"Assigned changed from {old_user_name} to {new_user_name}",
-                    done_by_id=new_assigned
-                )
+                    TicketTimeline.objects.create(
+                        ticket=ticket,
+                        action=f"Assigned changed from {old_assigned_name} to {new_user_name}",
+                        done_by_id=normalized_assigned,
+                        done_by_name=new_user_name,
+                    )
 
             return Response(
                 TicketDetailSerializer(ticket).data,

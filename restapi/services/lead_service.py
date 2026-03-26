@@ -9,10 +9,27 @@ from restapi.models import (
     Lead,
     Clinic,
     Department,
+    Employee,
     Campaign,
     LeadDocument,
     LeadEmail,
 )
+
+
+def _resolve_assignee_name(assigned_to_id, assigned_to_name):
+    if isinstance(assigned_to_name, str):
+        normalized_name = assigned_to_name.strip()
+        if normalized_name:
+            return normalized_name
+
+    if assigned_to_id is None:
+        return None
+
+    employee = Employee.objects.filter(id=assigned_to_id).only("emp_name").first()
+    if employee and employee.emp_name:
+        return employee.emp_name
+
+    return None
 
 
 # =====================================================
@@ -43,7 +60,10 @@ def create_lead(validated_data):
 
     # ✅ NEW (NO FK)
     assigned_to_id = validated_data.pop("assigned_to_id", None)
-    assigned_to_name = validated_data.pop("assigned_to_name", None)
+    assigned_to_name = _resolve_assignee_name(
+        assigned_to_id,
+        validated_data.pop("assigned_to_name", None),
+    )
 
     personal_id = validated_data.pop("personal_id", None)
     personal_name = validated_data.pop("personal_name", None)
@@ -91,6 +111,22 @@ def create_lead(validated_data):
 def update_lead(instance, validated_data):
 
     documents = validated_data.pop("documents", [])
+    assigned_to_id_provided = "assigned_to_id" in validated_data
+    assigned_to_name_provided = "assigned_to_name" in validated_data
+
+    if assigned_to_id_provided:
+        assigned_to_id = validated_data.pop("assigned_to_id")
+        assigned_to_name = validated_data.pop("assigned_to_name", None)
+        instance.assigned_to_id = assigned_to_id
+        instance.assigned_to_name = _resolve_assignee_name(
+            assigned_to_id,
+            assigned_to_name,
+        )
+    elif assigned_to_name_provided:
+        instance.assigned_to_name = _resolve_assignee_name(
+            instance.assigned_to_id,
+            validated_data.pop("assigned_to_name"),
+        )
 
     IMMUTABLE_FIELDS = {
         "clinic",
