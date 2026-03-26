@@ -2,7 +2,7 @@ import uuid
 from django.db import models
 
 from .ticket import Ticket
-from .employee import Employee
+
 
 class TicketTimeline(models.Model):
 
@@ -17,12 +17,9 @@ class TicketTimeline(models.Model):
     action = models.CharField(max_length=255)
     remark = models.TextField(null=True, blank=True)
 
-    done_by = models.ForeignKey(
-        Employee,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="ticket_actions"
-    )
+    # ✅ NEW (NO FK)
+    done_by_id = models.IntegerField(null=True, blank=True)
+    done_by_name = models.CharField(max_length=255, null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

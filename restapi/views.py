@@ -863,9 +863,8 @@ class LeadCreateAPIView(APIView):
                 "contact_no": lead.contact_no,
                 "email": lead.email,
                 "lead_status": lead.lead_status,
-                "assigned_to_id": (
-                    lead.assigned_to.id if lead.assigned_to else None
-                ),
+                "assigned_to_id": lead.assigned_to_id,
+                
             })
 
             print("STEP 7: Zapier call completed")
@@ -940,10 +939,8 @@ class LeadUpdateAPIView(APIView):
                 "event": "lead_updated",
                 "lead_id": str(updated_lead.id),
                 "lead_status": updated_lead.lead_status,
-                "assigned_to_id": (
-                    updated_lead.assigned_to.id
-                    if updated_lead.assigned_to else None
-                ),
+                "assigned_to_id": updated_lead.assigned_to_id,
+                
             })
 
             return Response(
@@ -1040,8 +1037,7 @@ class LeadGetAPIView(APIView):
                 "clinic",
                 "department",
                 "campaign",
-                "assigned_to",
-                "personal"
+                
             ),
             id=lead_id
         )

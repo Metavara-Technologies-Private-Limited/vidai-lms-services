@@ -79,7 +79,7 @@ class TicketTimelineSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "action",
-            "done_by",
+            "done_by_id",
             "done_by_name",
             "created_at",
         ]
@@ -235,3 +235,5 @@ class TicketReplyWriteSerializer(serializers.Serializer):
     cc = serializers.ListField(child=serializers.EmailField(), required=False, default=list)
     bcc = serializers.ListField(child=serializers.EmailField(), required=False, default=list)
     sent_by = serializers.IntegerField(required=False, allow_null=True)
+
+

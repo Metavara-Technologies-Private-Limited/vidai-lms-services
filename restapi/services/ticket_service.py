@@ -13,9 +13,7 @@ from restapi.models import Ticket, Document, TicketTimeline, Lab, TicketReply
 # ============================================================
 @transaction.atomic
 def create_lab_service(validated_data):
-
     lab = Lab.objects.create(**validated_data)
-
     return lab
 
 
@@ -24,10 +22,8 @@ def create_lab_service(validated_data):
 # ============================================================
 @transaction.atomic
 def update_lab_service(instance, validated_data):
-
     for field, value in validated_data.items():
         setattr(instance, field, value)
-
     instance.save()
     return instance
 
@@ -47,23 +43,24 @@ def create_ticket_service(validated_data):
 
     attached_documents = validated_data.pop("documents", [])
 
-    # Create main ticket record
+    # Create ticket
     ticket_instance = Ticket.objects.create(
         ticket_no=generate_ticket_number(),
         **validated_data
     )
 
-    # Save attached documents
+    # Save documents
     for document_item in attached_documents:
         Document.objects.create(
             ticket=ticket_instance,
             file=document_item.get("file")
         )
 
-    # ✅ FIXED (no FK)
+    # ✅ Timeline (FIXED)
     TicketTimeline.objects.create(
         ticket=ticket_instance,
         action="Ticket Created",
+        done_by_id=ticket_instance.assigned_to_id,
         done_by_name=ticket_instance.assigned_to_name
     )
 
@@ -78,26 +75,23 @@ def update_ticket_service(ticket_instance, validated_data):
 
     attached_documents = validated_data.pop("documents", [])
 
-    # Update basic ticket fields
+    # Update fields
     for field_name, field_value in validated_data.items():
         setattr(ticket_instance, field_name, field_value)
 
     ticket_instance.save()
 
-    # Validate and update documents
+    # Update documents
     existing_documents = {
         str(document.id): document
         for document in ticket_instance.documents.all()
     }
 
     for document_item in attached_documents:
-
         document_identifier = str(document_item.get("id"))
 
         if not document_identifier:
-            raise ValidationError(
-                "Document id is required when updating documents."
-            )
+            raise ValidationError("Document id is required when updating documents.")
 
         if document_identifier not in existing_documents:
             raise ValidationError(
@@ -105,19 +99,16 @@ def update_ticket_service(ticket_instance, validated_data):
             )
 
         document_instance = existing_documents[document_identifier]
-        document_instance.file = document_item.get(
-            "file",
-            document_instance.file
-        )
+        document_instance.file = document_item.get("file", document_instance.file)
         document_instance.save()
 
-    # Handle status change and timeline tracking
+    # Status change tracking
     if "status" in validated_data:
 
-        # ✅ FIXED (no FK)
         TicketTimeline.objects.create(
             ticket=ticket_instance,
             action=f"Status changed to {ticket_instance.status}",
+            done_by_id=ticket_instance.assigned_to_id,
             done_by_name=ticket_instance.assigned_to_name
         )
 
@@ -130,12 +121,11 @@ def update_ticket_service(ticket_instance, validated_data):
         ticket_instance.save()
 
     ticket_instance.refresh_from_db()
-
     return ticket_instance
 
 
 # ============================================================
-# SEND TICKET REPLY SERVICE (Email with CC / BCC)
+# SEND TICKET REPLY SERVICE
 # ============================================================
 @transaction.atomic
 def send_ticket_reply_service(
@@ -171,11 +161,12 @@ def send_ticket_reply_service(
         email.content_subtype = "html"
         email.send(fail_silently=False)
 
-        # ✅ FIXED (no FK)
+        # ✅ Timeline (FIXED)
         TicketTimeline.objects.create(
             ticket=ticket,
             action="Reply sent via email",
-            done_by_name=str(sent_by) if sent_by else None,
+            done_by_id=sent_by,
+            done_by_name=str(sent_by) if sent_by else None
         )
 
     except Exception as exc:

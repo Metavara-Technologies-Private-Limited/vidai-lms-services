@@ -149,8 +149,13 @@ class LeadSerializer(serializers.ModelSerializer):
             "clinic_id",
             "department_id",
             "campaign_id",
+
+            # ✅ FIXED (added missing fields)
             "assigned_to_id",
+            "assigned_to_name",
+
             "personal_id",
+            "personal_name",
 
             "full_name",
             "age",
@@ -181,6 +186,8 @@ class LeadSerializer(serializers.ModelSerializer):
         ]
 
         read_only_fields = ("id",)
+
+
 
     # =====================================================
     # VALIDATION
