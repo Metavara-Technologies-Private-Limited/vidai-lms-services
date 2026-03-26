@@ -9,7 +9,6 @@ from restapi.models import (
     Lead,
     Clinic,
     Department,
-    Employee,
     Campaign,
     LeadDocument,
     LeadEmail,
@@ -42,32 +41,36 @@ def create_lead(validated_data):
     if campaign_id:
         campaign = Campaign.objects.filter(id=campaign_id).first()
 
-    assigned_to = None
+    # ✅ NEW (NO FK)
     assigned_to_id = validated_data.pop("assigned_to_id", None)
-    if assigned_to_id:
-        assigned_to = Employee.objects.filter(
-            id=assigned_to_id,
-            clinic=clinic
-        ).first()
-        if not assigned_to:
-            raise ValidationError("Assigned employee not in clinic")
+    assigned_to_name = validated_data.pop("assigned_to_name", None)
 
-    personal = None
     personal_id = validated_data.pop("personal_id", None)
-    if personal_id:
-        personal = Employee.objects.filter(
-            id=personal_id,
-            clinic=clinic
-        ).first()
-        if not personal:
-            raise ValidationError("Personal employee not in clinic")
+    personal_name = validated_data.pop("personal_name", None)
+
+    created_by_id = validated_data.pop("created_by_id", None)
+    created_by_name = validated_data.pop("created_by_name", None)
+
+    updated_by_id = validated_data.pop("updated_by_id", None)
+    updated_by_name = validated_data.pop("updated_by_name", None)
 
     lead = Lead.objects.create(
         clinic=clinic,
         department=department,
         campaign=campaign,
-        assigned_to=assigned_to,
-        personal=personal,
+
+        assigned_to_id=assigned_to_id,
+        assigned_to_name=assigned_to_name,
+
+        personal_id=personal_id,
+        personal_name=personal_name,
+
+        created_by_id=created_by_id,
+        created_by_name=created_by_name,
+
+        updated_by_id=updated_by_id,
+        updated_by_name=updated_by_name,
+
         **validated_data
     )
 

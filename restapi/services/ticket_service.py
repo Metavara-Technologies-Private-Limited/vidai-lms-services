@@ -7,6 +7,7 @@ from rest_framework.exceptions import ValidationError
 
 from restapi.models import Ticket, Document, TicketTimeline, Lab, TicketReply
 
+
 # ============================================================
 # CREATE LAB
 # ============================================================
@@ -29,6 +30,7 @@ def update_lab_service(instance, validated_data):
 
     instance.save()
     return instance
+
 
 # ============================================================
 # GENERATE UNIQUE TICKET NUMBER
@@ -58,11 +60,11 @@ def create_ticket_service(validated_data):
             file=document_item.get("file")
         )
 
-    # Create initial timeline entry
+    # ✅ FIXED (no FK)
     TicketTimeline.objects.create(
         ticket=ticket_instance,
         action="Ticket Created",
-        done_by=ticket_instance.assigned_to
+        done_by_name=ticket_instance.assigned_to_name
     )
 
     return ticket_instance
@@ -92,13 +94,11 @@ def update_ticket_service(ticket_instance, validated_data):
 
         document_identifier = str(document_item.get("id"))
 
-        # Validation: Ensure document id is provided
         if not document_identifier:
             raise ValidationError(
                 "Document id is required when updating documents."
             )
 
-        # Validation: Ensure document belongs to this ticket
         if document_identifier not in existing_documents:
             raise ValidationError(
                 f"Document id {document_identifier} does not belong to this ticket."
@@ -114,10 +114,11 @@ def update_ticket_service(ticket_instance, validated_data):
     # Handle status change and timeline tracking
     if "status" in validated_data:
 
+        # ✅ FIXED (no FK)
         TicketTimeline.objects.create(
             ticket=ticket_instance,
             action=f"Status changed to {ticket_instance.status}",
-            done_by=ticket_instance.assigned_to
+            done_by_name=ticket_instance.assigned_to_name
         )
 
         if ticket_instance.status == "resolved":
@@ -137,7 +138,16 @@ def update_ticket_service(ticket_instance, validated_data):
 # SEND TICKET REPLY SERVICE (Email with CC / BCC)
 # ============================================================
 @transaction.atomic
-def send_ticket_reply_service(ticket, subject, message, to_emails, cc_emails, bcc_emails, sent_by=None):
+def send_ticket_reply_service(
+    ticket,
+    subject,
+    message,
+    to_emails,
+    cc_emails,
+    bcc_emails,
+    sent_by=None
+):
+
     reply = TicketReply.objects.create(
         ticket=ticket,
         subject=subject,
@@ -161,10 +171,11 @@ def send_ticket_reply_service(ticket, subject, message, to_emails, cc_emails, bc
         email.content_subtype = "html"
         email.send(fail_silently=False)
 
+        # ✅ FIXED (no FK)
         TicketTimeline.objects.create(
             ticket=ticket,
             action="Reply sent via email",
-            done_by=sent_by,
+            done_by_name=str(sent_by) if sent_by else None,
         )
 
     except Exception as exc:

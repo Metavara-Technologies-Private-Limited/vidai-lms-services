@@ -1,13 +1,14 @@
 import uuid
 from django.db import models
 from django.utils import timezone
+
 from .clinic import Clinic
 from .department import Department
-from .employee import Employee
 from .campaign import Campaign
 
 
 class LeadChoices:
+
     MARITAL_STATUS = (
         ("single", "Single"),
         ("married", "Married"),
@@ -46,21 +47,9 @@ class LeadChoices:
 
 class Lead(models.Model):
 
-    id = models.UUIDField(
-        primary_key=True,
-        default=uuid.uuid4,
-        editable=False
-    )
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    # =============================
-    # RELATIONS
-    # =============================
-
-    clinic = models.ForeignKey(
-        Clinic,
-        on_delete=models.CASCADE,
-        related_name="leads"
-    )
+    clinic = models.ForeignKey(Clinic, on_delete=models.CASCADE, related_name="leads")
 
     campaign = models.ForeignKey(
         Campaign,
@@ -70,42 +59,21 @@ class Lead(models.Model):
         related_name="leads"
     )
 
-    department = models.ForeignKey(
-        Department,
-        on_delete=models.CASCADE
-    )
+    department = models.ForeignKey(Department, on_delete=models.CASCADE)
 
-    assigned_to = models.ForeignKey(
-        Employee,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="assigned_leads"
-    )
+    # ✅ ALL EMPLOYEE FKs REMOVED → REPLACED WITH IDs + NAMES
 
-    personal = models.ForeignKey(
-        Employee,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="personal_leads"
-    )
+    assigned_to_id = models.IntegerField(null=True, blank=True)
+    assigned_to_name = models.CharField(max_length=255, null=True, blank=True)
 
-    created_by = models.ForeignKey(
-        Employee,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="created_leads"
-    )
+    personal_id = models.IntegerField(null=True, blank=True)
+    personal_name = models.CharField(max_length=255, null=True, blank=True)
 
-    updated_by = models.ForeignKey(
-        Employee,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="updated_leads"
-    )
+    created_by_id = models.IntegerField(null=True, blank=True)
+    created_by_name = models.CharField(max_length=255, null=True, blank=True)
+
+    updated_by_id = models.IntegerField(null=True, blank=True)
+    updated_by_name = models.CharField(max_length=255, null=True, blank=True)
 
     # =============================
     # BASIC DETAILS
@@ -114,7 +82,7 @@ class Lead(models.Model):
     full_name = models.CharField(max_length=255)
     age = models.IntegerField(null=True, blank=True)
 
-    gender = models.CharField(          # ✅ ADDED
+    gender = models.CharField(
         max_length=10,
         choices=LeadChoices.GENDER,
         null=True,
@@ -151,14 +119,14 @@ class Lead(models.Model):
     )
 
     # =============================
-    # SOURCE DETAILS
+    # SOURCE
     # =============================
 
     source = models.CharField(max_length=100)
     sub_source = models.CharField(max_length=100, blank=True)
 
     # =============================
-    # STATUS TRACKING
+    # STATUS
     # =============================
 
     lead_status = models.CharField(
@@ -181,18 +149,13 @@ class Lead(models.Model):
         blank=True
     )
 
-    next_action_description = models.TextField(
-        null=True,
-        blank=True
-    )
+    next_action_description = models.TextField(null=True, blank=True)
 
     # =============================
-    # TREATMENT / APPOINTMENT
+    # APPOINTMENT
     # =============================
 
-    treatment_interest = models.TextField(
-        help_text="Comma separated values"
-    )
+    treatment_interest = models.TextField(help_text="Comma separated values")
 
     book_appointment = models.BooleanField(default=False)
     appointment_date = models.DateField(null=True, blank=True)
@@ -200,7 +163,7 @@ class Lead(models.Model):
     remark = models.TextField(blank=True)
 
     # =============================
-    # SYSTEM FLAGS
+    # FLAGS
     # =============================
 
     is_active = models.BooleanField(default=True)
@@ -212,7 +175,6 @@ class Lead(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
-
     converted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -221,8 +183,6 @@ class Lead(models.Model):
 
     def __str__(self):
         return f"{self.full_name} ({self.lead_status})"
-
-    from django.utils import timezone
 
     def save(self, *args, **kwargs):
         if self.lead_status == "converted" and not self.converted_at:

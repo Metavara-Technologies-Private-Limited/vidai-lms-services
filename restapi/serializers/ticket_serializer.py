@@ -25,10 +25,8 @@ class LabReadSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
-    assigned_to_name = serializers.CharField(
-        source="assigned_to.name",
-        read_only=True
-    )
+    # ✅ FIXED
+    assigned_to_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = Lab
@@ -50,17 +48,12 @@ class LabWriteSerializer(serializers.ModelSerializer):
             "is_active",
         ]
 
-    # --------------------------------------------------------
-    # CREATE
-    # --------------------------------------------------------
     def create(self, validated_data):
         return create_lab_service(validated_data)
 
-    # --------------------------------------------------------
-    # UPDATE
-    # --------------------------------------------------------
     def update(self, instance, validated_data):
         return update_lab_service(instance, validated_data)
+
 
 # ============================================================
 # DOCUMENT SERIALIZER
@@ -78,10 +71,8 @@ class TicketDocumentSerializer(serializers.ModelSerializer):
 # ============================================================
 class TicketTimelineSerializer(serializers.ModelSerializer):
 
-    done_by_name = serializers.CharField(
-        source="done_by.name",
-        read_only=True
-    )
+    # ✅ FIXED
+    done_by_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = TicketTimeline
@@ -95,13 +86,16 @@ class TicketTimelineSerializer(serializers.ModelSerializer):
 
 
 # ============================================================
-# TICKET LIST SERIALIZER (For Table View)
+# TICKET LIST SERIALIZER
 # ============================================================
 class TicketListSerializer(serializers.ModelSerializer):
 
     lab_name = serializers.CharField(source="lab.name", read_only=True)
     department_name = serializers.CharField(source="department.name", read_only=True)
-    assigned_to_name = serializers.CharField(source="assigned_to.name", read_only=True)
+
+    # ✅ FIXED
+    assigned_to_id = serializers.IntegerField(read_only=True)
+    assigned_to_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = Ticket
@@ -117,14 +111,14 @@ class TicketListSerializer(serializers.ModelSerializer):
             "department",
             "department_name",
             "priority",
-            "assigned_to",
+            "assigned_to_id",
             "assigned_to_name",
             "status",
         ]
 
 
 # ============================================================
-# TICKET DETAIL SERIALIZER (Full View)
+# TICKET DETAIL SERIALIZER
 # ============================================================
 class TicketDetailSerializer(serializers.ModelSerializer):
 
@@ -133,7 +127,10 @@ class TicketDetailSerializer(serializers.ModelSerializer):
 
     lab_name = serializers.CharField(source="lab.name", read_only=True)
     department_name = serializers.CharField(source="department.name", read_only=True)
-    assigned_to_name = serializers.CharField(source="assigned_to.name", read_only=True)
+
+    # ✅ FIXED
+    assigned_to_id = serializers.IntegerField(read_only=True)
+    assigned_to_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = Ticket
@@ -147,7 +144,7 @@ class TicketDetailSerializer(serializers.ModelSerializer):
             "department",
             "department_name",
             "requested_by",
-            "assigned_to",
+            "assigned_to_id",
             "assigned_to_name",
             "priority",
             "status",
@@ -163,13 +160,16 @@ class TicketDetailSerializer(serializers.ModelSerializer):
         ]
 
 
-
 # ============================================================
-# TICKET WRITE SERIALIZER (Create / Update)
+# TICKET WRITE SERIALIZER
 # ============================================================
 class TicketWriteSerializer(serializers.ModelSerializer):
 
     documents = TicketDocumentSerializer(many=True, required=False)
+
+    # ✅ NEW FIELDS
+    assigned_to_id = serializers.IntegerField(required=False, allow_null=True)
+    assigned_to_name = serializers.CharField(required=False, allow_null=True)
 
     class Meta:
         model = Ticket
@@ -179,53 +179,24 @@ class TicketWriteSerializer(serializers.ModelSerializer):
             "lab",
             "department",
             "requested_by",
-            "assigned_to",
+            "assigned_to_id",
+            "assigned_to_name",
             "priority",
             "status",
             "due_date",
             "documents",
         ]
 
-    # --------------------------------------------------------
-    # FIELD VALIDATION
-    # Ensure due date is not in the past
-    # --------------------------------------------------------
     def validate_due_date(self, value):
         if value and value < timezone.now().date():
-            raise ValidationError(
-                "Due date cannot be set in the past."
-            )
+            raise ValidationError("Due date cannot be set in the past.")
         return value
 
-    # --------------------------------------------------------
-    # OBJECT VALIDATION
-    # Ensure assigned employee belongs to selected department
-    # --------------------------------------------------------
-    def validate(self, validated_data):
+    # ❌ REMOVED FK VALIDATION
 
-        assigned_employee = validated_data.get("assigned_to")
-        selected_department = validated_data.get("department")
-
-        # Only validate if both fields are present
-        if assigned_employee and selected_department:
-
-            #  FIXED HERE (use dep, not department)
-            if assigned_employee.dep != selected_department:
-                raise ValidationError(
-                    "Assigned employee does not belong to the selected department."
-                )
-
-        return validated_data
-
-    # --------------------------------------------------------
-    # CREATE
-    # --------------------------------------------------------
     def create(self, validated_data):
         return create_ticket_service(validated_data)
 
-    # --------------------------------------------------------
-    # UPDATE
-    # --------------------------------------------------------
     def update(self, instance, validated_data):
         return update_ticket_service(instance, validated_data)
 
@@ -234,7 +205,9 @@ class TicketWriteSerializer(serializers.ModelSerializer):
 # TICKET REPLY SERIALIZER
 # ============================================================
 class TicketReplySerializer(serializers.ModelSerializer):
-    sent_by_name = serializers.CharField(source="sent_by.emp_name", read_only=True)
+
+    # ✅ FIXED
+    sent_by_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = TicketReply

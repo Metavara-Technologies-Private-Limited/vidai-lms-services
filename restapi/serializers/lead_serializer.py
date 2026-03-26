@@ -33,18 +33,18 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
     campaign_id = serializers.UUIDField(source="campaign.id", read_only=True)
     campaign_name = serializers.CharField(source="campaign.campaign_name", read_only=True)
-    # ✅ ADDED: Computed from campaign.start_date and campaign.end_date
-    # Returns a human-readable string e.g. "18 days" or None if no campaign
+
     campaign_duration = serializers.SerializerMethodField()
 
-    assigned_to_id = serializers.IntegerField(source="assigned_to.id", read_only=True)
-    assigned_to_name = serializers.CharField(source="assigned_to.emp_name", read_only=True)
+    # ✅ FIXED (removed FK source)
+    assigned_to_id = serializers.IntegerField(read_only=True)
+    assigned_to_name = serializers.CharField(read_only=True)
 
-    personal_id = serializers.IntegerField(source="personal.id", read_only=True)
-    personal_name = serializers.CharField(source="personal.emp_name", read_only=True)
+    personal_id = serializers.IntegerField(read_only=True)
+    personal_name = serializers.CharField(read_only=True)
 
-    created_by_id = serializers.IntegerField(source="created_by.id", read_only=True)
-    created_by_name = serializers.CharField(source="created_by.emp_name", read_only=True)
+    created_by_id = serializers.IntegerField(read_only=True)
+    created_by_name = serializers.CharField(read_only=True)
 
     documents = serializers.SerializerMethodField()
 
@@ -125,8 +125,13 @@ class LeadSerializer(serializers.ModelSerializer):
 
     clinic_id = serializers.IntegerField(write_only=True, required=False)
     department_id = serializers.IntegerField(write_only=True, required=False)
+
     assigned_to_id = serializers.IntegerField(required=False, allow_null=True)
+    assigned_to_name = serializers.CharField(required=False, allow_null=True)
+
     personal_id = serializers.IntegerField(required=False, allow_null=True)
+    personal_name = serializers.CharField(required=False, allow_null=True)
+
     campaign_id = serializers.UUIDField(required=False, allow_null=True)
 
     documents = serializers.ListField(
@@ -183,14 +188,12 @@ class LeadSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get("request")
 
-        # CREATE → require clinic & department
         if self.instance is None:
             if "clinic_id" not in attrs:
                 raise ValidationError({"clinic_id": "This field is required."})
             if "department_id" not in attrs:
                 raise ValidationError({"department_id": "This field is required."})
 
-        # UPDATE → prevent clinic/department change
         if self.instance is not None and request:
             payload_id = request.data.get("id")
             if payload_id and str(payload_id) != str(self.instance.id):
@@ -213,8 +216,11 @@ class LeadSerializer(serializers.ModelSerializer):
     # =====================================================
     def create(self, validated_data):
         request = self.context.get("request")
+
+        # ✅ FIXED (no FK)
         if request and hasattr(request.user, "employee"):
-            validated_data["created_by"] = request.user.employee
+            validated_data["created_by_id"] = request.user.employee.id
+            validated_data["created_by_name"] = request.user.employee.emp_name
 
         return create_lead(validated_data)
 
@@ -222,4 +228,11 @@ class LeadSerializer(serializers.ModelSerializer):
     # UPDATE
     # =====================================================
     def update(self, instance, validated_data):
+        request = self.context.get("request")
+
+        # ✅ optional tracking
+        if request and hasattr(request.user, "employee"):
+            validated_data["updated_by_id"] = request.user.employee.id
+            validated_data["updated_by_name"] = request.user.employee.emp_name
+
         return update_lead(instance, validated_data)

@@ -3,7 +3,7 @@ from django.db import models
 
 from .lab import Lab
 from .department import Department
-from .employee import Employee
+
 
 class Ticket(models.Model):
 
@@ -36,42 +36,20 @@ class Ticket(models.Model):
     subject = models.CharField(max_length=255)
     description = models.TextField()
 
-    lab = models.ForeignKey(
-        Lab,
-        on_delete=models.CASCADE,
-        related_name="tickets"
-    )
-
-    department = models.ForeignKey(
-        Department,
-        on_delete=models.CASCADE,
-        related_name="tickets"
-    )
+    lab = models.ForeignKey(Lab, on_delete=models.CASCADE, related_name="tickets")
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name="tickets")
 
     requested_by = models.CharField(max_length=255)
 
-    assigned_to = models.ForeignKey(
-        Employee,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="assigned_tickets"
-    )
+    # ✅ NEW (No FK)
+    assigned_to_id = models.IntegerField(null=True, blank=True)
+    assigned_to_name = models.CharField(max_length=255, null=True, blank=True)
 
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES)
 
-    status = models.CharField(
-        max_length=10,
-        choices=STATUS_CHOICES,
-        default="new"
-    )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="new")
 
-    # ✅ ADD THIS FIELD
-    type = models.CharField(
-        max_length=50,
-        choices=TYPE_CHOICES,
-        default="Question"
-    )
+    type = models.CharField(max_length=50, choices=TYPE_CHOICES, default="Question")
 
     due_date = models.DateField(null=True, blank=True)
 
