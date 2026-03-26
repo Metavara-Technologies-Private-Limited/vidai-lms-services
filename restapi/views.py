@@ -532,6 +532,25 @@ class GetClinicView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+class ClinicSearchAPIView(APIView):
+
+    def get(self, request):
+        name = request.query_params.get("name")
+
+        if not name:
+            return Response(
+                {"error": "name query param required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        clinics = Clinic.objects.filter(name__iexact=name)
+
+        if not clinics.exists():
+            return Response([], status=status.HTTP_200_OK)
+
+        serializer = ClinicReadSerializer(clinics, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 # -------------------------------------------------------------------
 # User Create API View (POST)
 # -------------------------------------------------------------------
