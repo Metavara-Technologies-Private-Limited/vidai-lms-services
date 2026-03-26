@@ -274,3 +274,8 @@ ZAPIER_WEBHOOK_TWILIO_URL = os.getenv("ZAPIER_WEBHOOK_TWILIO_URL",)
 STAGE_LOGIN_URL = os.getenv("STAGE_LOGIN_URL")
 
 STAGE_PROFILE_URL = os.getenv("STAGE_PROFILE_URL")
+
+STAGE_USERS_URL = os.getenv(
+    "STAGE_USERS_URL",
+    "https://99999.preview-api.vidaisolutions.com/api/users/"
+)
