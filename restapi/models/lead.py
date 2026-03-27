@@ -23,10 +23,14 @@ class LeadChoices:
         ("new", "New"),
         ("contacted", "Contacted"),
         ("appointment", "Appointment"),
-        ("follow_up", "Follow Up"),
+        ("follow up", "Follow Up"),
+        ("negotiation", "Negotiation"),
+        ("proposal sent", "Proposal Sent"),
+        ("contract signed", "Contract Signed"),
         ("converted", "Converted"),
         ("cycle_conversion", "Cycle Conversion"),
         ("lost", "Lost"),
+        ("lost lead", "Lost Lead"),
     )
 
     NEXT_ACTION_STATUS = (
