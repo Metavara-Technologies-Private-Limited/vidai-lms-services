@@ -112,7 +112,7 @@ DATABASES = {
         'NAME': 'stage5_db',
         'USER': 'postgres',
         'PASSWORD': 'saimohan',
-        'HOST': '127.0.0.1', #host.docker.internal
+        'HOST': 'host.docker.internal', #host.docker.internal
         'PORT': '5432',
     }
 }
