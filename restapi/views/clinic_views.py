@@ -155,6 +155,35 @@ class GetClinicView(APIView):
             )
 
 
+class ClinicSearchAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Search clinics by name",
+        manual_parameters=[],
+        responses={200: ClinicReadSerializer(many=True)},
+    )
+    def get(self, request):
+        try:
+            query = request.query_params.get("q", "").strip()
+
+            clinics = Clinic.objects.all()
+
+            if query:
+                clinics = clinics.filter(name__icontains=query)
+
+            serializer = ClinicReadSerializer(clinics, many=True)
+
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        except Exception:
+            logger.error(
+                "Unhandled Clinic Search Error:\n" +
+                traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 # -------------------------------------------------------------------
 # Clinic Employees API View (GET)

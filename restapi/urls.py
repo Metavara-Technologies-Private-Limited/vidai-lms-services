@@ -10,6 +10,7 @@ urlpatterns = [
     path("clinics/", ClinicCreateAPIView.as_view(), name="clinic-create"),
     path("clinics/<int:clinic_id>/", ClinicUpdateAPIView.as_view(), name="clinic-update"),
     path("clinics/<int:clinic_id>/detail/", GetClinicView.as_view(), name="clinic-get"),
+    path("clinics/search/", ClinicSearchAPIView.as_view(), name="clinic-search"),
    
 
     # ============================
