@@ -1,8 +1,14 @@
 from django.urls import path
-from .views import *
+from .views import *   # ✅ ALL IMPORTS FROM INIT
 
 
 urlpatterns = [
+
+    path('roles/create/', RoleCreateAPIView.as_view()),
+    path('roles/list/', RoleListAPIView.as_view()),
+    path('roles/<int:pk>/', RoleDetailAPIView.as_view()),
+    path('roles/update/<int:pk>/', RoleUpdateAPIView.as_view()),
+    path('roles/delete/<int:pk>/', RoleDeleteAPIView.as_view()),  
 
     # ============================
     # CLINIC

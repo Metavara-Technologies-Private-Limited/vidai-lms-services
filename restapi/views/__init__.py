@@ -35,3 +35,5 @@ from .fb_ads_views import *
 from .reputation_views import *
 
 from .debug_views import *
+
+from .role_views import *

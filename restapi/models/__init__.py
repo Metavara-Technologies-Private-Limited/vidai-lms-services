@@ -1,3 +1,9 @@
+# restapi/models/__init__.py
+
+from .user_profile import UserProfile
+from .role import Role
+from .role_permission import RolePermission
+
 # Core LMS models
 from .lead import Lead
 from .campaign import Campaign
