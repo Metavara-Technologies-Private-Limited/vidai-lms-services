@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.core.exceptions import ObjectDoesNotExist
 from restapi.models.user_profile import UserProfile
 from restapi.models.role import Role
 
@@ -7,6 +8,7 @@ from restapi.models.role import Role
 class UserSerializer(serializers.ModelSerializer):
 
     # 🔹 USER FIELDS
+    username = serializers.CharField(required=False)
     email = serializers.EmailField(required=True)
     password = serializers.CharField(write_only=True, required=False)
     confirm_password = serializers.CharField(write_only=True, required=False)
@@ -25,6 +27,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             "id",
+            "username",
             "email",
             "password",
             "confirm_password",
@@ -59,6 +62,15 @@ class UserSerializer(serializers.ModelSerializer):
             if User.objects.filter(email=email).exists():
                 raise serializers.ValidationError("Email already exists")
 
+        username = data.get("username")
+        if username:
+            if self.instance:
+                if User.objects.exclude(id=self.instance.id).filter(username=username).exists():
+                    raise serializers.ValidationError("Username already exists")
+            else:
+                if User.objects.filter(username=username).exists():
+                    raise serializers.ValidationError("Username already exists")
+
         return data
 
     # =========================
@@ -79,9 +91,11 @@ class UserSerializer(serializers.ModelSerializer):
         password = validated_data.pop("password", None)
         validated_data.pop("confirm_password", None)
 
+        username = validated_data.pop("username", None)
+
         # Create User
         user = User.objects.create_user(
-            username=validated_data["email"],
+            username=username or validated_data["email"],
             email=validated_data["email"],
             password=password
         )
@@ -99,7 +113,7 @@ class UserSerializer(serializers.ModelSerializer):
 
         # Update User
         instance.email = validated_data.get("email", instance.email)
-        instance.username = validated_data.get("email", instance.email)
+        instance.username = validated_data.get("username", instance.username)
 
         password = validated_data.get("password")
         if password:
@@ -140,18 +154,22 @@ class UserSerializer(serializers.ModelSerializer):
     # ✅ RESPONSE FORMAT
     # =========================
     def to_representation(self, instance):
-        profile = instance.profile
+        try:
+            profile = instance.profile
+        except ObjectDoesNotExist:
+            profile = None
 
         return {
             "id": instance.id,
+            "username": instance.username,
             "email": instance.email,
-            "first_name": profile.first_name,
-            "last_name": profile.last_name,
-            "gender": profile.gender,
-            "date_of_birth": profile.date_of_birth,
-            "date_of_joining": profile.date_of_joining,
-            "mobile_no": profile.mobile_no,
-            "role": profile.role.id if profile.role else None,
-            "photo": profile.photo.url if profile.photo else None,
-            "is_active": profile.is_active
+            "first_name": profile.first_name if profile else "",
+            "last_name": profile.last_name if profile else "",
+            "gender": profile.gender if profile else "",
+            "date_of_birth": profile.date_of_birth if profile else None,
+            "date_of_joining": profile.date_of_joining if profile else None,
+            "mobile_no": profile.mobile_no if profile else "",
+            "role": profile.role.id if profile and profile.role else None,
+            "photo": profile.photo.url if profile and profile.photo else None,
+            "is_active": profile.is_active if profile else False,
         }

@@ -31,7 +31,28 @@ def custom_exception_handler(exc, context):
 
     # If handled (400, 404)
     if response is not None:
-        response.data["error"] = response.data.get("detail", "Error occurred")
+        data = response.data if isinstance(response.data, dict) else {}
+
+        detail = data.get("detail")
+        if isinstance(detail, str) and detail.strip():
+            error_message = detail
+        else:
+            error_message = None
+            for key, value in data.items():
+                if key in {"detail", "error", "request_id", "success", "status"}:
+                    continue
+
+                if isinstance(value, list) and value:
+                    error_message = f"{key}: {value[0]}"
+                    break
+                if isinstance(value, str) and value.strip():
+                    error_message = f"{key}: {value}"
+                    break
+
+            if not error_message:
+                error_message = "Error occurred"
+
+        response.data["error"] = error_message
         response.data["request_id"] = request_id
         response.data.pop("detail", None)
 
