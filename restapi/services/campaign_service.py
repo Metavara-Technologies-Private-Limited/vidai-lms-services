@@ -68,6 +68,7 @@ def create_campaign(validated_data):
             sender_email=email.get("sender_email"),
             scheduled_at=email.get("scheduled_at"),
             is_active=email.get("is_active", True),
+            mailchimp_campaign_id=email.get("mailchimp_campaign_id"),
         )
 
     return campaign

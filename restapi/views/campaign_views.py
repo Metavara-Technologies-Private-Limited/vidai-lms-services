@@ -199,8 +199,14 @@ class CampaignListAPIView(APIView):
             campaign_data = CampaignReadSerializer(campaign).data
             campaign_data["lead_generated"] = campaign.leads.count()
 
-            if campaign.mailchimp_campaign_id:
-                report = get_mailchimp_campaign_report(campaign.mailchimp_campaign_id)
+            # =====================================================
+            # ✅ FIX: Get Mailchimp ID from CampaignEmailConfig
+            # =====================================================
+            email_config = campaign.email_configs.filter(is_active=True).first()
+            mailchimp_id = email_config.mailchimp_campaign_id if email_config else None
+
+            if mailchimp_id:
+                report = get_mailchimp_campaign_report(mailchimp_id)
                 if report:
                     campaign_data["impressions"] = report["opens"]
                     campaign_data["clicks"] = report["clicks"]
@@ -208,14 +214,12 @@ class CampaignListAPIView(APIView):
                     campaign_data["bounces"] = report["bounces"]
                     campaign_data["unsubscribes"] = report["unsubscribes"]
                 else:
-                    # ✅ FALLBACK: use last saved insights from CampaignEmailConfig
-                    # ── Reads from insights JSONField (single column approach) ──
-                    # If insights is None (never synced), defaults to 0 for all fields.
-                    email_config = campaign.email_configs.filter(is_active=True).first()
+                    # =====================================================
+                    # ✅ FALLBACK: use cached insights JSON
+                    # =====================================================
                     cached = email_config.insights if email_config else None
 
                     if cached and cached.get("emails_sent") is not None:
-                        # ✅ Read all values from insights JSON column
                         campaign_data["impressions"]  = cached.get("opens", 0)
                         campaign_data["clicks"]       = cached.get("clicks", 0)
                         campaign_data["emails_sent"]  = cached.get("emails_sent", 0)
@@ -228,6 +232,9 @@ class CampaignListAPIView(APIView):
                         campaign_data["bounces"]      = 0
                         campaign_data["unsubscribes"] = 0
             else:
+                # =====================================================
+                # ✅ No Mailchimp ID → return 0
+                # =====================================================
                 campaign_data["impressions"]  = 0
                 campaign_data["clicks"]       = 0
                 campaign_data["emails_sent"]  = 0

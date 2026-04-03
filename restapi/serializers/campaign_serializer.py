@@ -45,6 +45,7 @@ class CampaignEmailSerializer(serializers.ModelSerializer):
             "sender_email",
             "scheduled_at",
             "is_active",
+            "mailchimp_campaign_id",
         ]
 
 
