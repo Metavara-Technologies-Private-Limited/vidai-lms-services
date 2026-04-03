@@ -12,6 +12,7 @@ django-extensions==4.1
 djangorestframework==3.16.1
 drf-yasg==1.21.14
 frozenlist==1.8.0
+git-filter-repo==2.47.0
 graphviz==0.21
 gunicorn==25.0.1
 idna==3.11
@@ -19,6 +20,7 @@ inflection==0.5.1
 mailchimp-marketing==3.0.80
 multidict==6.7.1
 packaging==26.0
+pillow==12.2.0
 propcache==0.4.1
 psycopg2-binary==2.9.11
 pydot==4.0.1

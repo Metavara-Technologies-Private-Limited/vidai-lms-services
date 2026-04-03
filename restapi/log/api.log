@@ -1,6 +1,0 @@
-[ERROR] 2026-04-03 09:09:52 restapi.exception_handler:30 — [ERROR][2026-04-03 03:39:52.326398][ReqID: 614b4768deb9][IP: 127.0.0.1]
-Path: /api/roles/create/
-Error: {'name': [ErrorDetail(string='role with this name already exists.', code='unique')]}
-[ERROR] 2026-04-03 09:12:03 restapi.exception_handler:30 — [ERROR][2026-04-03 03:42:03.435206][ReqID: 06246b171fe7][IP: 127.0.0.1]
-Path: /api/roles/list/
-Error: Method "POST" not allowed.

@@ -37,3 +37,5 @@ from .reputation_views import *
 from .debug_views import *
 
 from .role_views import *
+
+from .user_view import *  # ✅ ADD THIS
