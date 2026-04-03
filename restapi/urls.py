@@ -83,6 +83,8 @@ urlpatterns = [
     path("social-media-campaign/create/", SocialMediaCampaignCreateAPIView.as_view(), name="social-campaign-create"),
     path("campaigns/email/create/", EmailCampaignCreateAPIView.as_view(), name="email-campaign-create"),
 
+    path("campaigns/save-mailchimp-id/", EmailSaveMailchimpCampaignIdAPIView.as_view(), name="email-save-mailchimp-campaign-id"),
+
     path("campaigns/zapier-callback/", CampaignZapierCallbackAPIView.as_view(), name="zapier-callback"),
     path("mailchimp/webhook/", MailchimpWebhookAPIView.as_view(), name="mailchimp-webhook"),
 
@@ -168,6 +170,11 @@ urlpatterns = [
     path("facebook/login/", FacebookLoginAPIView.as_view(), name="facebook-login"),
     path("facebook/callback/", FacebookCallbackAPIView.as_view(), name="facebook-callback"),
     path("facebook/status/", FacebookStatusAPIView.as_view(), name="facebook-status"),
+
+    path("google/login/", GoogleLoginAPIView.as_view()),
+    path("google/callback/", GoogleCallbackAPIView.as_view()),
+
+    path("clinics/<int:clinic_id>/social-accounts/", SocialAccountListAPIView.as_view(), name="social-account-list"),
 
     # ============================
     # WEBHOOK

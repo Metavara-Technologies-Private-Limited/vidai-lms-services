@@ -39,3 +39,5 @@ from .debug_views import *
 from .role_views import *
 
 from .user_view import *  # ✅ ADD THIS
+
+from .social_account_views import *

@@ -7,6 +7,7 @@ class SocialAccount(models.Model):
         ("facebook", "Facebook"),
         ("instagram", "Instagram"),
         ("linkedin", "LinkedIn"),
+        ("google", "Google"),
     )
 
     clinic = models.ForeignKey(Clinic, on_delete=models.CASCADE)

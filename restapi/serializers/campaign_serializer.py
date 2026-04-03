@@ -150,6 +150,7 @@ class EmailCampaignCreateSerializer(serializers.Serializer):
     selected_end = serializers.DateField(required=False, allow_null=True)
     enter_time = serializers.TimeField(required=False, allow_null=True)
     email = CampaignEmailSerializer(many=True)
+    status = serializers.CharField(required=False, default="draft")
 
 
 # =====================================================
