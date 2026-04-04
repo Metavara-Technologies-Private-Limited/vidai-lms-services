@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import User
-from restapi.utils.permissions import has_permission
+
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 
@@ -16,13 +16,11 @@ from restapi.services import get_user_permissions
 # CREATE USER
 # =========================
 class UserCreateAPIView(APIView):
+    permission_classes = [IsAuthenticated]   # ✅ FIX
 
-    @swagger_auto_schema(
-        tags=["User"],
-        request_body=UserSerializer,
-        responses={201: UserSerializer}
-    )
+    @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def post(self, request):
+
         serializer = UserSerializer(
             data=request.data,
             context={"request": request}
@@ -31,23 +29,22 @@ class UserCreateAPIView(APIView):
 
         user = serializer.save()
 
-        return Response(
-            {
-                "success": True,
-                "message": "User created successfully",
-                "data": UserSerializer(user).data
-            },
-            status=status.HTTP_201_CREATED
-        )
+        return Response({
+            "success": True,
+            "message": "User created successfully",
+            "data": UserSerializer(user).data
+        }, status=status.HTTP_201_CREATED)
 
 
 # =========================
 # LIST USERS
 # =========================
 class UserListAPIView(APIView):
+    permission_classes = [IsAuthenticated]   # ✅ FIX
 
     @swagger_auto_schema(tags=["User"])
     def get(self, request):
+
         users = User.objects.select_related("profile", "profile__role").all()
 
         return Response({
@@ -61,9 +58,11 @@ class UserListAPIView(APIView):
 # RETRIEVE USER
 # =========================
 class UserDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated]   # ✅ FIX
 
     @swagger_auto_schema(tags=["User"])
     def get(self, request, pk):
+
         user = get_object_or_404(
             User.objects.select_related("profile", "profile__role"),
             id=pk
@@ -80,17 +79,17 @@ class UserDetailAPIView(APIView):
 # UPDATE USER (PUT)
 # =========================
 class UserUpdateAPIView(APIView):
+    permission_classes = [IsAuthenticated]   # ✅ FIX
 
-    @swagger_auto_schema(
-        tags=["User"],
-        request_body=UserSerializer
-    )
+    @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def put(self, request, pk):
+
         user = get_object_or_404(User, id=pk)
 
         serializer = UserSerializer(
             user,
             data=request.data,
+            partial=True,   # ✅ IMPORTANT FIX
             context={"request": request}
         )
         serializer.is_valid(raise_exception=True)
@@ -108,12 +107,11 @@ class UserUpdateAPIView(APIView):
 # PARTIAL UPDATE USER (PATCH)
 # =========================
 class UserPartialUpdateAPIView(APIView):
+    permission_classes = [IsAuthenticated]   # ✅ FIX
 
-    @swagger_auto_schema(
-        tags=["User"],
-        request_body=UserSerializer
-    )
+    @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def patch(self, request, pk):
+
         user = get_object_or_404(User, id=pk)
 
         serializer = UserSerializer(
@@ -137,6 +135,7 @@ class UserPartialUpdateAPIView(APIView):
 # UPDATE USER STATUS
 # =========================
 class UserStatusUpdateAPIView(APIView):
+    permission_classes = [IsAuthenticated]   # ✅ FIX
 
     @swagger_auto_schema(
         tags=["User"],
@@ -149,6 +148,7 @@ class UserStatusUpdateAPIView(APIView):
         )
     )
     def patch(self, request, pk):
+
         user = get_object_or_404(
             User.objects.select_related("profile"),
             id=pk
@@ -162,13 +162,7 @@ class UserStatusUpdateAPIView(APIView):
                 "message": "is_active field is required"
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        profile = getattr(user, "profile", None)
-        if not profile:
-            return Response({
-                "success": False,
-                "message": "User profile not found"
-            }, status=status.HTTP_404_NOT_FOUND)
-
+        profile = user.profile
         profile.is_active = is_active
         profile.save()
 
@@ -182,11 +176,12 @@ class UserStatusUpdateAPIView(APIView):
 # DELETE USER
 # =========================
 class UserDeleteAPIView(APIView):
+    permission_classes = [IsAuthenticated]   # ✅ FIX
 
     @swagger_auto_schema(tags=["User"])
     def delete(self, request, pk):
-        user = get_object_or_404(User, id=pk)
 
+        user = get_object_or_404(User, id=pk)
         user.delete()
 
         return Response({
@@ -196,7 +191,7 @@ class UserDeleteAPIView(APIView):
 
 
 # =========================
-# USER PERMISSIONS API (IMPORTANT)
+# USER PERMISSIONS API
 # =========================
 class UserPermissionAPIView(APIView):
     permission_classes = [IsAuthenticated]

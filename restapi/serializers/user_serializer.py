@@ -13,7 +13,7 @@ class UserSerializer(serializers.ModelSerializer):
     # 🔹 USER FIELDS
     # =========================
     username = serializers.CharField(required=False)
-    email = serializers.EmailField(required=True)
+    email = serializers.EmailField(required=False)
     password = serializers.CharField(write_only=True, required=False)
     confirm_password = serializers.CharField(write_only=True, required=False)
 
@@ -26,7 +26,12 @@ class UserSerializer(serializers.ModelSerializer):
     date_of_birth = serializers.DateField(required=False)
     date_of_joining = serializers.DateField(required=False)
     mobile_no = serializers.CharField(required=False)
-    role = serializers.PrimaryKeyRelatedField(queryset=Role.objects.all(), required=False)
+
+    role = serializers.PrimaryKeyRelatedField(
+        queryset=Role.objects.all(),
+        required=False
+    )
+
     photo = serializers.ImageField(required=False)
 
     class Meta:
@@ -52,37 +57,38 @@ class UserSerializer(serializers.ModelSerializer):
     # =========================
     def validate(self, data):
 
-        #  REQUIRE PASSWORD ON CREATE
-        if not self.instance and not data.get("password"):
-            raise serializers.ValidationError("Password is required")
+        request = self.context.get("request")
+
+        # 🔹 PASSWORD VALIDATION
+        if not self.instance:
+            if not data.get("password"):
+                raise serializers.ValidationError("Password is required")
 
         password = data.get("password")
         confirm_password = data.get("confirm_password")
 
-        #  PASSWORD VALIDATION (CREATE + UPDATE)
         if password or confirm_password:
             if not password or not confirm_password:
                 raise serializers.ValidationError(
                     "Both password and confirm password are required"
                 )
-
             if password != confirm_password:
                 raise serializers.ValidationError("Passwords do not match")
 
-        #  EMAIL REQUIRED
+        # 🔹 EMAIL VALIDATION
         email = data.get("email")
-        if not email:
-            raise serializers.ValidationError("Email is required")
 
-        #  EMAIL UNIQUE
-        if self.instance:
-            if User.objects.exclude(id=self.instance.id).filter(email=email).exists():
-                raise serializers.ValidationError("Email already exists")
-        else:
+        if self.instance is None:
+            if not email:
+                raise serializers.ValidationError("Email is required")
+
             if User.objects.filter(email=email).exists():
                 raise serializers.ValidationError("Email already exists")
+        else:
+            if email and User.objects.exclude(id=self.instance.id).filter(email=email).exists():
+                raise serializers.ValidationError("Email already exists")
 
-        #  USERNAME UNIQUE
+        # 🔹 USERNAME VALIDATION
         username = data.get("username")
         if username:
             if self.instance:
@@ -92,14 +98,17 @@ class UserSerializer(serializers.ModelSerializer):
                 if User.objects.filter(username=username).exists():
                     raise serializers.ValidationError("Username already exists")
 
-        #  ROLE SECURITY (ONLY SUPER ADMIN)
-        request = self.context.get("request")
-        if request and hasattr(request.user, "profile"):
+        # 🔥 ROLE SECURITY (STRICT)
+        if "role" in data:
+            if not request or not hasattr(request.user, "profile"):
+                raise serializers.ValidationError("Login required to assign role")
+
             current_role = request.user.profile.role
 
-            if current_role and current_role.name.lower() != "super admin":
-                if "role" in data:
-                    raise serializers.ValidationError("You cannot assign roles")
+            if not current_role or current_role.name.lower() != "super admin":
+                raise serializers.ValidationError(
+                    "Only Super Admin can assign roles"
+                )
 
         return data
 
@@ -108,6 +117,7 @@ class UserSerializer(serializers.ModelSerializer):
     # =========================
     def create(self, validated_data):
 
+        # 🔹 Extract profile fields
         profile_data = {
             "first_name": validated_data.pop("first_name", None),
             "last_name": validated_data.pop("last_name", None),
@@ -118,15 +128,15 @@ class UserSerializer(serializers.ModelSerializer):
             "photo": validated_data.pop("photo", None),
         }
 
-        #  DEFAULT ROLE
+        # 🔥 ROLE HANDLING (FIXED — NO SILENT OVERRIDE)
         role = validated_data.pop("role", None)
+
         if not role:
-            role = Role.objects.filter(name="User").first()
-            if not role:
-                raise serializers.ValidationError("Default role 'User' not found")
+            raise serializers.ValidationError("Role is required")
 
         profile_data["role"] = role
 
+        # 🔹 USER CREATE
         password = validated_data.pop("password", None)
         validated_data.pop("confirm_password", None)
 
@@ -138,9 +148,11 @@ class UserSerializer(serializers.ModelSerializer):
             password=password
         )
 
-        # A post_save signal may already create the profile. Upsert to avoid
-        # duplicate-key errors and still apply request-provided profile fields.
-        UserProfile.objects.update_or_create(user=user, defaults=profile_data)
+        # 🔹 PROFILE CREATE
+        UserProfile.objects.update_or_create(
+            user=user,
+            defaults=profile_data
+        )
 
         return user
 
@@ -148,35 +160,38 @@ class UserSerializer(serializers.ModelSerializer):
     # ✅ UPDATE USER
     # =========================
     def update(self, instance, validated_data):
+
         profile = instance.profile
 
-        #  EMAIL UPDATE (FIXED)
+        # 🔹 USER UPDATE
         if "email" in validated_data:
             instance.email = validated_data["email"]
 
-        #  USERNAME UPDATE
         instance.username = validated_data.get("username", instance.username)
 
-        #  PASSWORD UPDATE
         password = validated_data.get("password")
         if password:
             instance.set_password(password)
 
         instance.save()
 
-        #  PROFILE UPDATE
-        profile.first_name = validated_data.get("first_name", profile.first_name)
-        profile.last_name = validated_data.get("last_name", profile.last_name)
-        profile.gender = validated_data.get("gender", profile.gender)
-        profile.date_of_birth = validated_data.get("date_of_birth", profile.date_of_birth)
-        profile.date_of_joining = validated_data.get("date_of_joining", profile.date_of_joining)
-        profile.mobile_no = validated_data.get("mobile_no", profile.mobile_no)
+        # 🔹 PROFILE UPDATE
+        for field in [
+            "first_name",
+            "last_name",
+            "gender",
+            "date_of_birth",
+            "date_of_joining",
+            "mobile_no"
+        ]:
+            if field in validated_data:
+                setattr(profile, field, validated_data.get(field))
 
-        #  ROLE UPDATE
+        # 🔹 ROLE UPDATE
         if "role" in validated_data:
             profile.role = validated_data.get("role")
 
-        #  PHOTO HANDLE
+        # 🔹 PHOTO UPDATE
         if "photo" in validated_data:
             new_photo = validated_data.get("photo")
 
@@ -197,6 +212,7 @@ class UserSerializer(serializers.ModelSerializer):
     # ✅ RESPONSE FORMAT
     # =========================
     def to_representation(self, instance):
+
         try:
             profile = instance.profile
         except ObjectDoesNotExist:
@@ -211,12 +227,12 @@ class UserSerializer(serializers.ModelSerializer):
             "username": instance.username,
             "email": instance.email,
 
-            "first_name": profile.first_name if profile else "",
-            "last_name": profile.last_name if profile else "",
-            "gender": profile.gender if profile else "",
+            "first_name": profile.first_name if profile and profile.first_name else "",
+            "last_name": profile.last_name if profile and profile.last_name else "",
+            "gender": profile.gender if profile and profile.gender else "",
             "date_of_birth": profile.date_of_birth if profile else None,
             "date_of_joining": profile.date_of_joining if profile else None,
-            "mobile_no": profile.mobile_no if profile else "",
+            "mobile_no": profile.mobile_no if profile and profile.mobile_no else "",
 
             "role": {
                 "id": profile.role.id if profile and profile.role else None,
@@ -226,6 +242,5 @@ class UserSerializer(serializers.ModelSerializer):
             "photo": profile.photo.url if profile and profile.photo else None,
             "is_active": profile.is_active if profile else False,
 
-            #  DYNAMIC PERMISSIONS
             "permissions": permissions
         }

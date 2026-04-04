@@ -169,7 +169,10 @@ CORS_ALLOW_ALL_ORIGINS = True
 # DRF
 # ================================
 REST_FRAMEWORK = {
-    'EXCEPTION_HANDLER': 'restapi.exception_handler.custom_exception_handler'
+    'EXCEPTION_HANDLER': 'restapi.exception_handler.custom_exception_handler',
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'restapi.utils.jwt_authentication.JWTAuthentication',
+    ],
 }
 
 

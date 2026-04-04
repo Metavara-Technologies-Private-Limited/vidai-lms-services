@@ -4,12 +4,13 @@ from django.urls import path
 from .views import *   
 
 
+
 urlpatterns = [
     
     path("login/", LoginAPIView.as_view(), name="login"),
     path("auth/login/", LoginAPIView.as_view(), name="login-legacy"),
     path("token/refresh/", TokenRefreshAPIView.as_view(), name="token-refresh"),
-
+    
     path('roles/create/', RoleCreateAPIView.as_view()),
     path('roles/list/', RoleListAPIView.as_view()),
     path('roles/<int:pk>/', RoleDetailAPIView.as_view()),
