@@ -25,9 +25,10 @@ class UserProfile(models.Model):
 
     mobile_no = models.CharField(max_length=15, null=True, blank=True)
 
+    
     role = models.ForeignKey(
         Role,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,  
         related_name="users",
         null=True,
         blank=True

@@ -28,11 +28,18 @@ class RoleSerializer(serializers.ModelSerializer):
         model = Role
         fields = ["id", "name", "permissions"]
 
-    # ✅ VALIDATION ADDED
+    # =========================
+    # ✅ VALIDATION
+    # =========================
     def validate(self, data):
         permissions = data.get("permissions", [])
-        seen = set()
 
+        #  CLEAN NAME
+        if "name" in data:
+            data["name"] = data["name"].strip()
+
+        #  DUPLICATE PERMISSION CHECK
+        seen = set()
         for perm in permissions:
             key = (
                 perm.get("module_key"),
@@ -49,14 +56,22 @@ class RoleSerializer(serializers.ModelSerializer):
 
         return data
 
+    # =========================
+    # ✅ CREATE
+    # =========================
     def create(self, validated_data):
         return create_role(validated_data)
 
+    # =========================
+    # ✅ UPDATE
+    # =========================
     def update(self, instance, validated_data):
         return update_role(instance, validated_data)
 
 
-# ✅ CLEAN READ SERIALIZER
+# =========================
+# ✅ READ SERIALIZER
+# =========================
 class RoleReadSerializer(serializers.ModelSerializer):
 
     permissions = RolePermissionSerializer(many=True)

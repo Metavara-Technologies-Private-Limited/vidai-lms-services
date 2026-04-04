@@ -1,16 +1,20 @@
 from django.urls import path
 
 
-from .views import *   # ✅ ALL IMPORTS FROM INIT
+from .views import *   
 
 
 urlpatterns = [
+    
+    path("auth/login/", LoginAPIView.as_view(), name="login"),
 
     path('roles/create/', RoleCreateAPIView.as_view()),
     path('roles/list/', RoleListAPIView.as_view()),
     path('roles/<int:pk>/', RoleDetailAPIView.as_view()),
     path('roles/update/<int:pk>/', RoleUpdateAPIView.as_view()),
     path('roles/delete/<int:pk>/', RoleDeleteAPIView.as_view()),  
+    
+    path("users/permissions/", UserPermissionAPIView.as_view()),
 
 
     path("users/", UserCreateAPIView.as_view()),
@@ -20,7 +24,7 @@ urlpatterns = [
     path("users/<int:pk>/partial-update/", UserPartialUpdateAPIView.as_view()),
     path("users/<int:pk>/status/", UserStatusUpdateAPIView.as_view()),
     path("users/<int:pk>/delete/", UserDeleteAPIView.as_view()),
-
+    
     # ============================
     # CLINIC
     # ============================

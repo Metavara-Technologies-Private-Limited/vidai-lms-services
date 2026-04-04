@@ -8,11 +8,12 @@ def create_role(validated_data):
 
     permissions_data = validated_data.pop("permissions", [])
 
-    # ✅ duplicate role check
-    if Role.objects.filter(name__iexact=validated_data["name"]).exists():
+    role_name = validated_data["name"].strip()
+
+    if Role.objects.filter(name__iexact=role_name).exists():
         raise ValidationError({"name": "Role already exists"})
 
-    role = Role.objects.create(**validated_data)
+    role = Role.objects.create(name=role_name)
 
     RolePermission.objects.bulk_create([
         RolePermission(
@@ -36,17 +37,18 @@ def update_role(instance, validated_data):
 
     permissions_data = validated_data.pop("permissions", [])
 
-    # ✅ prevent duplicate role name
     if "name" in validated_data:
-        if Role.objects.filter(name__iexact=validated_data["name"]).exclude(id=instance.id).exists():
+        new_name = validated_data["name"].strip()
+
+        if Role.objects.filter(name__iexact=new_name).exclude(id=instance.id).exists():
             raise ValidationError({"name": "Role already exists"})
 
-    instance.name = validated_data.get("name", instance.name)
+        instance.name = new_name
+
     instance.save()
 
     existing_permissions = {
-        perm.id: perm
-        for perm in instance.permissions.all()
+        perm.id: perm for perm in instance.permissions.all()
     }
 
     incoming_ids = []
@@ -69,7 +71,6 @@ def update_role(instance, validated_data):
             perm.can_print = perm_data.get("can_print", perm.can_print)
 
             perm.save()
-
             incoming_ids.append(perm_id)
 
         else:
@@ -86,7 +87,6 @@ def update_role(instance, validated_data):
 
             incoming_ids.append(new_perm.id)
 
-    # ✅ DELETE removed permissions
     instance.permissions.exclude(id__in=incoming_ids).delete()
 
     return instance
