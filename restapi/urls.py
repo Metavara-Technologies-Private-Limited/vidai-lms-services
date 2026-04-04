@@ -6,7 +6,9 @@ from .views import *
 
 urlpatterns = [
     
-    path("auth/login/", LoginAPIView.as_view(), name="login"),
+    path("login/", LoginAPIView.as_view(), name="login"),
+    path("auth/login/", LoginAPIView.as_view(), name="login-legacy"),
+    path("token/refresh/", TokenRefreshAPIView.as_view(), name="token-refresh"),
 
     path('roles/create/', RoleCreateAPIView.as_view()),
     path('roles/list/', RoleListAPIView.as_view()),
@@ -40,7 +42,6 @@ urlpatterns = [
     path("clinics/<int:clinic_id>/employees/", ClinicEmployeesAPIView.as_view(), name="clinic-employees"),
     path("employees/", EmployeeCreateAPIView.as_view(), name="employee-create"),
     path("employees/<int:employee_id>/update/", EmployeeUpdateAPIView.as_view(), name="employee-update"),
-    path("users/", UserCreateAPIView.as_view(), name="user-create"),
 
     # ============================
     # LEADS
@@ -205,7 +206,7 @@ urlpatterns = [
     # ============================
     # PROXY
     # ============================
-    path("login/", LoginProxyAPIView.as_view(), name="login-proxy"),
+    path("proxy/login/", LoginProxyAPIView.as_view(), name="login-proxy"),
     path("me/profile/", ProfileProxyAPIView.as_view(), name="profile"),
     path("users-search/", UsersProxyAPIView.as_view(), name="users"),
 ]

@@ -25,6 +25,33 @@ logger = logging.getLogger(__name__)
 class ClinicCreateAPIView(APIView):
 
     @swagger_auto_schema(
+        operation_description="Get all clinics with departments",
+        responses={200: ClinicReadSerializer(many=True)},
+    )
+    def get(self, request):
+        try:
+            clinics = Clinic.objects.all()
+            serializer = ClinicReadSerializer(clinics, many=True)
+
+            return Response(
+                {
+                    "success": True,
+                    "message": "Clinics fetched successfully",
+                    "data": serializer.data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except Exception:
+            logger.error(
+                "Unhandled Clinic List Error:\n" +
+                traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @swagger_auto_schema(
         operation_description="Create a new clinic with departments",
         request_body=ClinicSerializer,
         responses={
@@ -173,7 +200,14 @@ class ClinicSearchAPIView(APIView):
 
             serializer = ClinicReadSerializer(clinics, many=True)
 
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(
+                {
+                    "success": True,
+                    "message": "Clinics fetched successfully",
+                    "data": serializer.data,
+                },
+                status=status.HTTP_200_OK,
+            )
 
         except Exception:
             logger.error(
