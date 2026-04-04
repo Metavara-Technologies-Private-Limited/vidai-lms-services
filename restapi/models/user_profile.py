@@ -27,13 +27,11 @@ class UserProfile(models.Model):
     mobile_no = models.CharField(max_length=15, null=True, blank=True)
 
     # 🔥 ADD THIS (MAIN CHANGE)
-    clinic = models.ForeignKey(
-        Clinic,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="users"
-    )
+    clinic = models.ManyToManyField(
+    Clinic,
+    related_name="users",
+    blank=True
+)
 
     role = models.ForeignKey(
         Role,
