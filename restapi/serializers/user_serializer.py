@@ -138,20 +138,18 @@ class UserSerializer(serializers.ModelSerializer):
 
         profile_data["role"] = role
 
-        # 🔥 CLINIC LOGIC
+        # 🔥 CLINIC LOGIC (FIXED ✅)
         clinic = validated_data.pop("clinic", None)
 
         if role and role.name.lower() == "super admin":
-            # Super admin → no clinic restriction
             profile_data["clinic"] = None
         else:
-            # Normal users → assign clinic
             if clinic:
                 profile_data["clinic"] = clinic
-            elif request and hasattr(request.user, "profile"):
+            elif request and hasattr(request.user, "profile") and request.user.profile.clinic:
                 profile_data["clinic"] = request.user.profile.clinic
             else:
-                profile_data["clinic"] = None
+                raise serializers.ValidationError("Clinic is required for this user")
 
         # Password
         password = validated_data.pop("password", None)
@@ -250,7 +248,6 @@ class UserSerializer(serializers.ModelSerializer):
                 "name": profile.role.name if profile and profile.role else None
             },
 
-            # 🔥 CLINIC RESPONSE
             "clinic": {
                 "id": profile.clinic.id if profile and profile.clinic else None,
                 "name": profile.clinic.name if profile and profile.clinic else None

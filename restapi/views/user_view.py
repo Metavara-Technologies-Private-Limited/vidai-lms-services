@@ -4,7 +4,14 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import User
-from restapi.utils.permissions import has_permission
+
+# ❌ OLD REMOVE
+# from restapi.utils.permissions import has_permission
+
+# ✅ NEW ADD
+from restapi.utils.permissions import secure_endpoint, CAN_VIEW, CAN_ADD, CAN_EDIT
+from restapi.utils.tenant import filter_by_clinic
+
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 
@@ -41,39 +48,53 @@ class UserCreateAPIView(APIView):
         )
 
 
+
 # =========================
 # LIST USERS
 # =========================
 class UserListAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"])
+    @secure_endpoint("users", CAN_VIEW)
     def get(self, request):
-        users = User.objects.select_related("profile", "profile__role").all()
+
+        users = User.objects.select_related(
+            "profile", "profile__role", "profile__clinic"
+        ).all()
+
+        users = filter_by_clinic(users, request.user)
 
         return Response({
             "success": True,
-            "message": "Users fetched successfully",
             "data": UserSerializer(users, many=True).data
         })
 
 
+
 # =========================
-# RETRIEVE USER
+# USER DETAIL
 # =========================
 class UserDetailAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"])
+    @secure_endpoint("users", CAN_VIEW)
     def get(self, request, pk):
+
         user = get_object_or_404(
-            User.objects.select_related("profile", "profile__role"),
+            User.objects.select_related("profile", "profile__role", "profile__clinic"),
             id=pk
         )
 
+        # ✅ OBJECT SECURITY FIX
+        if request.user.profile.role.name.lower() != "super admin":
+            if user.profile.clinic != request.user.profile.clinic:
+                return Response({"message": "Not allowed"}, status=403)
+
         return Response({
             "success": True,
-            "message": "User fetched successfully",
             "data": UserSerializer(user).data
         })
+
 
 
 # =========================
@@ -81,11 +102,9 @@ class UserDetailAPIView(APIView):
 # =========================
 class UserUpdateAPIView(APIView):
 
-    @swagger_auto_schema(
-        tags=["User"],
-        request_body=UserSerializer
-    )
+    @secure_endpoint("users", CAN_EDIT)
     def put(self, request, pk):
+
         user = get_object_or_404(User, id=pk)
 
         serializer = UserSerializer(
@@ -99,7 +118,6 @@ class UserUpdateAPIView(APIView):
 
         return Response({
             "success": True,
-            "message": "User updated successfully",
             "data": UserSerializer(user).data
         })
 
@@ -113,7 +131,9 @@ class UserPartialUpdateAPIView(APIView):
         tags=["User"],
         request_body=UserSerializer
     )
+    @secure_endpoint("users", CAN_EDIT)   # ✅ ADDED
     def patch(self, request, pk):
+
         user = get_object_or_404(User, id=pk)
 
         serializer = UserSerializer(
@@ -148,7 +168,9 @@ class UserStatusUpdateAPIView(APIView):
             }
         )
     )
+    @secure_endpoint("users", CAN_EDIT)   # ✅ ADDED
     def patch(self, request, pk):
+
         user = get_object_or_404(
             User.objects.select_related("profile"),
             id=pk
@@ -184,7 +206,9 @@ class UserStatusUpdateAPIView(APIView):
 class UserDeleteAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"])
+    @secure_endpoint("users", CAN_EDIT)   # ✅ ADDED
     def delete(self, request, pk):
+
         user = get_object_or_404(User, id=pk)
 
         user.delete()
@@ -196,7 +220,7 @@ class UserDeleteAPIView(APIView):
 
 
 # =========================
-# USER PERMISSIONS API (IMPORTANT)
+# USER PERMISSIONS API
 # =========================
 class UserPermissionAPIView(APIView):
     permission_classes = [IsAuthenticated]

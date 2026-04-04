@@ -1,0 +1,9 @@
+[ERROR] 2026-04-04 15:13:15 restapi.exception_handler:30 — [ERROR][2026-04-04 09:43:15.699488][ReqID: ab61d9d5e652][IP: 127.0.0.1]
+Path: /api/users/list/
+Error: User profile not found
+[ERROR] 2026-04-04 15:15:08 restapi.exception_handler:30 — [ERROR][2026-04-04 09:45:08.684784][ReqID: 161a0db62e8d][IP: 127.0.0.1]
+Path: /api/users/list/
+Error: User profile not found
+[ERROR] 2026-04-04 15:21:13 restapi.exception_handler:30 — [ERROR][2026-04-04 09:51:13.200054][ReqID: 6faac33b55eb][IP: 127.0.0.1]
+Path: /api/users/list/
+Error: Authentication credentials were not provided.
