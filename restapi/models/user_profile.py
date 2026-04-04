@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from .role import Role
+from .clinic import Clinic   # ✅ ADD THIS
 
 
 class UserProfile(models.Model):
@@ -25,10 +26,18 @@ class UserProfile(models.Model):
 
     mobile_no = models.CharField(max_length=15, null=True, blank=True)
 
-    
+    # 🔥 ADD THIS (MAIN CHANGE)
+    clinic = models.ForeignKey(
+        Clinic,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="users"
+    )
+
     role = models.ForeignKey(
         Role,
-        on_delete=models.SET_NULL,  
+        on_delete=models.SET_NULL,
         related_name="users",
         null=True,
         blank=True
