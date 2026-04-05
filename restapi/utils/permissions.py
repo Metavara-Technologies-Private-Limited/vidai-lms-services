@@ -1,42 +1,54 @@
-from functools import wraps
-from rest_framework.exceptions import PermissionDenied
 from restapi.models import RolePermission
 
 
-def has_permission(module_key, action):
-    """
-    action: can_view / can_add / can_edit / can_print
-    """
+def get_user_permissions(user):
 
-    def decorator(view_func):
+    if not hasattr(user, "profile") or not user.profile.role:
+        return {}
 
-        @wraps(view_func)
-        def wrapper(self, request, *args, **kwargs):
+    role = user.profile.role
+    permissions = RolePermission.objects.filter(role=role)
 
-            user = request.user
+    result = {}
 
-            # Check role
-            if not hasattr(user, "profile") or not user.profile.role:
-                raise PermissionDenied("User role not assigned")
+    for perm in permissions:
+        module = perm.module_key
+        category = perm.category_key
+        subcategory = perm.subcategory_key
 
-            role = user.profile.role
+        # Initialize module
+        if module not in result:
+            result[module] = {}
 
-            # Fetch permission
-            permission = RolePermission.objects.filter(
-                role=role,
-                module_key=module_key,
-                is_active=True
-            ).first()
+        # 🔥 SPECIAL CASE: SETTINGS ONLY
+        if module == "Settings":
 
-            if not permission:
-                raise PermissionDenied("Permission not found")
+            if category not in result[module]:
+                result[module][category] = {}
 
-            # Check access
-            if not getattr(permission, action, False):
-                raise PermissionDenied(f"{action} permission denied")
+            sub_key = subcategory or "General"
 
-            return view_func(self, request, *args, **kwargs)
+            if sub_key not in result[module][category]:
+                result[module][category][sub_key] = []
 
-        return wrapper
+            result[module][category][sub_key].append({
+                "can_view": perm.can_view,
+                "can_add": perm.can_add,
+                "can_edit": perm.can_edit,
+                "can_print": perm.can_print,
+            })
 
-    return decorator
+        # 🔥 ALL OTHER MODULES (NO SUBCATEGORY)
+        else:
+
+            if category not in result[module]:
+                result[module][category] = []
+
+            result[module][category].append({
+                "can_view": perm.can_view,
+                "can_add": perm.can_add,
+                "can_edit": perm.can_edit,
+                "can_print": perm.can_print,
+            })
+
+    return result
