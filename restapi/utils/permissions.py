@@ -16,29 +16,29 @@ def get_user_permissions(user):
         category = perm.category_key
         subcategory = perm.subcategory_key
 
-        # Initialize module
         if module not in result:
             result[module] = {}
 
-        # 🔥 SPECIAL CASE: SETTINGS ONLY
-        if module == "Settings":
+        # 🔥 ONLY SETTINGS → include subcategory
+        if category.lower() == "settings":
 
             if category not in result[module]:
                 result[module][category] = {}
 
-            sub_key = subcategory or "General"
+            if not subcategory:
+                continue  # skip null subcategories
 
-            if sub_key not in result[module][category]:
-                result[module][category][sub_key] = []
+            if subcategory not in result[module][category]:
+                result[module][category][subcategory] = []
 
-            result[module][category][sub_key].append({
+            result[module][category][subcategory].append({
                 "can_view": perm.can_view,
                 "can_add": perm.can_add,
                 "can_edit": perm.can_edit,
                 "can_print": perm.can_print,
             })
 
-        # 🔥 ALL OTHER MODULES (NO SUBCATEGORY)
+        # 🔥 ALL OTHER CATEGORIES → NO SUBCATEGORY
         else:
 
             if category not in result[module]:
