@@ -7,9 +7,12 @@ from django.conf import settings
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
 
 
 class LoginProxyAPIView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
 
     def post(self, request):
         username = request.data.get("username")
@@ -66,6 +69,9 @@ class LoginProxyAPIView(APIView):
 
 
 class ProfileProxyAPIView(APIView):
+    authentication_classes = []  # ✅ don't decode token — just forward it
+    permission_classes = [AllowAny]
+
     def get(self, request):
         token = request.headers.get("Authorization")
 
@@ -139,8 +145,9 @@ class ProfileProxyAPIView(APIView):
             )
 
 
-            
 class UsersProxyAPIView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
 
     def get(self, request):
         try:
