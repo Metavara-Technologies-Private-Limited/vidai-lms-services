@@ -1,6 +1,20 @@
 from restapi.models import RolePermission
 
 
+def normalize_role_name(role_name):
+    if not role_name:
+        return ""
+    return str(role_name).strip().lower().replace("-", " ").replace("_", " ")
+
+
+def is_super_admin_role(role):
+    if not role:
+        return False
+
+    normalized = normalize_role_name(getattr(role, "name", ""))
+    return normalized in {"super admin", "superadmin"}
+
+
 # =========================
 # GET USER PERMISSIONS
 # =========================
@@ -64,7 +78,7 @@ def has_permission(user, module, category, action):
 
     # SUPER ADMIN → FULL ACCESS
     if hasattr(user, "profile") and user.profile.role:
-        if user.profile.role.name.lower() == "super admin":
+        if is_super_admin_role(user.profile.role):
             return True
 
     permissions = get_user_permissions(user)
@@ -88,7 +102,7 @@ def has_permission(user, module, category, action):
 def filter_by_clinic(queryset, user):
 
     if hasattr(user, "profile") and user.profile.role:
-        if user.profile.role.name.lower() == "super admin":
+        if is_super_admin_role(user.profile.role):
             return queryset
 
         return queryset.filter(profile__clinic=user.profile.clinic)

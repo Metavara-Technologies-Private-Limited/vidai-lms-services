@@ -4,7 +4,7 @@ from django.core.exceptions import ObjectDoesNotExist
 
 from restapi.models.user_profile import UserProfile
 from restapi.models.role import Role
-from restapi.utils.permissions import get_user_permissions, has_permission
+from restapi.utils.permissions import get_user_permissions, has_permission, is_super_admin_role
 
 
 
@@ -106,7 +106,7 @@ class UserSerializer(serializers.ModelSerializer):
 
             current_role = request.user.profile.role
 
-            if not current_role or current_role.name.lower() != "super admin":
+            if not is_super_admin_role(current_role):
                 raise serializers.ValidationError(
                     "Only Super Admin can assign roles"
                 )
@@ -256,7 +256,7 @@ class UserSerializer(serializers.ModelSerializer):
         user = request.user
 
         # SUPER ADMIN → FULL DATA
-        if user.profile.role.name.lower() == "super admin":
+        if is_super_admin_role(user.profile.role):
             return data
 
         # NO VIEW PERMISSION
