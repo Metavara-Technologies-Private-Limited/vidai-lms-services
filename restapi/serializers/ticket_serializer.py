@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from django.utils import timezone
-
+from restapi.utils.permissions import get_user_permissions, has_permission
 from restapi.models import Ticket, Document, TicketTimeline, Lab, TicketReply, Employee
 from restapi.services.ticket_service import (
     create_ticket_service,
@@ -25,13 +25,43 @@ class LabReadSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
-    # ✅ FIXED
     assigned_to_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = Lab
         fields = "__all__"
 
+    # =====================================================
+    # RBAC FILTERING
+    # =====================================================
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        request = self.context.get("request")
+        if not request:
+            return data
+
+        user = request.user
+
+        # ✅ SUPER ADMIN → FULL ACCESS
+        if user.profile.role.name.lower() == "super admin":
+            return data
+
+        # ❌ NO PERMISSION → EMPTY
+        if not has_permission(user, "lab", "labs", "view"):
+            return {}
+
+        # 🔥 FIELD FILTERING
+        allowed_fields = [
+            "id",
+            "name",
+            "clinic_name",
+            "department_name",
+            "assigned_to_name",
+            "is_active"
+        ]
+
+        return {k: v for k, v in data.items() if k in allowed_fields}
 
 # ============================================================
 # LAB WRITE SERIALIZER

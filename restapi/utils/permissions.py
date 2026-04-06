@@ -1,6 +1,9 @@
 from restapi.models import RolePermission
 
 
+# =========================
+# GET USER PERMISSIONS
+# =========================
 def get_user_permissions(user):
 
     if not hasattr(user, "profile") or not user.profile.role:
@@ -19,14 +22,14 @@ def get_user_permissions(user):
         if module not in result:
             result[module] = {}
 
-        # 🔥 ONLY SETTINGS → include subcategory
+        # SETTINGS (WITH SUBCATEGORY)
         if category.lower() == "settings":
 
             if category not in result[module]:
                 result[module][category] = {}
 
             if not subcategory:
-                continue  # skip null subcategories
+                continue
 
             if subcategory not in result[module][category]:
                 result[module][category][subcategory] = []
@@ -38,7 +41,7 @@ def get_user_permissions(user):
                 "can_print": perm.can_print,
             })
 
-        # 🔥 ALL OTHER CATEGORIES → NO SUBCATEGORY
+        # OTHER MODULES
         else:
 
             if category not in result[module]:
@@ -52,3 +55,42 @@ def get_user_permissions(user):
             })
 
     return result
+
+
+# =========================
+# CHECK PERMISSION
+# =========================
+def has_permission(user, module, category, action):
+
+    # SUPER ADMIN → FULL ACCESS
+    if hasattr(user, "profile") and user.profile.role:
+        if user.profile.role.name.lower() == "super admin":
+            return True
+
+    permissions = get_user_permissions(user)
+
+    if module not in permissions:
+        return False
+
+    if category not in permissions[module]:
+        return False
+
+    for perm in permissions[module][category]:
+        if perm.get(f"can_{action}"):
+            return True
+
+    return False
+
+
+# =========================
+# FILTER QUERYSET BY CLINIC
+# =========================
+def filter_by_clinic(queryset, user):
+
+    if hasattr(user, "profile") and user.profile.role:
+        if user.profile.role.name.lower() == "super admin":
+            return queryset
+
+        return queryset.filter(profile__clinic=user.profile.clinic)
+
+    return queryset.none()

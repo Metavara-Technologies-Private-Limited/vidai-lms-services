@@ -4,7 +4,8 @@ from django.core.exceptions import ObjectDoesNotExist
 
 from restapi.models.user_profile import UserProfile
 from restapi.models.role import Role
-from restapi.services.user_service import get_user_permissions
+from restapi.utils.permissions import get_user_permissions, has_permission
+
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -59,7 +60,7 @@ class UserSerializer(serializers.ModelSerializer):
 
         request = self.context.get("request")
 
-        # 🔹 PASSWORD VALIDATION
+        # PASSWORD VALIDATION
         if not self.instance:
             if not data.get("password"):
                 raise serializers.ValidationError("Password is required")
@@ -75,7 +76,7 @@ class UserSerializer(serializers.ModelSerializer):
             if password != confirm_password:
                 raise serializers.ValidationError("Passwords do not match")
 
-        # 🔹 EMAIL VALIDATION
+        # EMAIL VALIDATION
         email = data.get("email")
 
         if self.instance is None:
@@ -88,7 +89,7 @@ class UserSerializer(serializers.ModelSerializer):
             if email and User.objects.exclude(id=self.instance.id).filter(email=email).exists():
                 raise serializers.ValidationError("Email already exists")
 
-        # 🔹 USERNAME VALIDATION
+        # USERNAME VALIDATION
         username = data.get("username")
         if username:
             if self.instance:
@@ -98,7 +99,7 @@ class UserSerializer(serializers.ModelSerializer):
                 if User.objects.filter(username=username).exists():
                     raise serializers.ValidationError("Username already exists")
 
-        # 🔥 ROLE SECURITY (STRICT)
+        # ROLE SECURITY
         if "role" in data:
             if not request or not hasattr(request.user, "profile"):
                 raise serializers.ValidationError("Login required to assign role")
@@ -117,7 +118,6 @@ class UserSerializer(serializers.ModelSerializer):
     # =========================
     def create(self, validated_data):
 
-        # 🔹 Extract profile fields
         profile_data = {
             "first_name": validated_data.pop("first_name", None),
             "last_name": validated_data.pop("last_name", None),
@@ -128,7 +128,6 @@ class UserSerializer(serializers.ModelSerializer):
             "photo": validated_data.pop("photo", None),
         }
 
-        # 🔥 ROLE HANDLING (FIXED — NO SILENT OVERRIDE)
         role = validated_data.pop("role", None)
 
         if not role:
@@ -136,7 +135,11 @@ class UserSerializer(serializers.ModelSerializer):
 
         profile_data["role"] = role
 
-        # 🔹 USER CREATE
+        # ✅ ADD CLINIC FROM LOGGED-IN USER
+        request = self.context.get("request")
+        if request and hasattr(request.user, "profile"):
+            profile_data["clinic"] = request.user.profile.clinic
+
         password = validated_data.pop("password", None)
         validated_data.pop("confirm_password", None)
 
@@ -148,7 +151,6 @@ class UserSerializer(serializers.ModelSerializer):
             password=password
         )
 
-        # 🔹 PROFILE CREATE
         UserProfile.objects.update_or_create(
             user=user,
             defaults=profile_data
@@ -163,7 +165,6 @@ class UserSerializer(serializers.ModelSerializer):
 
         profile = instance.profile
 
-        # 🔹 USER UPDATE
         if "email" in validated_data:
             instance.email = validated_data["email"]
 
@@ -175,7 +176,6 @@ class UserSerializer(serializers.ModelSerializer):
 
         instance.save()
 
-        # 🔹 PROFILE UPDATE
         for field in [
             "first_name",
             "last_name",
@@ -187,11 +187,9 @@ class UserSerializer(serializers.ModelSerializer):
             if field in validated_data:
                 setattr(profile, field, validated_data.get(field))
 
-        # 🔹 ROLE UPDATE
         if "role" in validated_data:
             profile.role = validated_data.get("role")
 
-        # 🔹 PHOTO UPDATE
         if "photo" in validated_data:
             new_photo = validated_data.get("photo")
 
@@ -222,7 +220,7 @@ class UserSerializer(serializers.ModelSerializer):
         if profile and profile.role:
             permissions = get_user_permissions(instance)
 
-        return {
+        data = {
             "id": instance.id,
             "username": instance.username,
             "email": instance.email,
@@ -239,8 +237,41 @@ class UserSerializer(serializers.ModelSerializer):
                 "name": profile.role.name if profile and profile.role else None
             },
 
+            # ✅ ADDED CLINIC
+            "clinic": {
+                "id": profile.clinic.id if profile and profile.clinic else None,
+                "name": profile.clinic.name if profile and profile.clinic else None
+            },
+
             "photo": profile.photo.url if profile and profile.photo else None,
             "is_active": profile.is_active if profile else False,
 
             "permissions": permissions
         }
+
+        request = self.context.get("request")
+        if not request:
+            return data
+
+        user = request.user
+
+        # SUPER ADMIN → FULL DATA
+        if user.profile.role.name.lower() == "super admin":
+            return data
+
+        # NO VIEW PERMISSION
+        if not has_permission(user, "user_management", "users", "view"):
+            return {}
+
+        # FIELD FILTERING
+        allowed_fields = [
+            "id",
+            "username",
+            "first_name",
+            "role",
+            "clinic",   # ✅ ADDED
+            "is_active",
+            "permissions"
+        ]
+
+        return {k: v for k, v in data.items() if k in allowed_fields}

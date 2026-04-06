@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-
+from restapi.utils.permissions import get_user_permissions, has_permission
 from restapi.models import (
     Lead,
     Clinic,
@@ -36,7 +36,6 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
     campaign_duration = serializers.SerializerMethodField()
 
-    # ✅ FIXED (removed FK source)
     assigned_to_id = serializers.IntegerField(read_only=True)
     assigned_to_name = serializers.CharField(read_only=True)
 
@@ -95,15 +94,21 @@ class LeadReadSerializer(serializers.ModelSerializer):
             "converted_at",
         ]
 
+    # =====================================================
+    # METHODS
+    # =====================================================
+
     def get_campaign_duration(self, obj):
-        """Return campaign date range as 'DD/MM/YYYY - DD/MM/YYYY'."""
         campaign = obj.campaign
         if not campaign:
             return None
+
         start = campaign.start_date
         end = campaign.end_date
+
         if not start or not end:
             return None
+
         return f"{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}"
 
     def get_documents(self, obj):
@@ -115,6 +120,39 @@ class LeadReadSerializer(serializers.ModelSerializer):
             }
             for doc in obj.documents.all()
         ]
+
+    # =====================================================
+    # RBAC FILTERING
+    # =====================================================
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        request = self.context.get("request")
+        if not request:
+            return data
+
+        user = request.user
+
+        # SUPER ADMIN → FULL ACCESS
+        if user.profile.role.name.lower() == "super admin":
+            return data
+
+        # NO PERMISSION → EMPTY
+        if not has_permission(user, "lead", "leads", "view"):
+            return {}
+
+        # LIMITED FIELDS
+        allowed_fields = [
+            "id",
+            "full_name",
+            "contact_no",
+            "lead_status",
+            "created_at"
+        ]
+
+        return {k: v for k, v in data.items() if k in allowed_fields}
+
 
 
 # =====================================================

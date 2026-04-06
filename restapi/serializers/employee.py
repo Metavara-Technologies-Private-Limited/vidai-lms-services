@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-
+from restapi.utils.permissions import get_user_permissions, has_permission
 from restapi.models import Employee, Clinic, Department
 from restapi.services.employee_service import (
     create_employee,
@@ -76,3 +76,28 @@ class EmployeeReadSerializer(serializers.ModelSerializer):
             "created_at",
             "modified_at",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        request = self.context.get("request")
+        if not request:
+            return data
+
+        user = request.user
+
+        if user.profile.role.name.lower() == "super admin":
+            return data
+
+        if not has_permission(user, "employee", "employees", "view"):
+            return {}
+
+        allowed_fields = [
+            "id",
+            "emp_name",
+            "emp_type",
+            "department_name",
+            "clinic_name"
+        ]
+
+        return {k: v for k, v in data.items() if k in allowed_fields}

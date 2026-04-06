@@ -43,3 +43,5 @@ from .user_view import *  # ✅ ADD THIS
 from .social_account_views import *
 
 from .auth_view import *  # ✅ ADD THIS
+
+from .role_permission_views import *  # ✅ ADD THIS

@@ -17,6 +17,10 @@ urlpatterns = [
     path('roles/update/<int:pk>/', RoleUpdateAPIView.as_view()),
     path('roles/delete/<int:pk>/', RoleDeleteAPIView.as_view()),  
     
+    path("permissions/<int:role_id>/", RolePermissionListAPIView.as_view()),
+    path("permissions/create/", RolePermissionCreateAPIView.as_view()),
+    path("permissions/<int:pk>/update/", RolePermissionUpdateAPIView.as_view()),
+
     path("users/permissions/", UserPermissionAPIView.as_view()),
 
 

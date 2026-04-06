@@ -1,3 +1,4 @@
+from restapi.utils.permissions import get_user_permissions, has_permission
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
@@ -66,6 +67,30 @@ class CampaignReadSerializer(serializers.ModelSerializer):
         model = Campaign
         fields = "__all__"
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        request = self.context.get("request")
+        if not request:
+            return data
+
+        user = request.user
+
+        if user.profile.role.name.lower() == "super admin":
+            return data
+
+        if not has_permission(user, "campaign", "campaigns", "view"):
+            return {}
+
+        allowed_fields = [
+            "id",
+            "campaign_name",
+            "status",
+            "start_date",
+            "end_date"
+        ]
+
+        return {k: v for k, v in data.items() if k in allowed_fields}
 
 # =====================================================
 # Social Media Campaign Serializer

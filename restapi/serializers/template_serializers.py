@@ -4,7 +4,7 @@
 
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-
+from restapi.utils.permissions import get_user_permissions, has_permission
 from restapi.models import (
     TemplateMail,
     TemplateSMS,
@@ -59,6 +59,33 @@ class TemplateMailReadSerializer(serializers.ModelSerializer):
         model = TemplateMail
         fields = "__all__"
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        request = self.context.get("request")
+        if not request:
+            return data
+
+        user = request.user
+
+        # SUPER ADMIN → FULL ACCESS
+        if user.profile.role.name.lower() == "super admin":
+            return data
+
+        # NO PERMISSION
+        if not has_permission(user, "template", "mail", "view"):
+            return {}
+
+        # FIELD FILTERING
+        allowed_fields = [
+            "id",
+            "name",
+            "subject",
+            "is_active",
+            "created_at"
+        ]
+
+        return {k: v for k, v in data.items() if k in allowed_fields}
 
 class TemplateMailSerializer(serializers.ModelSerializer):
 
@@ -128,6 +155,31 @@ class TemplateSMSReadSerializer(serializers.ModelSerializer):
         model = TemplateSMS
         fields = "__all__"
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        request = self.context.get("request")
+        if not request:
+            return data
+
+        user = request.user
+
+        if user.profile.role.name.lower() == "super admin":
+            return data
+
+        if not has_permission(user, "template", "sms", "view"):
+            return {}
+
+        allowed_fields = [
+            "id",
+            "name",
+            "body",
+            "is_active",
+            "created_at"
+        ]
+
+        return {k: v for k, v in data.items() if k in allowed_fields}
+
 
 class TemplateSMSSerializer(serializers.ModelSerializer):
 
@@ -191,6 +243,31 @@ class TemplateWhatsAppReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = TemplateWhatsApp
         fields = "__all__"
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        request = self.context.get("request")
+        if not request:
+            return data
+
+        user = request.user
+
+        if user.profile.role.name.lower() == "super admin":
+            return data
+
+        if not has_permission(user, "template", "sms", "view"):
+            return {}
+
+        allowed_fields = [
+            "id",
+            "name",
+            "body",
+            "is_active",
+            "created_at"
+        ]
+
+        return {k: v for k, v in data.items() if k in allowed_fields}
 
 
 class TemplateWhatsAppSerializer(serializers.ModelSerializer):

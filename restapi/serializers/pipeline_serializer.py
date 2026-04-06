@@ -5,7 +5,7 @@ from restapi.models import (
     StageRule,
     StageField,
 )
-
+from restapi.utils.permissions import get_user_permissions, has_permission
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
@@ -63,6 +63,36 @@ class PipelineStageReadSerializer(serializers.ModelSerializer):
             "rules",
             "fields",
         ]
+
+    # =====================================================
+    # RBAC FILTERING
+    # =====================================================
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        request = self.context.get("request")
+        if not request:
+            return data
+
+        user = request.user
+
+        # ✅ SUPER ADMIN → FULL ACCESS
+        if user.profile.role.name.lower() == "super admin":
+            return data
+
+        # ❌ NO PERMISSION → RETURN EMPTY
+        if not has_permission(user, "pipeline", "stages", "view"):
+            return {}
+
+        # 🔥 FIELD FILTERING
+        allowed_fields = [
+            "id",
+            "stage_name",
+            "stage_status",
+            "stage_order"
+        ]
+
+        return {k: v for k, v in data.items() if k in allowed_fields}
 
 
 # =====================================================
