@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated
 
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
@@ -19,10 +20,31 @@ from restapi.serializers.ticket_serializer import (
 )
 
 from restapi.services.ticket_service import send_ticket_reply_service
+from restapi.utils.permissions import has_action_permission_for_labels
 
 logger = logging.getLogger(__name__)
 
+
+def _has_tickets_permission(user, action: str) -> bool:
+    return has_action_permission_for_labels(
+        user,
+        action,
+        ["tickets", "ticket", "ticket management", "ticket_management"],
+    )
+
+
+def _ticket_permission_denied(action: str):
+    return Response(
+        {
+            "success": False,
+            "message": f"Permission denied: tickets {action}",
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
 class TicketReplyAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Send an email reply for a ticket with optional CC and BCC",
@@ -34,17 +56,25 @@ class TicketReplyAPIView(APIView):
                 "message": openapi.Schema(type=openapi.TYPE_STRING),
                 "to": openapi.Schema(
                     type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_EMAIL),
+                    items=openapi.Schema(
+                        type=openapi.TYPE_STRING, format=openapi.FORMAT_EMAIL
+                    ),
                 ),
                 "cc": openapi.Schema(
                     type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_EMAIL),
+                    items=openapi.Schema(
+                        type=openapi.TYPE_STRING, format=openapi.FORMAT_EMAIL
+                    ),
                 ),
                 "bcc": openapi.Schema(
                     type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_EMAIL),
+                    items=openapi.Schema(
+                        type=openapi.TYPE_STRING, format=openapi.FORMAT_EMAIL
+                    ),
                 ),
-                "sent_by": openapi.Schema(type=openapi.TYPE_INTEGER, description="Employee ID"),
+                "sent_by": openapi.Schema(
+                    type=openapi.TYPE_INTEGER, description="Employee ID"
+                ),
             },
         ),
         responses={
@@ -56,6 +86,9 @@ class TicketReplyAPIView(APIView):
         tags=["Tickets"],
     )
     def post(self, request, ticket_id):
+        if not _has_tickets_permission(request.user, "add"):
+            return _ticket_permission_denied("add")
+
         try:
             ticket = Ticket.objects.filter(
                 id=ticket_id,

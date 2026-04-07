@@ -10,6 +10,25 @@ from drf_yasg.utils import swagger_auto_schema
 
 from restapi.serializers.user_serializer import UserSerializer
 from restapi.services import get_user_permissions
+from restapi.utils.permissions import has_action_permission_for_labels
+
+
+def _has_users_permission(user, action: str) -> bool:
+    return has_action_permission_for_labels(
+        user,
+        action,
+        ["users", "user", "user management", "user_management"],
+    )
+
+
+def _permission_denied(action: str):
+    return Response(
+        {
+            "success": False,
+            "message": f"Permission denied: users {action}",
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
 
 
 # =========================
@@ -20,6 +39,8 @@ class UserCreateAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def post(self, request):
+        if not _has_users_permission(request.user, "add"):
+            return _permission_denied("add")
 
         serializer = UserSerializer(
             data=request.data,
@@ -44,6 +65,8 @@ class UserListAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"])
     def get(self, request):
+        if not _has_users_permission(request.user, "view"):
+            return _permission_denied("view")
 
         users = User.objects.select_related("profile", "profile__role").all()
 
@@ -62,6 +85,8 @@ class UserDetailAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"])
     def get(self, request, pk):
+        if not _has_users_permission(request.user, "view"):
+            return _permission_denied("view")
 
         user = get_object_or_404(
             User.objects.select_related("profile", "profile__role"),
@@ -83,6 +108,8 @@ class UserUpdateAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def put(self, request, pk):
+        if not _has_users_permission(request.user, "edit"):
+            return _permission_denied("edit")
 
         user = get_object_or_404(User, id=pk)
 
@@ -111,6 +138,8 @@ class UserPartialUpdateAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def patch(self, request, pk):
+        if not _has_users_permission(request.user, "edit"):
+            return _permission_denied("edit")
 
         user = get_object_or_404(User, id=pk)
 
@@ -148,6 +177,8 @@ class UserStatusUpdateAPIView(APIView):
         )
     )
     def patch(self, request, pk):
+        if not _has_users_permission(request.user, "edit"):
+            return _permission_denied("edit")
 
         user = get_object_or_404(
             User.objects.select_related("profile"),
@@ -180,6 +211,8 @@ class UserDeleteAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"])
     def delete(self, request, pk):
+        if not _has_users_permission(request.user, "print"):
+            return _permission_denied("print")
 
         user = get_object_or_404(User, id=pk)
         user.delete()

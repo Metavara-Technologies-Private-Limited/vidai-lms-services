@@ -168,11 +168,19 @@ CORS_ALLOW_ALL_ORIGINS = True
 # ================================
 # DRF
 # ================================
+JWT_ACCESS_TOKEN_LIFETIME_MINUTES = int(
+    os.getenv("JWT_ACCESS_TOKEN_LIFETIME_MINUTES", "480")
+)
+JWT_REFRESH_TOKEN_LIFETIME_DAYS = int(
+    os.getenv("JWT_REFRESH_TOKEN_LIFETIME_DAYS", "30")
+)
+
 REST_FRAMEWORK = {
-    'EXCEPTION_HANDLER': 'restapi.exception_handler.custom_exception_handler',
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'restapi.utils.jwt_authentication.JWTAuthentication',
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "restapi.utils.jwt_authentication.JWTAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
     ],
+    "EXCEPTION_HANDLER": "restapi.exception_handler.custom_exception_handler",
 }
 
 

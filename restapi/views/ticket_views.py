@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated
 
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
@@ -21,14 +22,34 @@ from restapi.serializers.ticket_serializer import (
     TicketDetailSerializer,
     TicketListSerializer,
 )
+from restapi.utils.permissions import has_action_permission_for_labels
 
 logger = logging.getLogger(__name__)
+
+
+def _has_tickets_permission(user, action: str) -> bool:
+    return has_action_permission_for_labels(
+        user,
+        action,
+        ["tickets", "ticket", "ticket management", "ticket_management"],
+    )
+
+
+def _ticket_permission_denied(action: str):
+    return Response(
+        {
+            "success": False,
+            "message": f"Permission denied: tickets {action}",
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
 
 
 # -------------------------------------------------------------------
 # Ticket Create API View (POST)
 # -------------------------------------------------------------------
 class TicketCreateAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Create a new support ticket",
@@ -41,6 +62,9 @@ class TicketCreateAPIView(APIView):
         tags=["Tickets"],
     )
     def post(self, request):
+        if not _has_tickets_permission(request.user, "add"):
+            return _ticket_permission_denied("add")
+
         try:
             serializer = TicketWriteSerializer(
                 data=request.data,
@@ -74,6 +98,7 @@ class TicketCreateAPIView(APIView):
 # Ticket Update API View (PUT)
 # -------------------------------------------------------------------
 class TicketUpdateAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Update an existing ticket (Full Update)",
@@ -87,6 +112,9 @@ class TicketUpdateAPIView(APIView):
         tags=["Tickets"],
     )
     def put(self, request, ticket_id):
+        if not _has_tickets_permission(request.user, "edit"):
+            return _ticket_permission_denied("edit")
+
         try:
             ticket = Ticket.objects.filter(
                 id=ticket_id,
@@ -132,6 +160,7 @@ class TicketUpdateAPIView(APIView):
 # Ticket List API View (GET)
 # -------------------------------------------------------------------
 class TicketListAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Retrieve paginated list of tickets with optional filters",
@@ -153,6 +182,9 @@ class TicketListAPIView(APIView):
         tags=["Tickets"],
     )
     def get(self, request):
+        if not _has_tickets_permission(request.user, "view"):
+            return _ticket_permission_denied("view")
+
         try:
             queryset = Ticket.objects.filter(is_deleted=False)
 
@@ -198,6 +230,7 @@ class TicketListAPIView(APIView):
 # Ticket Detail API View (GET)
 # -------------------------------------------------------------------
 class TicketDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Retrieve detailed information of a specific ticket",
@@ -209,6 +242,8 @@ class TicketDetailAPIView(APIView):
         tags=["Tickets"],
     )
     def get(self, request, ticket_id):
+        if not _has_tickets_permission(request.user, "view"):
+            return _ticket_permission_denied("view")
 
         if getattr(self, "swagger_fake_view", False):
             return Response(status=200)
@@ -243,6 +278,7 @@ class TicketDetailAPIView(APIView):
 # Ticket Assign for Employee API View (POST)
 # -------------------------------------------------------------------
 class TicketAssignAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Assign a ticket to an employee",
@@ -262,6 +298,9 @@ class TicketAssignAPIView(APIView):
         tags=["Tickets"],
     )
     def post(self, request, ticket_id):
+        if not _has_tickets_permission(request.user, "edit"):
+            return _ticket_permission_denied("edit")
+
         try:
             ticket = Ticket.objects.filter(
                 id=ticket_id,
@@ -323,6 +362,7 @@ class TicketAssignAPIView(APIView):
 # Ticket Status Update API View (POST)
 # -------------------------------------------------------------------
 class TicketStatusUpdateAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Update the status of a ticket",
@@ -346,6 +386,9 @@ class TicketStatusUpdateAPIView(APIView):
         tags=["Tickets"],
     )
     def post(self, request, ticket_id):
+        if not _has_tickets_permission(request.user, "edit"):
+            return _ticket_permission_denied("edit")
+
         try:
             ticket = Ticket.objects.filter(
                 id=ticket_id,
@@ -484,6 +527,7 @@ class TicketStatusUpdateAPIView(APIView):
 # Ticket Document Upload API View (POST)
 # -------------------------------------------------------------------
 class TicketDocumentUploadAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Upload a document to a ticket",
@@ -506,6 +550,8 @@ class TicketDocumentUploadAPIView(APIView):
         tags=["Tickets"],
     )
     def post(self, request, ticket_id):
+        if not _has_tickets_permission(request.user, "edit"):
+            return _ticket_permission_denied("edit")
 
         if getattr(self, "swagger_fake_view", False):
             return Response(status=200)
@@ -560,6 +606,7 @@ class TicketDocumentUploadAPIView(APIView):
 # Ticket Delete API View (DELETE)
 # -------------------------------------------------------------------
 class TicketDeleteAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Soft delete a ticket",
@@ -571,6 +618,9 @@ class TicketDeleteAPIView(APIView):
         tags=["Tickets"],
     )
     def delete(self, request, ticket_id):
+        if not _has_tickets_permission(request.user, "print"):
+            return _ticket_permission_denied("print")
+
         try:
             ticket = Ticket.objects.filter(
                 id=ticket_id,
@@ -603,6 +653,7 @@ class TicketDeleteAPIView(APIView):
 # Ticket Dashboard Count API View (GET)
 # -------------------------------------------------------------------
 class TicketDashboardCountAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Get ticket count grouped by status",
@@ -613,6 +664,9 @@ class TicketDashboardCountAPIView(APIView):
         tags=["Tickets"],
     )
     def get(self, request):
+        if not _has_tickets_permission(request.user, "view"):
+            return _ticket_permission_denied("view")
+
         try:
             queryset = Ticket.objects.filter(is_deleted=False)
 

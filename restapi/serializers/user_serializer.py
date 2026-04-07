@@ -4,7 +4,27 @@ from django.core.exceptions import ObjectDoesNotExist
 
 from restapi.models.user_profile import UserProfile
 from restapi.models.role import Role
-from restapi.utils.permissions import get_user_permissions, has_permission, is_super_admin_role
+from restapi.utils.permissions import (
+    get_user_permissions,
+    has_permission,
+    has_subcategory_permission,
+    is_super_admin_role,
+)
+
+
+def _resolve_default_role(request):
+    # Prefer least-privilege default role when explicit role is not provided.
+    user_role = Role.objects.filter(name__iexact="User").first()
+    if user_role:
+        return user_role
+
+    # Fallback to creator's own role so create can still proceed safely.
+    if request and hasattr(request, "user") and hasattr(request.user, "profile"):
+        if request.user.profile and request.user.profile.role:
+            return request.user.profile.role
+
+    # Final fallback to any active role configured in system.
+    return Role.objects.filter(is_active=True).first() or Role.objects.first()
 
 
 
@@ -130,13 +150,16 @@ class UserSerializer(serializers.ModelSerializer):
 
         role = validated_data.pop("role", None)
 
+        request = self.context.get("request")
         if not role:
-            raise serializers.ValidationError("Role is required")
+            role = _resolve_default_role(request)
+
+        if not role:
+            raise serializers.ValidationError("No role configured. Please create a role first")
 
         profile_data["role"] = role
 
         # ✅ ADD CLINIC FROM LOGGED-IN USER
-        request = self.context.get("request")
         if request and hasattr(request.user, "profile"):
             profile_data["clinic"] = request.user.profile.clinic
 
@@ -260,7 +283,13 @@ class UserSerializer(serializers.ModelSerializer):
             return data
 
         # NO VIEW PERMISSION
-        if not has_permission(user, "user_management", "users", "view"):
+        can_view_users = (
+            has_permission(user, "user_management", "users", "view")
+            or has_subcategory_permission(user, "settings", "settings", "users", "view")
+            or has_subcategory_permission(user, "settings", "settings", "user", "view")
+        )
+
+        if not can_view_users:
             return {}
 
         # FIELD FILTERING
