@@ -135,6 +135,22 @@ class FacebookStatusAPIView(APIView):
         return Response({"connected": connected})
 
 
+class FacebookDisconnectAPIView(APIView):
+    def post(self, request):
+        try:
+            clinic = Clinic.objects.first()
+
+            SocialAccount.objects.filter(
+                clinic=clinic,
+                platform="facebook",
+                is_active=True
+            ).update(is_active=False)
+
+            return Response({"success": True, "message": "Facebook disconnected"})
+        except Exception as e:
+            traceback.print_exc()
+            return Response({"error": str(e)}, status=500)
+
 class GoogleLoginAPIView(APIView):
     def get(self, request):
         auth_url = (

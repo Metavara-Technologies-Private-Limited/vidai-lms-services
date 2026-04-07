@@ -124,10 +124,19 @@ class EmailCampaignCreateAPIView(APIView):
             if data.get("target_audience") == "active":
                 queryset = queryset.exclude(lead_status__in=["lost", "lost lead"])
 
-            emailsTest = list(queryset.values_list("email", flat=True))
+            emailsTest = sorted(
+                set(
+                    email.strip().lower()
+                    for email in queryset.values_list("email", flat=True)
+                    if email
+                )
+            )
+            # Temporarily sending mails to self account
             print("Emails: ")
             print(emailsTest)
             emails = "sohan.m.14911@gmail.com"
+            # Need to comment above and uncomment below:
+            # emails = emailsTest
 
             created_email_configs = []
 

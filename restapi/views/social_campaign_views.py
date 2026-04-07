@@ -26,6 +26,7 @@ from restapi.services.campaign_social_post_service import (
     post_to_instagram,
     post_to_linkedin,
 )
+from restapi.services.zapier_service import send_to_zapier_social
 
 logger = logging.getLogger(__name__)
 
@@ -285,6 +286,21 @@ class SocialMediaCampaignCreateAPIView(APIView):
                             ),
                         )
                         print("Image URL :", campaign.image_url)
+
+                        send_to_zapier_social(
+                            {
+                                "event": "social_campaign_created",
+                                "campaign_id": str(campaign.id),
+                                "campaign_name": campaign.campaign_name,
+                                "platforms": channels,
+                                "budget": filtered_budget,
+                                "content": facebook_message,
+                                "image_url": campaign.image_url,
+                                "status": data.get("status"),
+                                "start_date": str(data.get("start_date")),
+                                "end_date": str(data.get("end_date")),
+                            }
+                        )
 
                         fb_response = post_to_facebook(
                             page_id=social_fb.page_id,
