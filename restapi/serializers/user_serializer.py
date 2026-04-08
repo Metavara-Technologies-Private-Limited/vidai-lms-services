@@ -13,34 +13,24 @@ from restapi.utils.permissions import (
 
 
 def _resolve_default_role(request):
-    # Prefer least-privilege default role when explicit role is not provided.
     user_role = Role.objects.filter(name__iexact="User").first()
     if user_role:
         return user_role
 
-    # Fallback to creator's own role so create can still proceed safely.
     if request and hasattr(request, "user") and hasattr(request.user, "profile"):
         if request.user.profile and request.user.profile.role:
             return request.user.profile.role
 
-    # Final fallback to any active role configured in system.
     return Role.objects.filter(is_active=True).first() or Role.objects.first()
-
 
 
 class UserSerializer(serializers.ModelSerializer):
 
-    # =========================
-    # 🔹 USER FIELDS
-    # =========================
     username = serializers.CharField(required=False)
     email = serializers.EmailField(required=False)
     password = serializers.CharField(write_only=True, required=False)
     confirm_password = serializers.CharField(write_only=True, required=False)
 
-    # =========================
-    # 🔹 PROFILE FIELDS
-    # =========================
     first_name = serializers.CharField(required=False)
     last_name = serializers.CharField(required=False)
     gender = serializers.CharField(required=False, allow_blank=True)
@@ -74,67 +64,56 @@ class UserSerializer(serializers.ModelSerializer):
         ]
 
     # =========================
-    # ✅ VALIDATION
+    # VALIDATION
     # =========================
     def validate(self, data):
 
         request = self.context.get("request")
 
-        # PASSWORD VALIDATION
-        if not self.instance:
-            if not data.get("password"):
-                raise serializers.ValidationError("Password is required")
-
         password = data.get("password")
         confirm_password = data.get("confirm_password")
-
-        if password or confirm_password:
-            if not password or not confirm_password:
-                raise serializers.ValidationError(
-                    "Both password and confirm password are required"
-                )
-            if password != confirm_password:
-                raise serializers.ValidationError("Passwords do not match")
-
-        # EMAIL VALIDATION
         email = data.get("email")
+        role = data.get("role")
+
+        if not self.instance:
+            if not email:
+                raise serializers.ValidationError({"email": "Email is required"})
+            if not password:
+                raise serializers.ValidationError({"password": "Password is required"})
+            if not confirm_password:
+                raise serializers.ValidationError({"confirm_password": "Confirm password is required"})
+            if not role:
+                raise serializers.ValidationError({"role": "Role is required"})
+            if password != confirm_password:
+                raise serializers.ValidationError({"password": "Passwords do not match"})
 
         if self.instance is None:
-            if not email:
-                raise serializers.ValidationError("Email is required")
-
-            if User.objects.filter(email=email).exists():
-                raise serializers.ValidationError("Email already exists")
+            if email and User.objects.filter(email=email).exists():
+                raise serializers.ValidationError({"email": "Email already exists"})
         else:
             if email and User.objects.exclude(id=self.instance.id).filter(email=email).exists():
-                raise serializers.ValidationError("Email already exists")
+                raise serializers.ValidationError({"email": "Email already exists"})
 
-        # USERNAME VALIDATION
         username = data.get("username")
         if username:
             if self.instance:
                 if User.objects.exclude(id=self.instance.id).filter(username=username).exists():
-                    raise serializers.ValidationError("Username already exists")
+                    raise serializers.ValidationError({"username": "Username already exists"})
             else:
                 if User.objects.filter(username=username).exists():
-                    raise serializers.ValidationError("Username already exists")
+                    raise serializers.ValidationError({"username": "Username already exists"})
 
-        # ROLE SECURITY
-        if "role" in data:
+        if "role" in data and data.get("role") is not None:
             if not request or not hasattr(request.user, "profile"):
                 raise serializers.ValidationError("Login required to assign role")
 
-            current_role = request.user.profile.role
-
-            if not is_super_admin_role(current_role):
-                raise serializers.ValidationError(
-                    "Only Super Admin can assign roles"
-                )
+            if not is_super_admin_role(request.user.profile.role):
+                raise serializers.ValidationError("Only Super Admin can assign roles")
 
         return data
 
     # =========================
-    # ✅ CREATE USER
+    # CREATE USER
     # =========================
     def create(self, validated_data):
 
@@ -149,8 +128,8 @@ class UserSerializer(serializers.ModelSerializer):
         }
 
         role = validated_data.pop("role", None)
-
         request = self.context.get("request")
+
         if not role:
             role = _resolve_default_role(request)
 
@@ -159,7 +138,6 @@ class UserSerializer(serializers.ModelSerializer):
 
         profile_data["role"] = role
 
-        # ✅ ADD CLINIC FROM LOGGED-IN USER
         if request and hasattr(request.user, "profile"):
             profile_data["clinic"] = request.user.profile.clinic
 
@@ -174,24 +152,27 @@ class UserSerializer(serializers.ModelSerializer):
             password=password
         )
 
-        UserProfile.objects.update_or_create(
+        profile, _ = UserProfile.objects.update_or_create(
             user=user,
             defaults=profile_data
         )
 
+        user.refresh_from_db()
+
         return user
 
     # =========================
-    # ✅ UPDATE USER
+    # UPDATE USER
     # =========================
     def update(self, instance, validated_data):
 
-        profile = instance.profile
+        profile, _ = UserProfile.objects.get_or_create(user=instance)
 
         if "email" in validated_data:
             instance.email = validated_data["email"]
 
-        instance.username = validated_data.get("username", instance.username)
+        if "username" in validated_data:
+            instance.username = validated_data["username"]
 
         password = validated_data.get("password")
         if password:
@@ -208,29 +189,22 @@ class UserSerializer(serializers.ModelSerializer):
             "mobile_no"
         ]:
             if field in validated_data:
-                setattr(profile, field, validated_data.get(field))
+                setattr(profile, field, validated_data[field])
 
         if "role" in validated_data:
-            profile.role = validated_data.get("role")
+            profile.role = validated_data["role"]
 
         if "photo" in validated_data:
-            new_photo = validated_data.get("photo")
-
-            if new_photo is None:
-                if profile.photo:
-                    profile.photo.delete(save=False)
-                profile.photo = None
-            else:
-                if profile.photo:
-                    profile.photo.delete(save=False)
-                profile.photo = new_photo
+            if profile.photo:
+                profile.photo.delete(save=False)
+            profile.photo = validated_data.get("photo")
 
         profile.save()
 
         return instance
 
     # =========================
-    # ✅ RESPONSE FORMAT
+    # RESPONSE FORMAT
     # =========================
     def to_representation(self, instance):
 
@@ -247,28 +221,22 @@ class UserSerializer(serializers.ModelSerializer):
             "id": instance.id,
             "username": instance.username,
             "email": instance.email,
-
-            "first_name": profile.first_name if profile and profile.first_name else "",
-            "last_name": profile.last_name if profile and profile.last_name else "",
-            "gender": profile.gender if profile and profile.gender else "",
+            "first_name": profile.first_name if profile else "",
+            "last_name": profile.last_name if profile else "",
+            "gender": profile.gender if profile else "",
             "date_of_birth": profile.date_of_birth if profile else None,
             "date_of_joining": profile.date_of_joining if profile else None,
-            "mobile_no": profile.mobile_no if profile and profile.mobile_no else "",
-
+            "mobile_no": profile.mobile_no if profile else "",
             "role": {
                 "id": profile.role.id if profile and profile.role else None,
                 "name": profile.role.name if profile and profile.role else None
             },
-
-            # ✅ ADDED CLINIC
             "clinic": {
                 "id": profile.clinic.id if profile and profile.clinic else None,
                 "name": profile.clinic.name if profile and profile.clinic else None
             },
-
             "photo": profile.photo.url if profile and profile.photo else None,
             "is_active": profile.is_active if profile else False,
-
             "permissions": permissions
         }
 
@@ -278,11 +246,9 @@ class UserSerializer(serializers.ModelSerializer):
 
         user = request.user
 
-        # SUPER ADMIN → FULL DATA
         if is_super_admin_role(user.profile.role):
             return data
 
-        # NO VIEW PERMISSION
         can_view_users = (
             has_permission(user, "user_management", "users", "view")
             or has_subcategory_permission(user, "settings", "settings", "users", "view")
@@ -292,13 +258,12 @@ class UserSerializer(serializers.ModelSerializer):
         if not can_view_users:
             return {}
 
-        # FIELD FILTERING
         allowed_fields = [
             "id",
             "username",
             "first_name",
             "role",
-            "clinic",   # ✅ ADDED
+            "clinic",
             "is_active",
             "permissions"
         ]

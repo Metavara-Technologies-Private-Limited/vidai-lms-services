@@ -7,8 +7,9 @@ from django.contrib.auth.models import User
 
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
-
+from restapi.utils.permissions import get_user_permissions
 from restapi.serializers.user_serializer import UserSerializer
+
 from restapi.services import get_user_permissions
 from restapi.utils.permissions import has_action_permission_for_labels
 
@@ -30,12 +31,15 @@ def _permission_denied(action: str):
         status=status.HTTP_403_FORBIDDEN,
     )
 
+from restapi.utils.permissions import get_user_permissions  
+
+
 
 # =========================
 # CREATE USER
 # =========================
 class UserCreateAPIView(APIView):
-    permission_classes = [IsAuthenticated]   # ✅ FIX
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def post(self, request):
@@ -53,7 +57,7 @@ class UserCreateAPIView(APIView):
         return Response({
             "success": True,
             "message": "User created successfully",
-            "data": UserSerializer(user).data
+            "data": UserSerializer(user, context={"request": request}).data   # ✅ FIX
         }, status=status.HTTP_201_CREATED)
 
 
@@ -61,7 +65,7 @@ class UserCreateAPIView(APIView):
 # LIST USERS
 # =========================
 class UserListAPIView(APIView):
-    permission_classes = [IsAuthenticated]   # ✅ FIX
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(tags=["User"])
     def get(self, request):
@@ -73,7 +77,7 @@ class UserListAPIView(APIView):
         return Response({
             "success": True,
             "message": "Users fetched successfully",
-            "data": UserSerializer(users, many=True).data
+            "data": UserSerializer(users, many=True, context={"request": request}).data  # ✅ FIX
         })
 
 
@@ -239,6 +243,6 @@ class UserPermissionAPIView(APIView):
             "message": "Permissions fetched successfully",
             "data": {
                 "role": request.user.profile.role.name if request.user.profile.role else None,
-                "permissions": permissions
+                "permissions": permissions   # ✅ FIXED FORMAT
             }
         })
