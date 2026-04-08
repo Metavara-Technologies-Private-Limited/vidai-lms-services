@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 
 from django.shortcuts import get_object_or_404
@@ -16,6 +17,10 @@ from django.shortcuts import get_object_or_404
 from restapi.models import Lead
 from restapi.serializers.lead_serializer import LeadSerializer, LeadReadSerializer
 from restapi.services.zapier_service import send_to_zapier
+from restapi.utils.permissions import has_action_permission_for_labels
+
+# Aliases used across the app for the Leads Hub permission category
+LEAD_LABELS = ["leads hub"]
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +33,7 @@ class LeadCreateAPIView(APIView):
     Create Lead API (Supports JSON + File Upload)
     """
 
+    permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @swagger_auto_schema(
@@ -42,6 +48,12 @@ class LeadCreateAPIView(APIView):
     )
     def post(self, request):
         print("STEP 1: LeadCreateAPIView HIT")
+
+        if not has_action_permission_for_labels(request.user, "add", LEAD_LABELS):
+            return Response(
+                {"error": "You do not have permission to add leads."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         try:
             print("STEP 2: Incoming request data:")
@@ -116,6 +128,7 @@ class LeadUpdateAPIView(APIView):
     """
     Update an existing Lead
     """
+    permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @swagger_auto_schema(
@@ -130,6 +143,12 @@ class LeadUpdateAPIView(APIView):
         tags=["Leads"],
     )
     def put(self, request, lead_id):
+        if not has_action_permission_for_labels(request.user, "edit", LEAD_LABELS):
+            return Response(
+                {"error": "You do not have permission to edit leads."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         try:
             lead = Lead.objects.get(id=lead_id)
 
@@ -183,6 +202,7 @@ class LeadUpdateAPIView(APIView):
 # Lead List API View (GET)
 # -------------------------------------------------------------------
 class LeadListAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Get all active leads",
@@ -190,6 +210,12 @@ class LeadListAPIView(APIView):
         tags=["Leads"]
     )
     def get(self, request):
+        if not has_action_permission_for_labels(request.user, "view", LEAD_LABELS):
+            return Response(
+                {"error": "You do not have permission to view leads."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         try:
             queryset = Lead.objects.filter(
                 is_deleted=False
@@ -233,6 +259,7 @@ class LeadListAPIView(APIView):
 # Lead List API using ID (GET)
 # -------------------------------------------------------------------
 class LeadGetAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Get lead by ID",
@@ -240,6 +267,12 @@ class LeadGetAPIView(APIView):
         tags=["Leads"]
     )
     def get(self, request, lead_id):
+        if not has_action_permission_for_labels(request.user, "view", LEAD_LABELS):
+            return Response(
+                {"error": "You do not have permission to view leads."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         lead = get_object_or_404(
             Lead.objects.select_related(
                 "clinic",
@@ -259,12 +292,19 @@ class LeadGetAPIView(APIView):
 # Lead Activate API (Post)
 # -------------------------------------------------------------------
 class LeadActivateAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Activate a lead",
         tags=["Leads"]
     )
     def post(self, request, lead_id):
+        if not has_action_permission_for_labels(request.user, "edit", LEAD_LABELS):
+            return Response(
+                {"error": "You do not have permission to modify leads."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         try:
             lead = Lead.objects.get(id=lead_id)
 
@@ -283,12 +323,19 @@ class LeadActivateAPIView(APIView):
 # Lead In_Activate API (Patch)
 # -------------------------------------------------------------------
 class LeadInactivateAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Inactivate a lead",
         tags=["Leads"]
     )
     def patch(self, request, lead_id):
+        if not has_action_permission_for_labels(request.user, "edit", LEAD_LABELS):
+            return Response(
+                {"error": "You do not have permission to modify leads."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         try:
             lead = Lead.objects.get(id=lead_id)
 
@@ -307,12 +354,19 @@ class LeadInactivateAPIView(APIView):
 # Lead Soft Delete (Patch)
 # -------------------------------------------------------------------
 class LeadSoftDeleteAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Soft delete a lead",
         tags=["Leads"]
     )
     def patch(self, request, lead_id):
+        if not has_action_permission_for_labels(request.user, "edit", LEAD_LABELS):
+            return Response(
+                {"error": "You do not have permission to delete leads."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         try:
             lead = Lead.objects.get(id=lead_id)
 
