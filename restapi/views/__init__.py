@@ -38,10 +38,14 @@ from .debug_views import *
 
 from .role_views import *
 
-from .user_view import *  # ✅ ADD THIS
+from .user_view import *  
 
 from .social_account_views import *
 
-from .auth_view import *  # ✅ ADD THIS
+from .auth_view import *  
 
-from .role_permission_views import *  # ✅ ADD THIS
+from .role_permission_views import *  
+
+from .referral_view import *  
+
+from .report_view import *

@@ -29,9 +29,6 @@ logger = logging.getLogger(__name__)
 # Lead Create API View (POST)
 # -------------------------------------------------------------------
 class LeadCreateAPIView(APIView):
-    """
-    Create Lead API (Supports JSON + File Upload)
-    """
 
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
@@ -84,7 +81,10 @@ class LeadCreateAPIView(APIView):
                 "email": lead.email,
                 "lead_status": lead.lead_status,
                 "assigned_to_id": lead.assigned_to_id,
-                
+
+                # 🔥 ADDED (SAFE)
+                "referral_source_id": getattr(lead.referral_source, "id", None),
+                "referral_source_name": getattr(lead.referral_source, "name", None),
             })
 
             print("STEP 7: Zapier call completed")
@@ -121,14 +121,19 @@ class LeadCreateAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+
 # -------------------------------------------------------------------
 # Lead Update API View (PUT)
 # -------------------------------------------------------------------
 class LeadUpdateAPIView(APIView):
+
     """
     Update an existing Lead
     """
     permission_classes = [IsAuthenticated]
+
+
+
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @swagger_auto_schema(
@@ -167,7 +172,10 @@ class LeadUpdateAPIView(APIView):
                 "lead_id": str(updated_lead.id),
                 "lead_status": updated_lead.lead_status,
                 "assigned_to_id": updated_lead.assigned_to_id,
-                
+
+                # 🔥 ADDED (SAFE)
+                "referral_source_id": getattr(updated_lead.referral_source, "id", None),
+                "referral_source_name": getattr(updated_lead.referral_source, "name", None),
             })
 
             return Response(
@@ -198,6 +206,7 @@ class LeadUpdateAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
 # -------------------------------------------------------------------
 # Lead List API View (GET)
 # -------------------------------------------------------------------
@@ -220,6 +229,15 @@ class LeadListAPIView(APIView):
             queryset = Lead.objects.filter(
                 is_deleted=False
             ).order_by("-created_at")
+
+            # 🔥 OPTIONAL OPTIMIZATION (SAFE)
+            queryset = queryset.select_related(
+                "clinic",
+                "department",
+                "campaign",
+                "referral_source",
+                "referral_source__external_clinic"
+            )
 
             clinic_id = request.query_params.get("clinic")
             lead_status = request.query_params.get("lead_status")
@@ -255,8 +273,9 @@ class LeadListAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+
 # -------------------------------------------------------------------
-# Lead List API using ID (GET)
+# Lead Get API (GET)
 # -------------------------------------------------------------------
 class LeadGetAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -278,7 +297,9 @@ class LeadGetAPIView(APIView):
                 "clinic",
                 "department",
                 "campaign",
-                
+                # 🔥 ADDED
+                "referral_source",
+                "referral_source__external_clinic",
             ),
             id=lead_id
         )
@@ -288,8 +309,9 @@ class LeadGetAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
+
 # -------------------------------------------------------------------
-# Lead Activate API (Post)
+# Lead Activate API
 # -------------------------------------------------------------------
 class LeadActivateAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -319,8 +341,9 @@ class LeadActivateAPIView(APIView):
         except Lead.DoesNotExist:
             raise NotFound("Lead not found")
 
+
 # -------------------------------------------------------------------
-# Lead In_Activate API (Patch)
+# Lead Inactivate API
 # -------------------------------------------------------------------
 class LeadInactivateAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -350,8 +373,9 @@ class LeadInactivateAPIView(APIView):
         except Lead.DoesNotExist:
             raise NotFound("Lead not found")
 
+
 # -------------------------------------------------------------------
-# Lead Soft Delete (Patch)
+# Lead Soft Delete API
 # -------------------------------------------------------------------
 class LeadSoftDeleteAPIView(APIView):
     permission_classes = [IsAuthenticated]

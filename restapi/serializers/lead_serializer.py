@@ -22,9 +22,6 @@ from restapi.services.lead_service import (
 
 class LeadReadSerializer(serializers.ModelSerializer):
 
-    # -------------------------
-    # Existing Mappings
-    # -------------------------
     clinic_id = serializers.IntegerField(source="clinic.id", read_only=True)
     clinic_name = serializers.CharField(source="clinic.name", read_only=True)
 
@@ -47,6 +44,15 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
     documents = serializers.SerializerMethodField()
 
+    # 🔥 ADDED (Referral - SAFE)
+    referral_source_id = serializers.IntegerField(source="referral_source.id", read_only=True)
+    referral_source_name = serializers.CharField(source="referral_source.name", read_only=True)
+    referral_source_type = serializers.CharField(source="referral_source.type", read_only=True)
+    referral_clinic_name = serializers.CharField(
+        source="referral_source.external_clinic.name",
+        read_only=True
+    )
+
     class Meta:
         model = Lead
         fields = [
@@ -60,6 +66,12 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
             "created_by_id",
             "created_by_name",
+
+            # 🔥 ADDED
+            "referral_source_id",
+            "referral_source_name",
+            "referral_source_type",
+            "referral_clinic_name",
 
             "full_name",
             "age",
@@ -94,10 +106,6 @@ class LeadReadSerializer(serializers.ModelSerializer):
             "converted_at",
         ]
 
-    # =====================================================
-    # METHODS
-    # =====================================================
-
     def get_campaign_duration(self, obj):
         campaign = obj.campaign
         if not campaign:
@@ -121,10 +129,6 @@ class LeadReadSerializer(serializers.ModelSerializer):
             for doc in obj.documents.all()
         ]
 
-    # =====================================================
-    # RBAC FILTERING
-    # =====================================================
-
     def to_representation(self, instance):
         data = super().to_representation(instance)
 
@@ -134,15 +138,12 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
         user = request.user
 
-        # SUPER ADMIN → FULL ACCESS
         if user.profile.role.name.lower() == "super admin":
             return data
 
-        # NO PERMISSION → EMPTY
         if not has_permission(user, "lead", "leads", "view"):
             return {}
 
-        # LIMITED FIELDS
         allowed_fields = [
             "id",
             "full_name",
@@ -152,7 +153,6 @@ class LeadReadSerializer(serializers.ModelSerializer):
         ]
 
         return {k: v for k, v in data.items() if k in allowed_fields}
-
 
 
 # =====================================================
@@ -172,6 +172,9 @@ class LeadSerializer(serializers.ModelSerializer):
 
     campaign_id = serializers.UUIDField(required=False, allow_null=True)
 
+    # 🔥 ADDED (Referral input - SAFE)
+    referral_source_id = serializers.IntegerField(required=False, allow_null=True)
+
     documents = serializers.ListField(
         child=serializers.FileField(),
         write_only=True,
@@ -188,12 +191,14 @@ class LeadSerializer(serializers.ModelSerializer):
             "department_id",
             "campaign_id",
 
-            # ✅ FIXED (added missing fields)
             "assigned_to_id",
             "assigned_to_name",
 
             "personal_id",
             "personal_name",
+
+            # 🔥 ADDED
+            "referral_source_id",
 
             "full_name",
             "age",
@@ -225,11 +230,6 @@ class LeadSerializer(serializers.ModelSerializer):
 
         read_only_fields = ("id",)
 
-
-
-    # =====================================================
-    # VALIDATION
-    # =====================================================
     def validate(self, attrs):
         request = self.context.get("request")
 
@@ -256,26 +256,36 @@ class LeadSerializer(serializers.ModelSerializer):
 
         return attrs
 
-    # =====================================================
-    # CREATE
-    # =====================================================
     def create(self, validated_data):
         request = self.context.get("request")
 
-        # ✅ FIXED (no FK)
+        # 🔥 ADDED (Referral handling)
+        referral_source_id = validated_data.pop("referral_source_id", None)
+        if referral_source_id:
+            from restapi.models.referral import ReferralSource
+            try:
+                validated_data["referral_source"] = ReferralSource.objects.get(id=referral_source_id)
+            except ReferralSource.DoesNotExist:
+                raise ValidationError({"referral_source_id": "Invalid referral source"})
+
         if request and hasattr(request.user, "employee"):
             validated_data["created_by_id"] = request.user.employee.id
             validated_data["created_by_name"] = request.user.employee.emp_name
 
         return create_lead(validated_data)
 
-    # =====================================================
-    # UPDATE
-    # =====================================================
     def update(self, instance, validated_data):
         request = self.context.get("request")
 
-        # ✅ optional tracking
+        # 🔥 ADDED (Referral handling)
+        referral_source_id = validated_data.pop("referral_source_id", None)
+        if referral_source_id is not None:
+            from restapi.models.referral import ReferralSource
+            try:
+                instance.referral_source = ReferralSource.objects.get(id=referral_source_id)
+            except ReferralSource.DoesNotExist:
+                raise ValidationError({"referral_source_id": "Invalid referral source"})
+
         if request and hasattr(request.user, "employee"):
             validated_data["updated_by_id"] = request.user.employee.id
             validated_data["updated_by_name"] = request.user.employee.emp_name

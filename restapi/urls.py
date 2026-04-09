@@ -209,6 +209,13 @@ urlpatterns = [
     path("reputation/dashboard/", ReputationDashboardAPIView.as_view(), name="reputation-dashboard"),
     path("reputation/reviews/create/", ReviewCreateAPIView.as_view(), name="review-submit"),
 
+
+    path("sources/", ReferralSourceListAPIView.as_view(), name="referral-sources"),
+    path("dashboard/", ReferralDashboardAPIView.as_view(), name="referral-dashboard"),
+    
+    path("reports/calls/", CallReportView.as_view(), name="call-reports"),
+    path("reports/campaigns/", CampaignReportView.as_view(), name="campaign-reports"),
+
     # ============================
     # PROXY
     # ============================

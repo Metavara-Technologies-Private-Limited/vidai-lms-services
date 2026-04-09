@@ -129,6 +129,13 @@ class Lead(models.Model):
     source = models.CharField(max_length=100)
     sub_source = models.CharField(max_length=100, blank=True)
 
+    # 🔥 ADD THIS
+    referral_source = models.ForeignKey("restapi.ReferralSource", on_delete=models.SET_NULL,
+    null=True,
+    blank=True,
+    related_name="leads"
+)
+
     # =============================
     # STATUS
     # =============================
