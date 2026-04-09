@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from restapi.utils.permissions import get_user_permissions, has_permission
 from restapi.models import (
     Lead,
     Clinic,
@@ -127,31 +126,9 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-
-        request = self.context.get("request")
-        if not request:
-            return data
-
-        user = request.user
-
-        # SUPER ADMIN → FULL ACCESS
-        if user.profile.role.name.lower() == "super admin":
-            return data
-
-        # NO PERMISSION → EMPTY
-        if not has_permission(user, "lead", "leads", "view"):
-            return {}
-
-        # LIMITED FIELDS
-        allowed_fields = [
-            "id",
-            "full_name",
-            "contact_no",
-            "lead_status",
-            "created_at"
-        ]
-
-        return {k: v for k, v in data.items() if k in allowed_fields}
+        # View permissions are already enforced in API views.
+        # Keep payload shape consistent for all authorized roles.
+        return data
 
 
 
