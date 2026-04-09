@@ -267,14 +267,6 @@ class UserSerializer(serializers.ModelSerializer):
         if not can_view_users:
             return {}
 
-        allowed_fields = [
-            "id",
-            "username",
-            "first_name",
-            "role",
-            "clinic",
-            "is_active",
-            "permissions"
-        ]
-
-        return {k: v for k, v in data.items() if k in allowed_fields}
+        # View permission already validated above. Keep a consistent shape so
+        # edit forms can render all fields (including profile photo).
+        return data
