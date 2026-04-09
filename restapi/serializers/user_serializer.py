@@ -44,6 +44,7 @@ class UserSerializer(serializers.ModelSerializer):
     )
 
     photo = serializers.ImageField(required=False)
+    remove_photo = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
         model = User
@@ -60,7 +61,8 @@ class UserSerializer(serializers.ModelSerializer):
             "date_of_joining",
             "mobile_no",
             "role",
-            "photo"
+            "photo",
+            "remove_photo"
         ]
 
     # =========================
@@ -116,6 +118,7 @@ class UserSerializer(serializers.ModelSerializer):
     # CREATE USER
     # =========================
     def create(self, validated_data):
+        validated_data.pop("remove_photo", False)
 
         profile_data = {
             "first_name": validated_data.pop("first_name", None),
@@ -167,6 +170,7 @@ class UserSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
 
         profile, _ = UserProfile.objects.get_or_create(user=instance)
+        remove_photo = validated_data.pop("remove_photo", False)
 
         if "email" in validated_data:
             instance.email = validated_data["email"]
@@ -193,6 +197,11 @@ class UserSerializer(serializers.ModelSerializer):
 
         if "role" in validated_data:
             profile.role = validated_data["role"]
+
+        if remove_photo:
+            if profile.photo:
+                profile.photo.delete(save=False)
+            profile.photo = None
 
         if "photo" in validated_data:
             if profile.photo:

@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import User
 
@@ -34,11 +35,13 @@ def _permission_denied(action: str):
 from restapi.utils.permissions import get_user_permissions  
 
 
+
 # =========================
 # CREATE USER
 # =========================
 class UserCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def post(self, request):
@@ -71,9 +74,7 @@ class UserListAPIView(APIView):
         if not _has_users_permission(request.user, "view"):
             return _permission_denied("view")
 
-        users = User.objects.filter(profile__isnull=False).select_related(
-            "profile", "profile__role"
-        )
+        users = User.objects.select_related("profile", "profile__role").all()
 
         return Response({
             "success": True,
@@ -110,6 +111,7 @@ class UserDetailAPIView(APIView):
 # =========================
 class UserUpdateAPIView(APIView):
     permission_classes = [IsAuthenticated]   # ✅ FIX
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def put(self, request, pk):
@@ -140,6 +142,7 @@ class UserUpdateAPIView(APIView):
 # =========================
 class UserPartialUpdateAPIView(APIView):
     permission_classes = [IsAuthenticated]   # ✅ FIX
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def patch(self, request, pk):
