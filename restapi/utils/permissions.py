@@ -15,17 +15,33 @@ def is_super_admin_role(role):
     return normalized in {"super admin", "superadmin"}
 
 
+def get_user_role(user):
+    if not user:
+        return None
+
+    try:
+        profile = getattr(user, "profile", None)
+    except Exception:
+        return None
+
+    if not profile:
+        return None
+
+    try:
+        return getattr(profile, "role", None)
+    except Exception:
+        return None
+
+
 # =========================
 # GET USER PERMISSIONS
 # =========================
 def get_user_permissions(user):
-
-    if not hasattr(user, "profile") or not user.profile.role:
+    role = get_user_role(user)
+    if not role:
         return {}
 
-    role = user.profile.role
     permissions = RolePermission.objects.filter(role=role)
-
     result = {}
 
     for perm in permissions:
@@ -79,22 +95,22 @@ def get_user_permissions(user):
 # CHECK PERMISSION
 # =========================
 def has_permission(user, module, category, action):
+    role = get_user_role(user)
 
-    # SUPER ADMIN → FULL ACCESS
-    if hasattr(user, "profile") and user.profile.role:
-        if is_super_admin_role(user.profile.role):
-            return True
+    # SUPER ADMIN -> FULL ACCESS
+    if is_super_admin_role(role):
+        return True
 
     if action not in {"view", "add", "edit", "print"}:
         return False
 
-    if not hasattr(user, "profile") or not user.profile.role:
+    if not role:
         return False
 
     module_norm = normalize_role_name(module)
     category_norm = normalize_role_name(category)
 
-    permissions = RolePermission.objects.filter(role=user.profile.role)
+    permissions = RolePermission.objects.filter(role=role)
 
     for perm in permissions:
         module_key = normalize_role_name(perm.module_key)
@@ -113,16 +129,16 @@ def has_permission(user, module, category, action):
 
 
 def has_subcategory_permission(user, module, category, subcategory, action):
-
     if action not in {"view", "add", "edit", "print"}:
         return False
 
-    # SUPER ADMIN → FULL ACCESS
-    if hasattr(user, "profile") and user.profile.role:
-        if is_super_admin_role(user.profile.role):
-            return True
+    role = get_user_role(user)
 
-    if not hasattr(user, "profile") or not user.profile.role:
+    # SUPER ADMIN -> FULL ACCESS
+    if is_super_admin_role(role):
+        return True
+
+    if not role:
         return False
 
     module_norm = normalize_role_name(module)
@@ -134,7 +150,7 @@ def has_subcategory_permission(user, module, category, subcategory, action):
     else:
         sub_aliases.add(f"{subcategory_norm}s")
 
-    permissions = RolePermission.objects.filter(role=user.profile.role)
+    permissions = RolePermission.objects.filter(role=role)
 
     for perm in permissions:
         module_key = normalize_role_name(perm.module_key)
@@ -155,15 +171,14 @@ def has_subcategory_permission(user, module, category, subcategory, action):
 
 
 def has_action_permission_for_labels(user, action, labels):
-
     if action not in {"view", "add", "edit", "print"}:
         return False
 
-    if hasattr(user, "profile") and user.profile.role:
-        if is_super_admin_role(user.profile.role):
-            return True
+    role = get_user_role(user)
+    if is_super_admin_role(role):
+        return True
 
-    if not hasattr(user, "profile") or not user.profile.role:
+    if not role:
         return False
 
     normalized_labels = set()
@@ -180,7 +195,7 @@ def has_action_permission_for_labels(user, action, labels):
     if not normalized_labels:
         return False
 
-    permissions = RolePermission.objects.filter(role=user.profile.role)
+    permissions = RolePermission.objects.filter(role=role)
 
     for perm in permissions:
         if not getattr(perm, f"can_{action}", False):
@@ -204,11 +219,17 @@ def has_action_permission_for_labels(user, action, labels):
 # FILTER QUERYSET BY CLINIC
 # =========================
 def filter_by_clinic(queryset, user):
+    role = get_user_role(user)
 
-    if hasattr(user, "profile") and user.profile.role:
-        if is_super_admin_role(user.profile.role):
+    if role:
+        if is_super_admin_role(role):
             return queryset
 
-        return queryset.filter(profile__clinic=user.profile.clinic)
+        try:
+            clinic = getattr(user.profile, "clinic", None)
+        except Exception:
+            clinic = None
+
+        return queryset.filter(profile__clinic=clinic)
 
     return queryset.none()
