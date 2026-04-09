@@ -109,6 +109,15 @@ class LoginAPIView(APIView):
                 },
                 status=status.HTTP_401_UNAUTHORIZED
             )
+        
+        if not hasattr(user, "profile") or not user.profile.is_active:
+            return Response(
+                {
+                    "success": False,
+                    "message": "User is inactive. Contact admin."
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         if not hasattr(user, "profile") or not user.profile.role:
             return Response(

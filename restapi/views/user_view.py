@@ -34,7 +34,6 @@ def _permission_denied(action: str):
 from restapi.utils.permissions import get_user_permissions  
 
 
-
 # =========================
 # CREATE USER
 # =========================
@@ -72,7 +71,9 @@ class UserListAPIView(APIView):
         if not _has_users_permission(request.user, "view"):
             return _permission_denied("view")
 
-        users = User.objects.select_related("profile", "profile__role").all()
+        users = User.objects.filter(profile__isnull=False).select_related(
+            "profile", "profile__role"
+        )
 
         return Response({
             "success": True,
