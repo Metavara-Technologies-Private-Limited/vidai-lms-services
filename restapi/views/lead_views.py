@@ -234,7 +234,11 @@ class LeadListAPIView(APIView):
             if assigned_to:
                 queryset = queryset.filter(assigned_to_id=assigned_to)
 
-            serializer = LeadReadSerializer(queryset, many=True)
+            serializer = LeadReadSerializer(
+                queryset,
+                many=True,
+                context={"request": request},
+            )
 
             return Response(
                 serializer.data,
@@ -250,10 +254,30 @@ class LeadListAPIView(APIView):
 
         except Exception:
             logger.error("Lead List Error:\n" + traceback.format_exc())
-            return Response(
-                {"error": "Internal Server Error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+
+            # Fallback for corrupted production rows/files: return safe minimal
+            # payload so the list endpoint does not hard-fail with 500.
+            try:
+                fallback_rows = []
+                for lead in queryset:
+                    created_at = getattr(lead, "created_at", None)
+                    fallback_rows.append(
+                        {
+                            "id": str(getattr(lead, "id", "")),
+                            "full_name": getattr(lead, "full_name", "") or "",
+                            "contact_no": getattr(lead, "contact_no", "") or "",
+                            "lead_status": getattr(lead, "lead_status", "") or "",
+                            "created_at": created_at.isoformat() if created_at else None,
+                        }
+                    )
+
+                return Response(fallback_rows, status=status.HTTP_200_OK)
+            except Exception:
+                logger.error("Lead List Fallback Error:\n" + traceback.format_exc())
+                return Response(
+                    {"error": "Internal Server Error"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
 # -------------------------------------------------------------------
 # Lead List API using ID (GET)
@@ -278,15 +302,28 @@ class LeadGetAPIView(APIView):
                 "clinic",
                 "department",
                 "campaign",
-                
             ),
             id=lead_id
         )
 
-        return Response(
-            LeadReadSerializer(lead).data,
-            status=status.HTTP_200_OK
-        )
+        try:
+            payload = LeadReadSerializer(
+                lead,
+                context={"request": request},
+            ).data
+            return Response(payload, status=status.HTTP_200_OK)
+        except Exception:
+            logger.error("Lead Get Error:\n" + traceback.format_exc())
+
+            created_at = getattr(lead, "created_at", None)
+            fallback = {
+                "id": str(getattr(lead, "id", "")),
+                "full_name": getattr(lead, "full_name", "") or "",
+                "contact_no": getattr(lead, "contact_no", "") or "",
+                "lead_status": getattr(lead, "lead_status", "") or "",
+                "created_at": created_at.isoformat() if created_at else None,
+            }
+            return Response(fallback, status=status.HTTP_200_OK)
 
 # -------------------------------------------------------------------
 # Lead Activate API (Post)
