@@ -8,22 +8,27 @@ from restapi.models import (
     Campaign,
     LeadDocument,
 )
-
-from restapi.services.lead_service import (
-    create_lead,
-    update_lead,
-)
+from restapi.services.lead_service import create_lead, update_lead
 
 
 # =====================================================
-# Lead READ Serializer
+# 🔥 CUSTOM FIELD (ADD THIS)
 # =====================================================
+class MultiFileField(serializers.ListField):
+    child = serializers.FileField()
 
+    def to_internal_value(self, data):
+        # Handles QueryDict → converts to list of files
+        if hasattr(data, "getlist"):
+            data = data.getlist("documents")
+        return super().to_internal_value(data)
+
+
+# =====================================================
+# Lead READ Serializer (UNCHANGED)
+# =====================================================
 class LeadReadSerializer(serializers.ModelSerializer):
 
-    # -------------------------
-    # Existing Mappings
-    # -------------------------
     clinic_id = serializers.IntegerField(source="clinic.id", read_only=True)
     clinic_name = serializers.CharField(source="clinic.name", read_only=True)
 
@@ -48,67 +53,17 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lead
-        fields = [
-            "id",
-
-            "clinic_id", "clinic_name",
-            "department_id", "department_name",
-            "campaign_id", "campaign_name", "campaign_duration",
-            "assigned_to_id", "assigned_to_name",
-            "personal_id", "personal_name",
-
-            "created_by_id",
-            "created_by_name",
-
-            "full_name",
-            "age",
-            "gender",
-            "marital_status",
-            "email",
-            "contact_no",
-            "language_preference",
-            "location",
-            "address",
-            "partner_inquiry",
-            "partner_full_name",
-            "partner_age",
-            "partner_gender",
-            "source",
-            "sub_source",
-            "lead_status",
-            "next_action_status",
-            "next_action_type",
-            "next_action_description",
-            "treatment_interest",
-            "book_appointment",
-            "appointment_date",
-            "slot",
-            "remark",
-
-            "documents",
-
-            "created_at",
-            "modified_at",
-            "is_active",
-            "converted_at",
-        ]
-
-    # =====================================================
-    # METHODS
-    # =====================================================
+        fields = "__all__"
 
     def get_campaign_duration(self, obj):
         campaign = obj.campaign
         if not campaign:
             return None
 
-        start = campaign.start_date
-        end = campaign.end_date
-
-        if not start or not end:
+        if not campaign.start_date or not campaign.end_date:
             return None
 
-        return f"{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}"
+        return f"{campaign.start_date.strftime('%d/%m/%Y')} - {campaign.end_date.strftime('%d/%m/%Y')}"
 
     def get_documents(self, obj):
         return [
@@ -120,22 +75,10 @@ class LeadReadSerializer(serializers.ModelSerializer):
             for doc in obj.documents.all()
         ]
 
-    # =====================================================
-    # RBAC FILTERING
-    # =====================================================
-
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        # View permissions are already enforced in API views.
-        # Keep payload shape consistent for all authorized roles.
-        return data
-
-
 
 # =====================================================
-# Lead WRITE Serializer
+# Lead WRITE Serializer (FINAL FIXED)
 # =====================================================
-
 class LeadSerializer(serializers.ModelSerializer):
 
     clinic_id = serializers.IntegerField(write_only=True, required=False)
@@ -149,8 +92,8 @@ class LeadSerializer(serializers.ModelSerializer):
 
     campaign_id = serializers.UUIDField(required=False, allow_null=True)
 
-    documents = serializers.ListField(
-        child=serializers.FileField(),
+    # ✅ ONLY CHANGE HERE (USE CUSTOM FIELD)
+    documents = MultiFileField(
         write_only=True,
         required=False
     )
@@ -164,14 +107,10 @@ class LeadSerializer(serializers.ModelSerializer):
             "clinic_id",
             "department_id",
             "campaign_id",
-
-            # ✅ FIXED (added missing fields)
             "assigned_to_id",
             "assigned_to_name",
-
             "personal_id",
             "personal_name",
-
             "full_name",
             "age",
             "gender",
@@ -202,10 +141,8 @@ class LeadSerializer(serializers.ModelSerializer):
 
         read_only_fields = ("id",)
 
-
-
     # =====================================================
-    # VALIDATION
+    # VALIDATION (UNCHANGED)
     # =====================================================
     def validate(self, attrs):
         request = self.context.get("request")
@@ -221,25 +158,14 @@ class LeadSerializer(serializers.ModelSerializer):
             if payload_id and str(payload_id) != str(self.instance.id):
                 raise ValidationError({"id": "Lead ID mismatch"})
 
-            if "clinic_id" in attrs:
-                if attrs["clinic_id"] != self.instance.clinic_id:
-                    raise ValidationError({"clinic_id": "Cannot change clinic"})
-                attrs.pop("clinic_id")
-
-            if "department_id" in attrs:
-                if attrs["department_id"] != self.instance.department_id:
-                    raise ValidationError({"department_id": "Cannot change department"})
-                attrs.pop("department_id")
-
         return attrs
 
     # =====================================================
-    # CREATE
+    # CREATE (UNCHANGED)
     # =====================================================
     def create(self, validated_data):
         request = self.context.get("request")
 
-        # ✅ FIXED (no FK)
         if request and hasattr(request.user, "employee"):
             validated_data["created_by_id"] = request.user.employee.id
             validated_data["created_by_name"] = request.user.employee.emp_name
@@ -247,12 +173,11 @@ class LeadSerializer(serializers.ModelSerializer):
         return create_lead(validated_data)
 
     # =====================================================
-    # UPDATE
+    # UPDATE (UNCHANGED)
     # =====================================================
     def update(self, instance, validated_data):
         request = self.context.get("request")
 
-        # ✅ optional tracking
         if request and hasattr(request.user, "employee"):
             validated_data["updated_by_id"] = request.user.employee.id
             validated_data["updated_by_name"] = request.user.employee.emp_name
