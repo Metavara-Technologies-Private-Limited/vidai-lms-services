@@ -22,6 +22,7 @@ urlpatterns = [
     path("permissions/<int:pk>/update/", RolePermissionUpdateAPIView.as_view()),
 
     path("users/permissions/", UserPermissionAPIView.as_view()),
+    path("me/photo/", MyProfilePhotoAPIView.as_view(), name="my-profile-photo"),
 
 
     path("users/", UserCreateAPIView.as_view()),

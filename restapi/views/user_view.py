@@ -8,7 +8,6 @@ from django.contrib.auth.models import User
 
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
-from restapi.utils.permissions import get_user_permissions
 from restapi.serializers.user_serializer import UserSerializer
 
 from restapi.services import get_user_permissions
@@ -32,7 +31,11 @@ def _permission_denied(action: str):
         status=status.HTTP_403_FORBIDDEN,
     )
 
-from restapi.utils.permissions import get_user_permissions  
+
+def _can_access_user_record(request_user, target_user, action: str) -> bool:
+    if request_user.id == target_user.id and action in {"view", "edit"}:
+        return True
+    return _has_users_permission(request_user, action)
 
 
 
@@ -91,18 +94,17 @@ class UserDetailAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"])
     def get(self, request, pk):
-        if not _has_users_permission(request.user, "view"):
-            return _permission_denied("view")
-
         user = get_object_or_404(
             User.objects.select_related("profile", "profile__role"),
             id=pk
         )
+        if not _can_access_user_record(request.user, user, "view"):
+            return _permission_denied("view")
 
         return Response({
             "success": True,
             "message": "User fetched successfully",
-            "data": UserSerializer(user).data
+            "data": UserSerializer(user, context={"request": request}).data
         })
 
 
@@ -115,10 +117,12 @@ class UserUpdateAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def put(self, request, pk):
-        if not _has_users_permission(request.user, "edit"):
+        user = get_object_or_404(
+            User.objects.select_related("profile", "profile__role"),
+            id=pk,
+        )
+        if not _can_access_user_record(request.user, user, "edit"):
             return _permission_denied("edit")
-
-        user = get_object_or_404(User, id=pk)
 
         serializer = UserSerializer(
             user,
@@ -133,7 +137,7 @@ class UserUpdateAPIView(APIView):
         return Response({
             "success": True,
             "message": "User updated successfully",
-            "data": UserSerializer(user).data
+            "data": UserSerializer(user, context={"request": request}).data
         })
 
 
@@ -146,10 +150,12 @@ class UserPartialUpdateAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def patch(self, request, pk):
-        if not _has_users_permission(request.user, "edit"):
+        user = get_object_or_404(
+            User.objects.select_related("profile", "profile__role"),
+            id=pk,
+        )
+        if not _can_access_user_record(request.user, user, "edit"):
             return _permission_denied("edit")
-
-        user = get_object_or_404(User, id=pk)
 
         serializer = UserSerializer(
             user,
@@ -164,7 +170,7 @@ class UserPartialUpdateAPIView(APIView):
         return Response({
             "success": True,
             "message": "User updated successfully",
-            "data": UserSerializer(user).data
+            "data": UserSerializer(user, context={"request": request}).data
         })
 
 
@@ -249,4 +255,26 @@ class UserPermissionAPIView(APIView):
                 "role": request.user.profile.role.name if request.user.profile.role else None,
                 "permissions": permissions   # ✅ FIXED FORMAT
             }
+        })
+
+
+class MyProfilePhotoAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
+    def patch(self, request):
+        serializer = UserSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        return Response({
+            "success": True,
+            "message": "Profile photo updated successfully",
+            "data": UserSerializer(user, context={"request": request}).data
         })

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
+from django.conf import settings
 
 from restapi.models.user_profile import UserProfile
 from restapi.models.role import Role
@@ -22,6 +23,24 @@ def _resolve_default_role(request):
             return request.user.profile.role
 
     return Role.objects.filter(is_active=True).first() or Role.objects.first()
+
+
+def _validate_profile_photo(file_obj):
+    if not file_obj:
+        return
+
+    max_size = int(
+        getattr(settings, "MAX_PROFILE_PHOTO_UPLOAD_BYTES", 20 * 1024 * 1024)
+    )
+    file_size = getattr(file_obj, "size", 0) or 0
+    if file_size > max_size:
+        raise serializers.ValidationError(
+            {"photo": f"Profile photo must be {max_size // (1024 * 1024)}MB or smaller"}
+        )
+
+    content_type = getattr(file_obj, "content_type", "") or ""
+    if content_type and not content_type.lower().startswith("image/"):
+        raise serializers.ValidationError({"photo": "Only image files are allowed"})
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -76,6 +95,10 @@ class UserSerializer(serializers.ModelSerializer):
         confirm_password = data.get("confirm_password")
         email = data.get("email")
         role = data.get("role")
+        photo = data.get("photo")
+
+        if photo is not None:
+            _validate_profile_photo(photo)
 
         if not self.instance:
             if not email:
@@ -226,6 +249,12 @@ class UserSerializer(serializers.ModelSerializer):
         if profile and profile.role:
             permissions = get_user_permissions(instance)
 
+        request = self.context.get("request")
+        photo_url = None
+        if profile and profile.photo:
+            raw_url = profile.photo.url
+            photo_url = request.build_absolute_uri(raw_url) if request else raw_url
+
         data = {
             "id": instance.id,
             "username": instance.username,
@@ -244,16 +273,20 @@ class UserSerializer(serializers.ModelSerializer):
                 "id": profile.clinic.id if profile and profile.clinic else None,
                 "name": profile.clinic.name if profile and profile.clinic else None
             },
-            "photo": profile.photo.url if profile and profile.photo else None,
+            "photo": photo_url,
             "is_active": profile.is_active if profile else False,
             "permissions": permissions
         }
 
-        request = self.context.get("request")
         if not request:
             return data
 
-        user = request.user
+        user = getattr(request, "user", None)
+        if not user or not hasattr(user, "profile") or not getattr(user, "profile", None):
+            return data
+
+        if getattr(user, "id", None) == instance.id:
+            return data
 
         if is_super_admin_role(user.profile.role):
             return data
