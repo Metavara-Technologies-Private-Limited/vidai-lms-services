@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
-from django.conf import settings
 
 from restapi.models.user_profile import UserProfile
 from restapi.models.role import Role
@@ -248,12 +247,6 @@ class UserSerializer(serializers.ModelSerializer):
         permissions = {}
         if profile and profile.role:
             permissions = get_user_permissions(instance)
-
-        request = self.context.get("request")
-        photo_url = None
-        if profile and profile.photo:
-            raw_url = profile.photo.url
-            photo_url = request.build_absolute_uri(raw_url) if request else raw_url
 
         data = {
             "id": instance.id,

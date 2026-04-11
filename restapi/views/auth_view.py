@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from datetime import datetime, timedelta, timezone
+import os
 import jwt
 from jwt import ExpiredSignatureError, InvalidTokenError
 
@@ -13,12 +14,31 @@ from drf_yasg.utils import swagger_auto_schema
 from restapi.services import get_user_permissions
 
 
+def _get_profile_photo_url(user, request):
+    """
+    Return the absolute URL of the user profile photo.
+    Returns None if no photo set or the file no longer exists on disk.
+    Clears stale DB references when the file is missing.
+    """
+    try:
+        profile = user.profile
+        if not profile or not profile.photo:
+            return None
+        if os.path.exists(profile.photo.path):
+            return request.build_absolute_uri(profile.photo.url)
+        # File missing on disk — clear the stale DB reference
+        profile.photo = None
+        profile.save(update_fields=["photo"])
+        return None
+    except Exception:
+        return None
+
+
 class LoginAPIView(APIView):
 
     def _build_access_token(self, user):
         ttl_minutes = int(getattr(settings, "JWT_ACCESS_TOKEN_LIFETIME_MINUTES", 60))
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
-
         payload = {
             "sub": str(user.id),
             "username": user.username,
@@ -26,21 +46,18 @@ class LoginAPIView(APIView):
             "exp": expires_at,
             "iat": datetime.now(timezone.utc),
         }
-
         token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
         return token, expires_at
 
     def _build_refresh_token(self, user):
         ttl_days = int(getattr(settings, "JWT_REFRESH_TOKEN_LIFETIME_DAYS", 7))
         expires_at = datetime.now(timezone.utc) + timedelta(days=ttl_days)
-
         payload = {
             "sub": str(user.id),
             "type": "refresh",
             "exp": expires_at,
             "iat": datetime.now(timezone.utc),
         }
-
         token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
         return token, expires_at
 
@@ -48,7 +65,6 @@ class LoginAPIView(APIView):
         tags=["Auth"],
         operation_summary="User Login",
         operation_description="Authenticate user and return role-based permissions",
-
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             required=["username", "password"],
@@ -57,7 +73,6 @@ class LoginAPIView(APIView):
                 "password": openapi.Schema(type=openapi.TYPE_STRING, example="Admin@123"),
             }
         ),
-
         responses={
             200: openapi.Response(
                 description="Login Successful",
@@ -75,6 +90,9 @@ class LoginAPIView(APIView):
                                         "id": openapi.Schema(type=openapi.TYPE_INTEGER),
                                         "username": openapi.Schema(type=openapi.TYPE_STRING),
                                         "email": openapi.Schema(type=openapi.TYPE_STRING),
+                                        "first_name": openapi.Schema(type=openapi.TYPE_STRING),
+                                        "last_name": openapi.Schema(type=openapi.TYPE_STRING),
+                                        "photo": openapi.Schema(type=openapi.TYPE_STRING),
                                     }
                                 ),
                                 "role": openapi.Schema(type=openapi.TYPE_STRING),
@@ -89,13 +107,11 @@ class LoginAPIView(APIView):
                     }
                 )
             ),
-
             400: "User role not assigned",
             401: "Invalid credentials"
         }
     )
     def post(self, request):
-
         username = request.data.get("username")
         password = request.data.get("password")
 
@@ -103,34 +119,30 @@ class LoginAPIView(APIView):
 
         if not user:
             return Response(
-                {
-                    "success": False,
-                    "message": "Invalid credentials"
-                },
+                {"success": False, "message": "Invalid credentials"},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-        
+
         if not hasattr(user, "profile") or not user.profile.is_active:
             return Response(
-                {
-                    "success": False,
-                    "message": "User is inactive. Contact admin."
-                },
+                {"success": False, "message": "User is inactive. Contact admin."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
         if not hasattr(user, "profile") or not user.profile.role:
             return Response(
-                {
-                    "success": False,
-                    "message": "User role not assigned"
-                },
+                {"success": False, "message": "User role not assigned"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        profile = user.profile
         permissions = get_user_permissions(user)
         access_token, expires_at = self._build_access_token(user)
         refresh_token, refresh_expires_at = self._build_refresh_token(user)
+
+        # Include photo in login response so the UI shows it immediately
+        # without waiting for the separate /me/profile/ fetch.
+        photo_url = _get_profile_photo_url(user, request)
 
         return Response(
             {
@@ -146,10 +158,13 @@ class LoginAPIView(APIView):
                         "id": user.id,
                         "username": user.username,
                         "email": user.email,
-                        "first_name": user.first_name,
-                        "last_name": user.last_name,
+                        # Use profile names (where the app stores them) with
+                        # Django User model as fallback.
+                        "first_name": (profile.first_name or user.first_name) if profile else user.first_name,
+                        "last_name": (profile.last_name or user.last_name) if profile else user.last_name,
+                        "photo": photo_url,
                     },
-                    "role": user.profile.role.name,
+                    "role": profile.role.name,
                     "permissions": permissions,
                 },
             },
