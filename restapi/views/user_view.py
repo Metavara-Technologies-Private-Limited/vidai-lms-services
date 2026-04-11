@@ -74,32 +74,16 @@ class UserListAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"])
     def get(self, request):
-        # ✅ Permission Check
         if not _has_users_permission(request.user, "view"):
             return _permission_denied("view")
 
-        # ✅ IMPORTANT FIX: Only users with profile
-        users = User.objects.filter(
-            profile__isnull=False   # 🔥 KEY LINE
-            profile__is_active=True 
-        ).select_related(
-            "profile",
-            "profile__role",
-            "profile__clinic"
-        )
-
-        # ✅ OPTIONAL: Clinic-based filtering (uncomment if needed)
-        # users = users.filter(profile__clinic=request.user.profile.clinic)
+        users = User.objects.select_related("profile", "profile__role").all()
 
         return Response({
             "success": True,
             "message": "Users fetched successfully",
-            "data": UserSerializer(
-                users,
-                many=True,
-                context={"request": request}
-            ).data
-        }, status=status.HTTP_200_OK)
+            "data": UserSerializer(users, many=True, context={"request": request}).data  # ✅ FIX
+        })
 
 
 # =========================
