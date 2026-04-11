@@ -1,6 +1,9 @@
-from rest_framework import request, serializers, settings
+from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
+from django.conf import settings
+import os
+from urllib.parse import quote
 
 from restapi.models.user_profile import UserProfile
 from restapi.models.role import Role
@@ -40,6 +43,20 @@ def _validate_profile_photo(file_obj):
     content_type = getattr(file_obj, "content_type", "") or ""
     if content_type and not content_type.lower().startswith("image/"):
         raise serializers.ValidationError({"photo": "Only image files are allowed"})
+
+
+def _build_media_api_url(file_field):
+    if not file_field:
+        return None
+
+    file_name = getattr(file_field, "name", "") or ""
+    if not file_name:
+        return None
+
+    media_api_prefix = getattr(settings, "MEDIA_API_URL", "/api/media/")
+    normalized_prefix = f"/{str(media_api_prefix).strip('/')}/"
+    encoded_name = quote(file_name, safe="/")
+    return f"{normalized_prefix}{encoded_name}"
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -239,8 +256,6 @@ class UserSerializer(serializers.ModelSerializer):
     # =========================
     def to_representation(self, instance):
 
-        request = self.context.get("request")
-
         try:
             profile = instance.profile
         except ObjectDoesNotExist:
@@ -250,16 +265,22 @@ class UserSerializer(serializers.ModelSerializer):
         if profile and profile.role:
             permissions = get_user_permissions(instance)
 
+        request = self.context.get("request")
         photo_url = None
         if profile and profile.photo:
             try:
-                photo_url = (
-                    request.build_absolute_uri(profile.photo.url)
-                    if request
-                    else profile.photo.url
-                )
+                # Check if the physical file actually exists on disk before building URL.
+                # This prevents returning a broken URL when the file was deleted or
+                # the media folder was wiped (e.g., after a Docker container rebuild).
+                file_path = profile.photo.path
+                if os.path.exists(file_path):
+                    photo_url = _build_media_api_url(profile.photo)
+                else:
+                    # File in DB but not on disk — clear the stale reference silently
+                    profile.photo = None
+                    profile.save(update_fields=["photo"])
             except Exception:
-                photo_url = None
+                pass
 
         data = {
             "id": instance.id,
@@ -279,7 +300,7 @@ class UserSerializer(serializers.ModelSerializer):
                 "id": profile.clinic.id if profile and profile.clinic else None,
                 "name": profile.clinic.name if profile and profile.clinic else None
             },
-            "photo": photo_url, # type: ignore
+            "photo": photo_url,
             "is_active": profile.is_active if profile else False,
             "permissions": permissions
         }

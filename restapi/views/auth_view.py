@@ -25,7 +25,9 @@ def _get_profile_photo_url(user, request):
         if not profile or not profile.photo:
             return None
         if os.path.exists(profile.photo.path):
-            return request.build_absolute_uri(profile.photo.url)
+            # Return relative media URL. Frontend resolves origin/protocol,
+            # which avoids mixed-content issues behind reverse proxies.
+            return profile.photo.url
         # File missing on disk — clear the stale DB reference
         profile.photo = None
         profile.save(update_fields=["photo"])

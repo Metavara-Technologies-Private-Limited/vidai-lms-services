@@ -49,3 +49,5 @@ from .role_permission_views import *
 from .referral_view import *  
 
 from .report_view import *
+
+from .media_view import *

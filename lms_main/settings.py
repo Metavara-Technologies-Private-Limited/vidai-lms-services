@@ -151,6 +151,7 @@ STATIC_ROOT = BASE_DIR / 'static'
 # ================================
 MEDIA_URL  = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_API_URL = '/api/media/'
 MAX_PROFILE_PHOTO_UPLOAD_BYTES = 20 * 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
@@ -167,7 +168,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ================================
 CORS_ALLOW_ALL_ORIGINS = True
 
-
+# Respect reverse-proxy forwarded headers for correct scheme/host resolution
+# in production (e.g., nginx, Cloudflare, load balancers).
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
 # ================================
 # DRF
 # ================================
