@@ -81,6 +81,7 @@ class UserListAPIView(APIView):
         # ✅ IMPORTANT FIX: Only users with profile
         users = User.objects.filter(
             profile__isnull=False   # 🔥 KEY LINE
+            profile__is_active=True 
         ).select_related(
             "profile",
             "profile__role",
