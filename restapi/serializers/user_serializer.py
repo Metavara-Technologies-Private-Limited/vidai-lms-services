@@ -1,4 +1,4 @@
-from rest_framework import serializers
+from rest_framework import request, serializers, settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
 
@@ -239,6 +239,8 @@ class UserSerializer(serializers.ModelSerializer):
     # =========================
     def to_representation(self, instance):
 
+        request = self.context.get("request")
+
         try:
             profile = instance.profile
         except ObjectDoesNotExist:
@@ -247,6 +249,17 @@ class UserSerializer(serializers.ModelSerializer):
         permissions = {}
         if profile and profile.role:
             permissions = get_user_permissions(instance)
+
+        photo_url = None
+        if profile and profile.photo:
+            try:
+                photo_url = (
+                    request.build_absolute_uri(profile.photo.url)
+                    if request
+                    else profile.photo.url
+                )
+            except Exception:
+                photo_url = None
 
         data = {
             "id": instance.id,
@@ -266,7 +279,7 @@ class UserSerializer(serializers.ModelSerializer):
                 "id": profile.clinic.id if profile and profile.clinic else None,
                 "name": profile.clinic.name if profile and profile.clinic else None
             },
-            "photo": photo_url,
+            "photo": photo_url, # type: ignore
             "is_active": profile.is_active if profile else False,
             "permissions": permissions
         }
