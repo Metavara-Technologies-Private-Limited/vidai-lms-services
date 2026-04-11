@@ -1,8 +1,8 @@
 from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
-from django.conf import settings                          # ← ADD
-from django.conf.urls.static import static               # ← ADD
+from django.conf import settings
+from django.conf.urls.static import static
 
 # Swagger Imports
 from drf_yasg.views import get_schema_view
@@ -29,4 +29,8 @@ urlpatterns = [
     path("redoc/", schema_view.with_ui("redoc", cache_timeout=0)),
 
     path("", lambda request: JsonResponse({"status": "LMS backend running"})),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)  # ← ADD
+]
+
+# ✅ ONLY in DEBUG mode
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
