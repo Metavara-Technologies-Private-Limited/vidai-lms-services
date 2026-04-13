@@ -14,7 +14,8 @@ import os
 #  BASE DIR
 # ================================
 BASE_DIR = Path(__file__).resolve().parent.parent
-
+env_path = BASE_DIR / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # ================================
 # SECURITY
@@ -53,7 +54,7 @@ INSTALLED_APPS = [
 
 # General webhook — lead events, campaign events, social media campaigns
 # (unchanged — keep as is)
-ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/uxrz9r3/"
+ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/u783kl8/"
 
 # ✅ SINGLE unified Mailchimp Zap URL.
 # Previously 2 separate Mailchimp Zaps:
@@ -110,11 +111,16 @@ WSGI_APPLICATION = 'lms_main.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'stage5_db',
-        'USER': 'postgres',
-        'PASSWORD': 'saimohan',
-        'HOST': 'host.docker.internal',  # 'host.docker.internal',   #host.docker.internal
-        'PORT': '5432',
+        # 'NAME': 'stage5_db',
+        # 'USER': 'postgres',
+        # 'PASSWORD': 'saimohan',
+        # 'HOST': 'localhost',  # 'host.docker.internal',   #host.docker.internal
+        # 'PORT': '5432',
+        'NAME': os.getenv("DB_NAME"),
+        'USER': os.getenv("DB_USER"),
+        'PASSWORD': os.getenv("DB_PASSWORD"),
+        'HOST': os.getenv("DB_HOST"),
+        'PORT': os.getenv("DB_PORT"),
     }
 }
 
@@ -180,7 +186,7 @@ REST_FRAMEWORK = {
         "restapi.utils.jwt_authentication.JWTAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
-    "EXCEPTION_HANDLER": "restapi.exception_handler.custom_exception_handler",
+    # "EXCEPTION_HANDLER": "restapi.exception_handler.custom_exception_handler",
 }
 
 
@@ -295,7 +301,7 @@ ZAPIER_WEBHOOK_FB_INSIGHTS_URL = os.getenv("ZAPIER_WEBHOOK_FB_INSIGHTS_URL")
 
 ZAPIER_WEBHOOK_SOCIAL_URL = os.getenv(
     "ZAPIER_WEBHOOK_SOCIAL_URL",
-    "https://hooks.zapier.com/hooks/catch/25767405/u0czqiq/",
+    "https://hooks.zapier.com/hooks/catch/25767405/u783kl8/",
 )
 
 STAGE_LOGIN_URL = os.getenv("STAGE_LOGIN_URL")
@@ -307,6 +313,15 @@ STAGE_USERS_URL = os.getenv(
     "https://99999.preview-api.vidaisolutions.com/api/users/"
 )
 
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+# --- Google OAuth ---
+GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET  = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI   = os.getenv("GOOGLE_REDIRECT_URI", "")
+
+# --- Google Ads ---
+GOOGLE_ADS_DEVELOPER_TOKEN   = os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN")
+GOOGLE_ADS_LOGIN_CUSTOMER_ID = os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
+
+# Add these at the bottom of your Google Ads section
+GOOGLE_ACCESS_TOKEN = os.getenv("GOOGLE_ACCESS_TOKEN")
+GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN")

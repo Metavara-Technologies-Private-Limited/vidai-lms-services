@@ -2,7 +2,7 @@ from django.urls import path
 
 
 from .views import *   
-
+from restapi.views.google_ads_views import GoogleAdsCampaignCreateAPIView
 
 
 urlpatterns = [
@@ -198,6 +198,8 @@ urlpatterns = [
     path("fb/campaigns/", FBCampaignListAPIView.as_view(), name="fb-campaigns"),
     path("fb/campaigns/create/", FBCampaignCreateAPIView.as_view(), name="fb-campaign-create"),
     path("fb/campaigns/<str:campaign_id>/insights/", FBCampaignInsightsAPIView.as_view(), name="fb-insights"),
+
+    path("google-ads/create/", GoogleAdsCampaignCreateAPIView.as_view()),
 
     # ============================
     # REPUTATION
