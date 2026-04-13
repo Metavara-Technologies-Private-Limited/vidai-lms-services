@@ -90,10 +90,19 @@ class LabWriteSerializer(serializers.ModelSerializer):
 # ============================================================
 class TicketDocumentSerializer(serializers.ModelSerializer):
 
+    file = serializers.SerializerMethodField()
+
     class Meta:
         model = Document
         fields = ["id", "file", "uploaded_at"]
-        read_only_fields = ["uploaded_at"]
+
+    def get_file(self, obj):
+        request = self.context.get("request")
+        if obj.file:
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
 
 
 # ============================================================

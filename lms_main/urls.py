@@ -31,3 +31,6 @@ urlpatterns = [
     path("", lambda request: JsonResponse({"status": "LMS backend running"})),
 ]
 
+# MEDIA FILES (VERY IMPORTANT)
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
