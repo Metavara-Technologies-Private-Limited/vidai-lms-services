@@ -24,6 +24,7 @@ class StageRuleSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "action_type",
+            "custom_label",
             "is_enabled",
             "is_required",
             "auto_move",
@@ -60,6 +61,8 @@ class PipelineStageReadSerializer(serializers.ModelSerializer):
             "stage_type",
             "stage_status",
             "stage_order",
+            "color_code",
+            "entry_rule",
             "rules",
             "fields",
         ]
@@ -88,8 +91,11 @@ class PipelineStageReadSerializer(serializers.ModelSerializer):
         allowed_fields = [
             "id",
             "stage_name",
+            "stage_type",
             "stage_status",
-            "stage_order"
+            "stage_order",
+            "color_code",
+            "entry_rule",
         ]
 
         return {k: v for k, v in data.items() if k in allowed_fields}
@@ -99,7 +105,7 @@ class PipelineStageReadSerializer(serializers.ModelSerializer):
 # Pipeline READ
 # =====================================================
 class PipelineReadSerializer(serializers.ModelSerializer):
-    stages = PipelineStageReadSerializer(many=True, read_only=True)
+    stages = serializers.SerializerMethodField()
 
     class Meta:
         model = Pipeline
@@ -110,6 +116,10 @@ class PipelineReadSerializer(serializers.ModelSerializer):
             "is_active",
             "stages",
         ]
+
+    def get_stages(self, obj):
+        stages = obj.stages.filter(is_deleted=False, is_active=True).order_by("stage_order")
+        return PipelineStageReadSerializer(stages, many=True, context=self.context).data
 
 
 # =====================================================

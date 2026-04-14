@@ -20,6 +20,7 @@ class StageRule(models.Model):
         ("custom", "Custom Action"),
     )
     action_type = models.CharField(max_length=30, choices=ACTION_TYPE_CHOICES)
+    custom_label = models.CharField(max_length=100, blank=True, default="")
 
     is_enabled = models.BooleanField(default=True)
     is_required = models.BooleanField(default=False)
