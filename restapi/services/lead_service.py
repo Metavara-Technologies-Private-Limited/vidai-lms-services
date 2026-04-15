@@ -33,32 +33,54 @@ def _resolve_assignee_name(assigned_to_id, assigned_to_name):
 
 
 # =====================================================
-# CREATE LEAD
+# CREATE LEAD (FIXED 🔥)
 # =====================================================
 @transaction.atomic
-def create_lead(validated_data):
+def create_lead(validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    try:
-        clinic = Clinic.objects.get(id=validated_data.pop("clinic_id"))
-    except Clinic.DoesNotExist:
-        raise ValidationError({"clinic_id": "Invalid clinic_id"})
+    # 🔥 GET CLINIC FROM REQUEST (SELECTED CLINIC)
+    clinic_id = None
+    if request:
+        clinic_id = request.headers.get("X-Clinic-Id") or request.data.get("clinic_id")
 
+    if not clinic_id:
+        raise ValidationError({"clinic": "Clinic is required"})
+
+    try:
+        clinic = Clinic.objects.get(id=clinic_id)
+    except Clinic.DoesNotExist:
+        raise ValidationError({"clinic": "Invalid clinic"})
+
+    # ✅ REMOVE clinic_id from validated_data if exists
+    validated_data.pop("clinic_id", None)
+
+    # =====================================================
+    # DEPARTMENT VALIDATION (CLINIC SAFE)
+    # =====================================================
     try:
         department = Department.objects.get(
             id=validated_data.pop("department_id"),
             clinic=clinic
         )
     except Department.DoesNotExist:
-        raise ValidationError({"department_id": "Invalid department_id"})
+        raise ValidationError({"department_id": "Invalid department for this clinic"})
 
+    # =====================================================
+    # CAMPAIGN VALIDATION (CLINIC SAFE)
+    # =====================================================
     campaign = None
     campaign_id = validated_data.pop("campaign_id", None)
     if campaign_id:
-        campaign = Campaign.objects.filter(id=campaign_id).first()
+        campaign = Campaign.objects.filter(
+            id=campaign_id,
+            clinic=clinic
+        ).first()
 
-    # ✅ NEW (NO FK)
+    # =====================================================
+    # ASSIGNEE
+    # =====================================================
     assigned_to_id = validated_data.pop("assigned_to_id", None)
     assigned_to_name = _resolve_assignee_name(
         assigned_to_id,
@@ -74,8 +96,11 @@ def create_lead(validated_data):
     updated_by_id = validated_data.pop("updated_by_id", None)
     updated_by_name = validated_data.pop("updated_by_name", None)
 
+    # =====================================================
+    # CREATE LEAD
+    # =====================================================
     lead = Lead.objects.create(
-        clinic=clinic,
+        clinic=clinic,   # ✅ FIXED HERE
         department=department,
         campaign=campaign,
 
@@ -94,7 +119,9 @@ def create_lead(validated_data):
         **validated_data
     )
 
-    # Save documents
+    # =====================================================
+    # SAVE DOCUMENTS
+    # =====================================================
     for file_object in documents:
         LeadDocument.objects.create(
             lead=lead,
@@ -105,7 +132,7 @@ def create_lead(validated_data):
 
 
 # =====================================================
-# UPDATE LEAD
+# UPDATE LEAD (UNCHANGED)
 # =====================================================
 @transaction.atomic
 def update_lead(instance, validated_data):
@@ -145,7 +172,6 @@ def update_lead(instance, validated_data):
 
     instance.save()
 
-    # Add new documents
     for file_object in documents:
         LeadDocument.objects.create(
             lead=instance,
@@ -157,7 +183,7 @@ def update_lead(instance, validated_data):
 
 
 # =====================================================
-# CLEAN EMAIL BODY
+# CLEAN EMAIL BODY (UNCHANGED)
 # =====================================================
 def _clean_email_body(text: str) -> str:
 
@@ -183,14 +209,13 @@ def _clean_email_body(text: str) -> str:
 
 
 # =====================================================
-# SEND EMAIL
+# SEND EMAIL (UNCHANGED)
 # =====================================================
 @transaction.atomic
 def send_lead_email(email_id):
 
     email_object = get_object_or_404(LeadEmail, id=email_id)
 
-    # Prevent duplicate sending
     if email_object.status == "SENT":
         raise Exception("Email already sent")
 

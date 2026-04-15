@@ -18,7 +18,6 @@ class MultiFileField(serializers.ListField):
     child = serializers.FileField()
 
     def to_internal_value(self, data):
-        # Handles QueryDict → converts to list of files
         if hasattr(data, "getlist"):
             data = data.getlist("documents")
         return super().to_internal_value(data)
@@ -77,7 +76,7 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
 
 # =====================================================
-# Lead WRITE Serializer (FINAL FIXED)
+# Lead WRITE Serializer (UPDATED)
 # =====================================================
 class LeadSerializer(serializers.ModelSerializer):
 
@@ -92,11 +91,7 @@ class LeadSerializer(serializers.ModelSerializer):
 
     campaign_id = serializers.UUIDField(required=False, allow_null=True)
 
-    # ✅ ONLY CHANGE HERE (USE CUSTOM FIELD)
-    documents = MultiFileField(
-        write_only=True,
-        required=False
-    )
+    documents = MultiFileField(write_only=True, required=False)
 
     is_active = serializers.BooleanField(required=False)
 
@@ -161,7 +156,7 @@ class LeadSerializer(serializers.ModelSerializer):
         return attrs
 
     # =====================================================
-    # CREATE (UNCHANGED)
+    # CREATE (FIXED)
     # =====================================================
     def create(self, validated_data):
         request = self.context.get("request")
@@ -170,7 +165,8 @@ class LeadSerializer(serializers.ModelSerializer):
             validated_data["created_by_id"] = request.user.employee.id
             validated_data["created_by_name"] = request.user.employee.emp_name
 
-        return create_lead(validated_data)
+        # ✅ ONLY CHANGE: pass request
+        return create_lead(validated_data, request=request)
 
     # =====================================================
     # UPDATE (UNCHANGED)
