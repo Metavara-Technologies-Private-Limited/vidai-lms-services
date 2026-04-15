@@ -222,9 +222,12 @@ def filter_by_clinic(queryset, user):
     role = get_user_role(user)
 
     if role:
-        if is_super_admin_role(role):
-            return queryset
 
+        # ✅ SUPER ADMIN → ONLY SHOW CREATED USERS
+        if is_super_admin_role(role):
+            return queryset.filter(profile__created_by=user)
+
+        # ✅ EXISTING LOGIC
         try:
             clinic = getattr(user.profile, "clinic", None)
         except Exception:

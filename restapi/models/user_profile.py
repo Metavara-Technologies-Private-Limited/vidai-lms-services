@@ -18,7 +18,6 @@ class UserProfile(models.Model):
 
     mobile_no = models.CharField(max_length=15, null=True, blank=True)
 
-    # ✅ FINAL FIX → SINGLE CLINIC
     clinic = models.ForeignKey(
         Clinic,
         on_delete=models.SET_NULL,
@@ -32,6 +31,15 @@ class UserProfile(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True
+    )
+
+    # ✅ NEW FIELD
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_users"
     )
 
     photo = models.ImageField(upload_to="user_profiles/", null=True, blank=True)

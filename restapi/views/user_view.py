@@ -5,13 +5,17 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import User
+from django.db.models import Q
 
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
-from restapi.serializers.user_serializer import UserSerializer
 
+from restapi.serializers.user_serializer import UserSerializer
 from restapi.services import get_user_permissions
-from restapi.utils.permissions import has_action_permission_for_labels
+from restapi.utils.permissions import (
+    has_action_permission_for_labels,
+    is_super_admin_role
+)
 
 
 def _has_users_permission(user, action: str) -> bool:
@@ -38,7 +42,6 @@ def _can_access_user_record(request_user, target_user, action: str) -> bool:
     return _has_users_permission(request_user, action)
 
 
-
 # =========================
 # CREATE USER
 # =========================
@@ -62,35 +65,48 @@ class UserCreateAPIView(APIView):
         return Response({
             "success": True,
             "message": "User created successfully",
-            "data": UserSerializer(user, context={"request": request}).data   # ✅ FIX
+            "data": UserSerializer(user, context={"request": request}).data
         }, status=status.HTTP_201_CREATED)
 
 
 # =========================
-# LIST USERS
+# LIST USERS (FIXED)
 # =========================
 class UserListAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(tags=["User"])
     def get(self, request):
-        # ✅ Permission Check
         if not _has_users_permission(request.user, "view"):
             return _permission_denied("view")
 
-        # ✅ IMPORTANT FIX: Only users with profile
+        # ✅ BASE QUERY (FIXED - removed first_name filter)
         users = User.objects.filter(
-            profile__isnull=False,   # 🔥 KEY LINE
+            profile__isnull=False,
             profile__is_active=True,
-            profile__first_name__isnull=False
+            profile__created_by=request.user
         ).select_related(
             "profile",
             "profile__role",
             "profile__clinic"
         )
 
-        # ✅ OPTIONAL: Clinic-based filtering (uncomment if needed)
-        # users = users.filter(profile__clinic=request.user.profile.clinic)
+        user = request.user
+
+        if hasattr(user, "profile") and user.profile and user.profile.role:
+
+            # ✅ SUPER ADMIN → ONLY CREATED USERS
+            if is_super_admin_role(user.profile.role):
+                users = users.filter(
+                    Q(profile__created_by=user)
+                )
+            else:
+                # ✅ CLINIC FILTER
+                users = users.filter(
+                    profile__clinic=user.profile.clinic
+                )
+
+        users = users.distinct()
 
         return Response({
             "success": True,
@@ -102,11 +118,12 @@ class UserListAPIView(APIView):
             ).data
         }, status=status.HTTP_200_OK)
 
+
 # =========================
 # RETRIEVE USER
 # =========================
 class UserDetailAPIView(APIView):
-    permission_classes = [IsAuthenticated]   # ✅ FIX
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(tags=["User"])
     def get(self, request, pk):
@@ -114,6 +131,7 @@ class UserDetailAPIView(APIView):
             User.objects.select_related("profile", "profile__role"),
             id=pk
         )
+
         if not _can_access_user_record(request.user, user, "view"):
             return _permission_denied("view")
 
@@ -125,10 +143,10 @@ class UserDetailAPIView(APIView):
 
 
 # =========================
-# UPDATE USER (PUT)
+# UPDATE USER
 # =========================
 class UserUpdateAPIView(APIView):
-    permission_classes = [IsAuthenticated]   # ✅ FIX
+    permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
@@ -137,13 +155,14 @@ class UserUpdateAPIView(APIView):
             User.objects.select_related("profile", "profile__role"),
             id=pk,
         )
+
         if not _can_access_user_record(request.user, user, "edit"):
             return _permission_denied("edit")
 
         serializer = UserSerializer(
             user,
             data=request.data,
-            partial=True,   # ✅ IMPORTANT FIX
+            partial=True,
             context={"request": request}
         )
         serializer.is_valid(raise_exception=True)
@@ -158,10 +177,10 @@ class UserUpdateAPIView(APIView):
 
 
 # =========================
-# PARTIAL UPDATE USER (PATCH)
+# PARTIAL UPDATE USER
 # =========================
 class UserPartialUpdateAPIView(APIView):
-    permission_classes = [IsAuthenticated]   # ✅ FIX
+    permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
@@ -170,6 +189,7 @@ class UserPartialUpdateAPIView(APIView):
             User.objects.select_related("profile", "profile__role"),
             id=pk,
         )
+
         if not _can_access_user_record(request.user, user, "edit"):
             return _permission_denied("edit")
 
@@ -194,7 +214,7 @@ class UserPartialUpdateAPIView(APIView):
 # UPDATE USER STATUS
 # =========================
 class UserStatusUpdateAPIView(APIView):
-    permission_classes = [IsAuthenticated]   # ✅ FIX
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         tags=["User"],
@@ -237,7 +257,7 @@ class UserStatusUpdateAPIView(APIView):
 # DELETE USER
 # =========================
 class UserDeleteAPIView(APIView):
-    permission_classes = [IsAuthenticated]   # ✅ FIX
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(tags=["User"])
     def delete(self, request, pk):
@@ -261,7 +281,6 @@ class UserPermissionAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"])
     def get(self, request):
-
         permissions = get_user_permissions(request.user)
 
         return Response({
@@ -269,11 +288,14 @@ class UserPermissionAPIView(APIView):
             "message": "Permissions fetched successfully",
             "data": {
                 "role": request.user.profile.role.name if request.user.profile.role else None,
-                "permissions": permissions   # ✅ FIXED FORMAT
+                "permissions": permissions
             }
         })
 
 
+# =========================
+# PROFILE PHOTO UPDATE
+# =========================
 class MyProfilePhotoAPIView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]

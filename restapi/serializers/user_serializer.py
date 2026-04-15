@@ -183,6 +183,10 @@ class UserSerializer(serializers.ModelSerializer):
         if request and hasattr(request.user, "profile"):
             profile_data["clinic"] = request.user.profile.clinic
 
+        # ✅ IMPORTANT
+        if request and hasattr(request, "user"):
+            profile_data["created_by"] = request.user
+
         password = validated_data.pop("password", None)
         validated_data.pop("confirm_password", None)
 
@@ -200,7 +204,6 @@ class UserSerializer(serializers.ModelSerializer):
         )
 
         user.refresh_from_db()
-
         return user
 
     # =========================
@@ -248,7 +251,6 @@ class UserSerializer(serializers.ModelSerializer):
             profile.photo = validated_data.get("photo")
 
         profile.save()
-
         return instance
 
     # =========================
@@ -267,16 +269,13 @@ class UserSerializer(serializers.ModelSerializer):
 
         request = self.context.get("request")
         photo_url = None
+
         if profile and profile.photo:
             try:
-                # Check if the physical file actually exists on disk before building URL.
-                # This prevents returning a broken URL when the file was deleted or
-                # the media folder was wiped (e.g., after a Docker container rebuild).
                 file_path = profile.photo.path
                 if os.path.exists(file_path):
                     photo_url = _build_media_api_url(profile.photo)
                 else:
-                    # File in DB but not on disk — clear the stale reference silently
                     profile.photo = None
                     profile.save(update_fields=["photo"])
             except Exception:
@@ -300,6 +299,7 @@ class UserSerializer(serializers.ModelSerializer):
                 "id": profile.clinic.id if profile and profile.clinic else None,
                 "name": profile.clinic.name if profile and profile.clinic else None
             },
+            "created_by": profile.created_by.id if profile and profile.created_by else None,
             "photo": photo_url,
             "is_active": profile.is_active if profile else False,
             "permissions": permissions
@@ -327,6 +327,4 @@ class UserSerializer(serializers.ModelSerializer):
         if not can_view_users:
             return {}
 
-        # View permission already validated above. Keep a consistent shape so
-        # edit forms can render all fields (including profile photo).
         return data

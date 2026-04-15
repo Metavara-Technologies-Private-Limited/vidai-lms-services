@@ -1,4 +1,5 @@
 from restapi.models import RolePermission
+from restapi.utils.permissions import is_super_admin_role, get_user_role
 
 
 def get_user_permissions(user):
@@ -48,3 +49,24 @@ def get_user_permissions(user):
             })
 
     return result
+
+
+# =========================
+# ✅ ADD THIS FUNCTION (NEW)
+# =========================
+def filter_users_for_superadmin(queryset, user):
+    """
+    Super Admin → only users created by them
+    Others → no change
+    """
+
+    if not user or not hasattr(user, "profile"):
+        return queryset.none()
+
+    role = get_user_role(user)
+
+    # ✅ SUPER ADMIN FILTER
+    if is_super_admin_role(role):
+        return queryset.filter(profile__created_by=user)
+
+    return queryset
