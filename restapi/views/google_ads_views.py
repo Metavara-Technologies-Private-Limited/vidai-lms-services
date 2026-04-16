@@ -86,6 +86,11 @@ class GoogleAdsCampaignCreateAPIView(APIView):
             # 3. Build payload for Zapier
             # ----------------------------------------------------------
             campaign_name = data["campaign_name"]
+            # --- FIXED IMAGE LOGIC: Look into nested platform_data ---
+            google_data = data.get("platform_data", {}).get("google_ads", {})
+            
+            # This line checks platform_data first, then falls back to root level
+            image_url = google_data.get("image_url") or data.get("image_url")
             keywords_raw = data.get("keywords", [])
             keywords_str = (
                 ",".join(keywords_raw)
@@ -96,6 +101,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
             zapier_payload = {
                 "event":             "google_ads_campaign_created",
                 "campaign_name":     campaign_name,
+                "image_url":         image_url,
                 "customer_id":       str(customer_id).replace("-", ""),
                 "login_customer_id": getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", ""),
                 "developer_token":   settings.GOOGLE_ADS_DEVELOPER_TOKEN,
@@ -138,6 +144,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                         "data": {
                             "campaign_name": campaign_name,
                             "customer_id":   customer_id,
+                            "has_image":     bool(image_url),
                             "status":        "sent_to_zapier",
                         },
                     },

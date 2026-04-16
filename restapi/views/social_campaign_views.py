@@ -994,6 +994,13 @@ class SocialMediaCampaignCreateAPIView(APIView):
 
                     google_campaign_data = campaign.platform_data.get("google_ads", {})
 
+                    # --- IMAGE LOGIC ---
+                    # Check if the user provided an image_url explicitly in platform_data, 
+                    # otherwise fallback to checking if the campaign_content itself is an image URL.
+                    image_url = google_campaign_data.get("image_url")
+                    if not image_url and _is_direct_image_url(campaign.campaign_content):
+                        image_url = campaign.campaign_content
+
                     keywords_raw = google_campaign_data.get("keywords", [])
                     keywords_str = (
                         ",".join(keywords_raw)
@@ -1004,6 +1011,7 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     google_payload = {
                         "event":             "google_ads_campaign_created",
                         "campaign_name":     campaign.campaign_name,
+                        "image_url":         image_url,
                         "customer_id":       str(google_campaign_data.get("customer_id", "")).replace("-", ""),
                         "login_customer_id": getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", ""),
                         "developer_token":   settings.GOOGLE_ADS_DEVELOPER_TOKEN,
