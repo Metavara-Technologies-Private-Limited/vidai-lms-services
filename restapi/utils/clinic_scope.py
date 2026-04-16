@@ -51,9 +51,6 @@ def get_user_clinic(user) -> Optional[Clinic]:
     return getattr(profile, "clinic", None)
 
 
-# =========================
-# ✅ FINAL FIXED FUNCTION
-# =========================
 def resolve_request_clinic(request, required: bool = True) -> Optional[Clinic]:
     user = getattr(request, "user", None)
     profile = getattr(user, "profile", None)
@@ -61,25 +58,19 @@ def resolve_request_clinic(request, required: bool = True) -> Optional[Clinic]:
     user_clinic = get_user_clinic(user)
     requested_clinic_id = get_requested_clinic_id(request)
 
-    # -----------------------------
-    # ✅ If clinic passed in request
-    # -----------------------------
     if requested_clinic_id:
         clinic = Clinic.objects.filter(id=requested_clinic_id).first()
-
         if clinic is None:
             raise ValidationError({"clinic_id": "Invalid clinic_id"})
 
-        # ✅ Super Admin → full access
-        if is_super_admin_role(user_role):
-            return clinic
+        if not is_super_admin_role(user_role):
+            if user_clinic is None:
+                raise ValidationError({"clinic_id": "Clinic access denied"})
+            if clinic.id != user_clinic.id:
+                raise ValidationError({"clinic_id": "Clinic access denied"})
 
-        # ✅ Admin/User → allow switching (NO HARD BLOCK)
         return clinic
 
-    # -----------------------------
-    # ✅ Fallback → user's own clinic
-    # -----------------------------
     if user_clinic is not None:
         return user_clinic
 
@@ -89,18 +80,19 @@ def resolve_request_clinic(request, required: bool = True) -> Optional[Clinic]:
     return None
 
 
-# =========================
-# ✅ SAFE OBJECT CHECK
-# =========================
 def ensure_object_in_request_clinic(request, object_clinic: Optional[Clinic]) -> None:
     if object_clinic is None:
         raise ValidationError({"clinic_id": "Object has no clinic"})
 
+    user = getattr(request, "user", None)
+    profile = getattr(user, "profile", None)
+    user_role = getattr(profile, "role", None)
+    user_clinic = get_user_clinic(user)
     requested_clinic_id = get_requested_clinic_id(request)
 
-    # ✅ If request clinic is given → must match object
     if requested_clinic_id and object_clinic.id != requested_clinic_id:
         raise ValidationError({"clinic_id": "Object does not belong to requested clinic"})
 
-    # ✅ NO restriction for admin/user (fix)
-    return
+    if not is_super_admin_role(user_role):
+        if user_clinic is None or object_clinic.id != user_clinic.id:
+            raise ValidationError({"clinic_id": "Clinic access denied"})
