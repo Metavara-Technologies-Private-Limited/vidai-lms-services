@@ -28,6 +28,8 @@ send_whatsapp = send_sms
 
 logger = logging.getLogger(__name__)
 
+PUBLIC_FRONTEND_BASE_URL = "https://lms-vidaisolutions.metavaratechnologies.com"
+
 
 TWILIO_ERROR_MAP = {
     21211: ("invalid_number", "Phone number is invalid."),
@@ -102,12 +104,26 @@ def normalize_phone_for_twilio(phone_number):
 def get_frontend_base_url():
     frontend_base_url = str(getattr(settings, "FRONTEND_BASE_URL", "") or "").strip()
     if not frontend_base_url:
-        frontend_base_url = "https://lms-vidaisolutions.com"
+        frontend_base_url = PUBLIC_FRONTEND_BASE_URL
     if frontend_base_url:
         parsed = urlparse(frontend_base_url)
         if parsed.scheme and parsed.netloc:
             # Keep only origin so links do not inherit app sub-routes like /settings/integration.
             frontend_base_url = f"{parsed.scheme}://{parsed.netloc}"
+
+    normalized = frontend_base_url.lower()
+    if (
+        "localhost" in normalized
+        or "127.0.0.1" in normalized
+        or not frontend_base_url.startswith("https://")
+    ):
+        logger.warning(
+            "Invalid FRONTEND_BASE_URL '%s'. Falling back to public app URL '%s'.",
+            frontend_base_url,
+            PUBLIC_FRONTEND_BASE_URL,
+        )
+        return PUBLIC_FRONTEND_BASE_URL
+
     return frontend_base_url
 
 
@@ -166,14 +182,14 @@ def build_message_body(review_request, lead, review_link):
     if review_request.message:
         message = render_message_template(review_request.message, lead.full_name, review_link, clinic_name)
         if review_link and review_link not in message:
-            message = f"{message}\n\n{review_link}".strip()
+            message = f"{message}\n\nVIDAI LMS Feedback Form: {review_link}".strip()
         return message
 
     return (
         f"Hi {lead.full_name},\n\n"
         "Thank you for visiting our clinic.\n\n"
-        "Please share your experience here:\n"
-        f"{review_link}\n\n"
+        "Please share your experience here in VIDAI LMS:\n"
+        f"VIDAI LMS Feedback Form: {review_link}\n\n"
         "Regards,\n"
         "Clinic Team"
     )
@@ -193,7 +209,7 @@ def build_email_html_message(lead, message_text, review_link):
         button_html = (
             f'<a href="{safe_link}" '
             'style="display:inline-block;background-color:#4CAF50;color:#ffffff;padding:10px 20px;'
-            'text-decoration:none;border-radius:6px;font-weight:600;">Share Review</a>'
+            'text-decoration:none;border-radius:6px;font-weight:600;">Open in VIDAI LMS</a>'
         )
         plain_link_html = f'<a href="{safe_link}" style="color:#2563eb;">{safe_link}</a>'
 

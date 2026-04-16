@@ -8,12 +8,16 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
+import logging
+
 from restapi.models.reputation import ReviewRequest, Review, ReviewRequestLead
 from restapi.serializers.reputation_serializer import (
     ReviewRequestSerializer,
     ReviewSerializer,
 )
 from restapi.utils.clinic_scope import resolve_request_clinic
+
+logger = logging.getLogger(__name__)
 
 # =====================================================
 # =====================================================
@@ -110,7 +114,43 @@ class ReviewRequestPublicDetailAPIView(APIView):
     permission_classes = []
 
     def get(self, request, request_id):
-        review_request = get_object_or_404(ReviewRequest, id=request_id)
+        lead_id = request.query_params.get("lead") or request.query_params.get("lead_id")
+
+        review_request = ReviewRequest.objects.filter(id=request_id).first()
+
+        if not review_request:
+            logger.warning("Public review request not found | request_id=%s", request_id)
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Invalid or expired review link",
+                    "request_id": str(request_id),
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        request_lead = None
+        if lead_id:
+            request_lead = ReviewRequestLead.objects.select_related("lead").filter(
+                review_request_id=review_request.id,
+                lead_id=lead_id,
+            ).first()
+
+            if not request_lead:
+                logger.warning(
+                    "Public review request lead not found | request_id=%s | lead_id=%s",
+                    request_id,
+                    lead_id,
+                )
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Invalid or expired review link",
+                        "request_id": str(request_id),
+                        "lead_id": str(lead_id),
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
         return Response(
             {
@@ -120,6 +160,9 @@ class ReviewRequestPublicDetailAPIView(APIView):
                     "request_name": review_request.request_name,
                     "description": review_request.description,
                     "collect_on": review_request.collect_on,
+                    "lead_id": str(request_lead.lead_id) if request_lead else None,
+                    "lead_name": request_lead.lead.full_name if request_lead else None,
+                    "review_submitted": request_lead.review_submitted if request_lead else False,
                 },
             },
             status=status.HTTP_200_OK,
@@ -153,32 +196,148 @@ class ReviewCreateAPIView(APIView):
     permission_classes = []
 
     def post(self, request):
+        logger.info(
+            "ReviewCreate received | body=%s | headers=Content-Type:%s",
+            request.data,
+            request.content_type,
+        )
 
-        serializer = ReviewSerializer(data=request.data)
+        payload = request.data if isinstance(request.data, dict) else {}
+        request_id = (
+            payload.get("review_request")
+            or payload.get("request")
+            or payload.get("request_id")
+        )
+        lead_id = payload.get("lead") or payload.get("lead_id")
+        rating_value = payload.get("rating") or payload.get("stars") or payload.get("score")
+        review_text = (
+            payload.get("review_text")
+            or payload.get("comment")
+            or payload.get("feedback")
+            or ""
+        )
 
-        if serializer.is_valid():
-            serializer.save()
-
-            ReviewRequestLead.objects.filter(
-                review_request_id=serializer.instance.review_request_id,
-                lead_id=serializer.instance.lead_id,
-            ).update(review_submitted=True)
-
+        if not request_id or not lead_id:
+            error_message = "Review request and lead are required."
+            logger.warning(
+                "ReviewCreate missing identifiers | request_id=%s | lead_id=%s | body=%s",
+                request_id,
+                lead_id,
+                payload,
+            )
             return Response(
                 {
-                    "status": "success",
-                    "message": "Review submitted successfully",
-                    "data": serializer.data
+                    "status": "error",
+                    "error": error_message,
+                    "errors": {
+                        "review_request": ["This field is required."],
+                        "lead": ["This field is required."],
+                    },
                 },
-                status=status.HTTP_201_CREATED
+                status=status.HTTP_400_BAD_REQUEST,
             )
+
+        request_lead = ReviewRequestLead.objects.select_related("review_request", "lead").filter(
+            review_request_id=request_id,
+            lead_id=lead_id,
+        ).first()
+
+        if not request_lead:
+            logger.warning(
+                "ReviewCreate invalid link | request_id=%s | lead_id=%s",
+                request_id,
+                lead_id,
+            )
+            return Response(
+                {
+                    "status": "error",
+                    "error": "Invalid or expired review link.",
+                    "errors": {
+                        "review_request": ["No matching review request was found for this lead."],
+                    },
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            rating = float(rating_value)
+        except (TypeError, ValueError):
+            logger.warning(
+                "ReviewCreate invalid rating | request_id=%s | lead_id=%s | rating=%s",
+                request_id,
+                lead_id,
+                rating_value,
+            )
+            return Response(
+                {
+                    "status": "error",
+                    "error": "Rating must be a number between 1 and 5.",
+                    "errors": {
+                        "rating": ["Enter a valid number between 1 and 5."],
+                    },
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if rating < 1 or rating > 5:
+            logger.warning(
+                "ReviewCreate out-of-range rating | request_id=%s | lead_id=%s | rating=%s",
+                request_id,
+                lead_id,
+                rating,
+            )
+            return Response(
+                {
+                    "status": "error",
+                    "error": "Rating must be between 1 and 5.",
+                    "errors": {
+                        "rating": ["Ensure this value is between 1 and 5."],
+                    },
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        review_text = str(review_text).strip()
+
+        existing_review = (
+            Review.objects.filter(
+                review_request=request_lead.review_request,
+                lead=request_lead.lead,
+            )
+            .order_by("-submitted_at", "-id")
+            .first()
+        )
+
+        if existing_review:
+            existing_review.rating = rating
+            existing_review.review_text = review_text
+            existing_review.save(update_fields=["rating", "review_text"])
+            review = existing_review
+            response_status = status.HTTP_200_OK
+            response_message = "Review updated successfully"
+        else:
+            review = Review.objects.create(
+                review_request=request_lead.review_request,
+                lead=request_lead.lead,
+                rating=rating,
+                review_text=review_text,
+            )
+            response_status = status.HTTP_201_CREATED
+            response_message = "Review submitted successfully"
+
+        if not request_lead.review_submitted:
+            request_lead.review_submitted = True
+            request_lead.save(update_fields=["review_submitted"])
+
+        serializer = ReviewSerializer(review)
 
         return Response(
             {
-                "status": "error",
-                "errors": serializer.errors
+                "status": "success",
+                "message": response_message,
+                "data": serializer.data,
             },
-            status=status.HTTP_400_BAD_REQUEST
+            status=response_status,
         )
 
 # REPUTATION MANAGEMENT - DASHBOARD INSIGHTS
