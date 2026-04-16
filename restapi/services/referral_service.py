@@ -1,20 +1,27 @@
-# restapi/services/referral_service.py
-
 from django.db.models import Count
 from restapi.models.referral import ReferralSource
 
 
-def get_referral_sources(source_type=None, search=None, clinic=None):
+# =====================================================
+# 🔹 GET REFERRAL SOURCES
+# =====================================================
+def get_referral_sources(department_id=None, search=None, clinic=None):
 
-    queryset = ReferralSource.objects.select_related("external_clinic", "clinic")
+    queryset = ReferralSource.objects.select_related(
+        "external_clinic",
+        "clinic",
+        "referral_department"
+    )
 
-    # 🔹 Filter by logged-in clinic (VERY IMPORTANT)
+    # 🔥 CLINIC ISOLATION
     if clinic:
         queryset = queryset.filter(clinic=clinic)
 
-    if source_type:
-        queryset = queryset.filter(type=source_type)
+    # 🔹 FILTER BY DEPARTMENT
+    if department_id:
+        queryset = queryset.filter(referral_department_id=department_id)
 
+    # 🔹 SEARCH
     if search:
         queryset = queryset.filter(name__icontains=search)
 
@@ -25,10 +32,14 @@ def get_referral_sources(source_type=None, search=None, clinic=None):
     return queryset
 
 
+# =====================================================
+# 🔹 DASHBOARD COUNTS (🔥 THIS WAS MISSING)
+# =====================================================
 def get_dashboard_counts(clinic=None):
 
     queryset = ReferralSource.objects.all()
 
+    # 🔥 CLINIC ISOLATION
     if clinic:
         queryset = queryset.filter(clinic=clinic)
 

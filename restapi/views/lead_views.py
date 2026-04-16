@@ -109,9 +109,12 @@ class LeadUpdateAPIView(APIView):
         try:
             clinic = get_request_clinic(request)
 
-            lead = Lead.objects.get(id=lead_id)
+            # 🔥 IMPROVED (safe + optimized)
+            lead = get_object_or_404(
+                Lead.objects.select_related("clinic"),
+                id=lead_id
+            )
 
-            # ✅ CLINIC CHECK
             if lead.clinic != clinic:
                 return Response({"error": "Unauthorized"}, status=403)
 
@@ -128,9 +131,6 @@ class LeadUpdateAPIView(APIView):
             })
 
             return Response(LeadReadSerializer(updated_lead).data, status=200)
-
-        except Lead.DoesNotExist:
-            raise NotFound("Lead not found")
 
         except ValidationError as ve:
             return Response({"error": ve.detail}, status=400)
@@ -162,9 +162,11 @@ class LeadListAPIView(APIView):
             queryset = Lead.objects.filter(
                 clinic=clinic,
                 is_deleted=False
+            ).select_related(
+                "referral_department",
+                "referral_source"
             ).order_by("-created_at")
 
-            # 🔽 KEEP YOUR FILTERS
             lead_status = request.query_params.get("lead_status")
             assigned_to = request.query_params.get("assigned_to")
 
@@ -205,9 +207,15 @@ class LeadGetAPIView(APIView):
             clinic = get_request_clinic(request)
 
             lead = get_object_or_404(
-                Lead.objects.select_related("clinic", "department", "campaign"),
+                Lead.objects.select_related(
+                    "clinic",
+                    "department",
+                    "campaign",
+                    "referral_department",
+                    "referral_source"
+                ),
                 id=lead_id,
-                clinic=clinic   # ✅ FIX
+                clinic=clinic
             )
 
             return Response(LeadReadSerializer(lead).data, status=200)
@@ -229,7 +237,7 @@ class LeadActivateAPIView(APIView):
     def post(self, request, lead_id):
         try:
             clinic = get_request_clinic(request)
-            lead = Lead.objects.get(id=lead_id)
+            lead = get_object_or_404(Lead, id=lead_id)
 
             if lead.clinic != clinic:
                 return Response({"error": "Unauthorized"}, status=403)
@@ -239,7 +247,7 @@ class LeadActivateAPIView(APIView):
 
             return Response({"message": "Lead activated successfully"}, status=200)
 
-        except Lead.DoesNotExist:
+        except Exception:
             raise NotFound("Lead not found")
 
 
@@ -252,7 +260,7 @@ class LeadInactivateAPIView(APIView):
     def patch(self, request, lead_id):
         try:
             clinic = get_request_clinic(request)
-            lead = Lead.objects.get(id=lead_id)
+            lead = get_object_or_404(Lead, id=lead_id)
 
             if lead.clinic != clinic:
                 return Response({"error": "Unauthorized"}, status=403)
@@ -262,7 +270,7 @@ class LeadInactivateAPIView(APIView):
 
             return Response({"message": "Lead inactivated successfully"}, status=200)
 
-        except Lead.DoesNotExist:
+        except Exception:
             raise NotFound("Lead not found")
 
 
@@ -275,7 +283,7 @@ class LeadSoftDeleteAPIView(APIView):
     def patch(self, request, lead_id):
         try:
             clinic = get_request_clinic(request)
-            lead = Lead.objects.get(id=lead_id)
+            lead = get_object_or_404(Lead, id=lead_id)
 
             if lead.clinic != clinic:
                 return Response({"error": "Unauthorized"}, status=403)
@@ -286,8 +294,8 @@ class LeadSoftDeleteAPIView(APIView):
 
             return Response({"message": "Lead deleted"}, status=200)
 
-        except Lead.DoesNotExist:
+        except Exception:
             raise NotFound("Lead not found")
 
     def delete(self, request, lead_id):
-        return self.patch(request, lead_id) 
+        return self.patch(request, lead_id)

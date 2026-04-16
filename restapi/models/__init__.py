@@ -10,7 +10,9 @@ from .campaign import Campaign
 
 # ✅ ADD THIS LINE (IMPORTANT FIX)
 from .referral import ReferralSource
-
+from .referral_department import ReferralDepartment
+from .external_clinic import ExternalClinic
+ 
 # Campaign configs
 from .campaign_social_media_config import CampaignSocialMediaConfig
 from .campaign_email_config import CampaignEmailConfig

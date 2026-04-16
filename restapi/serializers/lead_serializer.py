@@ -7,12 +7,14 @@ from restapi.models import (
     Employee,
     Campaign,
     LeadDocument,
+    ReferralSource,
+    ReferralDepartment,
 )
 from restapi.services.lead_service import create_lead, update_lead
 
 
 # =====================================================
-# 🔥 CUSTOM FIELD (ADD THIS)
+# 🔥 CUSTOM FIELD
 # =====================================================
 class MultiFileField(serializers.ListField):
     child = serializers.FileField()
@@ -24,7 +26,7 @@ class MultiFileField(serializers.ListField):
 
 
 # =====================================================
-# Lead READ Serializer (UNCHANGED)
+# READ SERIALIZER
 # =====================================================
 class LeadReadSerializer(serializers.ModelSerializer):
 
@@ -48,6 +50,13 @@ class LeadReadSerializer(serializers.ModelSerializer):
     created_by_id = serializers.IntegerField(read_only=True)
     created_by_name = serializers.CharField(read_only=True)
 
+    # 🔥 REFERRAL DISPLAY
+    referral_department_id = serializers.IntegerField(source="referral_department.id", read_only=True)
+    referral_department_name = serializers.CharField(source="referral_department.name", read_only=True)
+
+    referral_source_id = serializers.IntegerField(source="referral_source.id", read_only=True)
+    referral_source_name = serializers.CharField(source="referral_source.name", read_only=True)
+
     documents = serializers.SerializerMethodField()
 
     class Meta:
@@ -56,10 +65,7 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
     def get_campaign_duration(self, obj):
         campaign = obj.campaign
-        if not campaign:
-            return None
-
-        if not campaign.start_date or not campaign.end_date:
+        if not campaign or not campaign.start_date or not campaign.end_date:
             return None
 
         return f"{campaign.start_date.strftime('%d/%m/%Y')} - {campaign.end_date.strftime('%d/%m/%Y')}"
@@ -76,7 +82,7 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
 
 # =====================================================
-# Lead WRITE Serializer (UPDATED)
+# WRITE SERIALIZER
 # =====================================================
 class LeadSerializer(serializers.ModelSerializer):
 
@@ -91,8 +97,11 @@ class LeadSerializer(serializers.ModelSerializer):
 
     campaign_id = serializers.UUIDField(required=False, allow_null=True)
 
-    documents = MultiFileField(write_only=True, required=False)
+    # 🔥 REFERRAL
+    referral_department_id = serializers.IntegerField(required=False, allow_null=True)
+    referral_source_id = serializers.IntegerField(required=False, allow_null=True)
 
+    documents = MultiFileField(write_only=True, required=False)
     is_active = serializers.BooleanField(required=False)
 
     class Meta:
@@ -102,10 +111,12 @@ class LeadSerializer(serializers.ModelSerializer):
             "clinic_id",
             "department_id",
             "campaign_id",
+
             "assigned_to_id",
             "assigned_to_name",
             "personal_id",
             "personal_name",
+
             "full_name",
             "age",
             "gender",
@@ -115,21 +126,30 @@ class LeadSerializer(serializers.ModelSerializer):
             "language_preference",
             "location",
             "address",
+
             "partner_inquiry",
             "partner_full_name",
             "partner_age",
             "partner_gender",
+
             "source",
             "sub_source",
+
+            # 🔥 REFERRAL
+            "referral_department_id",
+            "referral_source_id",
+
             "lead_status",
             "next_action_status",
             "next_action_type",
             "next_action_description",
+
             "treatment_interest",
             "book_appointment",
             "appointment_date",
             "slot",
             "remark",
+
             "documents",
             "is_active",
         ]
@@ -137,11 +157,12 @@ class LeadSerializer(serializers.ModelSerializer):
         read_only_fields = ("id",)
 
     # =====================================================
-    # VALIDATION (UNCHANGED)
+    # VALIDATION
     # =====================================================
     def validate(self, attrs):
         request = self.context.get("request")
 
+        # ================= BASIC =================
         if self.instance is None:
             if "clinic_id" not in attrs:
                 raise ValidationError({"clinic_id": "This field is required."})
@@ -153,10 +174,49 @@ class LeadSerializer(serializers.ModelSerializer):
             if payload_id and str(payload_id) != str(self.instance.id):
                 raise ValidationError({"id": "Lead ID mismatch"})
 
+        # ================= REFERRAL =================
+        ref_dept_id = attrs.get("referral_department_id")
+        ref_source_id = attrs.get("referral_source_id")
+
+        clinic_id = (
+            attrs.get("clinic_id")
+            or request.headers.get("X-Clinic-Id")
+            or request.data.get("clinic_id")
+        )
+
+        if ref_source_id and not ref_dept_id:
+            raise ValidationError({
+                "referral_department_id": "Required when referral_source is provided"
+            })
+
+        if ref_dept_id:
+            dept = ReferralDepartment.objects.filter(
+                id=ref_dept_id,
+                clinic_id=clinic_id,
+                is_active=True
+            ).first()
+
+            if not dept:
+                raise ValidationError({"referral_department_id": "Invalid referral department"})
+
+        if ref_source_id:
+            source = ReferralSource.objects.filter(
+                id=ref_source_id,
+                clinic_id=clinic_id
+            ).first()
+
+            if not source:
+                raise ValidationError({"referral_source_id": "Invalid referral source"})
+
+            if ref_dept_id and source.referral_department_id != ref_dept_id:
+                raise ValidationError(
+                    "Referral Source does not belong to selected Department"
+                )
+
         return attrs
 
     # =====================================================
-    # CREATE (FIXED)
+    # CREATE
     # =====================================================
     def create(self, validated_data):
         request = self.context.get("request")
@@ -165,11 +225,10 @@ class LeadSerializer(serializers.ModelSerializer):
             validated_data["created_by_id"] = request.user.employee.id
             validated_data["created_by_name"] = request.user.employee.emp_name
 
-        # ✅ ONLY CHANGE: pass request
         return create_lead(validated_data, request=request)
 
     # =====================================================
-    # UPDATE (UNCHANGED)
+    # UPDATE
     # =====================================================
     def update(self, instance, validated_data):
         request = self.context.get("request")
