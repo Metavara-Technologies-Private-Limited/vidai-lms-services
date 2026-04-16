@@ -134,6 +134,58 @@ def has_subcategory_permission(user, module, category, subcategory, action):
 
 
 # =========================
+# LABEL BASED PERMISSION (REQUIRED)
+# =========================
+def has_action_permission_for_labels(user, action, labels):
+    if action not in {"view", "add", "edit", "print"}:
+        return False
+
+    role = get_user_role(user)
+
+    # SUPER ADMIN → FULL ACCESS
+    if is_super_admin_role(role):
+        return True
+
+    if not role:
+        return False
+
+    normalized_labels = set()
+
+    for label in labels or []:
+        normalized = normalize_role_name(label)
+        if not normalized or normalized == "_":
+            continue
+
+        normalized_labels.add(normalized)
+
+        # handle singular/plural
+        if normalized.endswith("s"):
+            normalized_labels.add(normalized[:-1])
+        else:
+            normalized_labels.add(f"{normalized}s")
+
+    permissions = RolePermission.objects.filter(role=role)
+
+    for perm in permissions:
+        if not getattr(perm, f"can_{action}", False):
+            continue
+
+        keys = {
+            normalize_role_name(perm.module_key),
+            normalize_role_name(perm.category_key),
+            normalize_role_name(perm.subcategory_key),
+        }
+
+        keys.discard("")
+        keys.discard("_")
+
+        if keys & normalized_labels:
+            return True
+
+    return False
+
+
+# =========================
 # FILTER BY CLINIC
 # =========================
 def filter_by_clinic(queryset, request):
