@@ -1,13 +1,21 @@
 from restapi.models import RolePermission
 from restapi.utils.permissions import is_super_admin_role, get_user_role
 
+# 🔥 IMPORTANT
+from restapi.utils.clinic_context import resolve_request_clinic
 
+
+# =========================
+# ✅ GET USER PERMISSIONS
+# =========================
 def get_user_permissions(user):
 
     if not hasattr(user, "profile") or not user.profile.role:
         return {}
 
     role = user.profile.role
+
+    # ✅ Permissions are role-based (no clinic dependency)
     permissions = RolePermission.objects.filter(role=role)
 
     result = {}
@@ -20,7 +28,7 @@ def get_user_permissions(user):
         result.setdefault(module, {})
 
         # ✅ SETTINGS → WITH SUBCATEGORY
-        if category.lower() == "settings":
+        if category and category.lower() == "settings":
 
             result[module].setdefault(category, {})
 
@@ -52,41 +60,40 @@ def get_user_permissions(user):
 
 
 # =========================
-# ✅ FINAL CLINIC FILTER FUNCTION
+# ✅ FINAL CLINIC FILTER FUNCTION (FIXED)
 # =========================
 def filter_by_clinic(queryset, request):
     """
-    Multi-clinic behavior:
-    - Super Admin → sees users of selected clinic
-    - Normal users → sees only their clinic users
+    FINAL BEHAVIOR:
+    - ALL roles (Super Admin / Admin / User)
+    - Data strictly based on selected clinic (dropdown)
+    - No dependency on user.profile.clinic
     """
 
-    user = request.user
-
-    if not user or not hasattr(user, "profile") or not user.profile:
+    try:
+        clinic = resolve_request_clinic(request)  # 🔥 CORE FIX
+    except Exception:
         return queryset.none()
 
-    role = get_user_role(user)
+    # =========================
+    # HANDLE USER QUERYSET
+    # =========================
+    if queryset.model.__name__ == "User":
+        return queryset.filter(profile__clinic=clinic)
 
-    clinic_id = request.query_params.get("clinic_id")
+    # =========================
+    # HANDLE PROFILE QUERYSET
+    # =========================
+    if queryset.model.__name__ == "UserProfile":
+        return queryset.filter(clinic=clinic)
 
-    # =====================================
-    # ✅ SUPER ADMIN
-    # =====================================
-    if is_super_admin_role(role):
+    # =========================
+    # HANDLE GENERIC MODELS (Lead, Campaign, etc.)
+    # =========================
+    if hasattr(queryset.model, "clinic"):
+        return queryset.filter(clinic=clinic)
 
-        if clinic_id and str(clinic_id).isdigit():
-            return queryset.filter(profile__clinic_id=int(clinic_id))
-
-        if user.profile.clinic_id:
-            return queryset.filter(profile__clinic_id=user.profile.clinic_id)
-
-        return queryset.none()
-
-    # =====================================
-    # ✅ NORMAL USERS
-    # =====================================
-    if user.profile.clinic_id:
-        return queryset.filter(profile__clinic_id=user.profile.clinic_id)
-
+    # =========================
+    # FALLBACK
+    # =========================
     return queryset.none()

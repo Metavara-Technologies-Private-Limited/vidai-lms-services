@@ -14,6 +14,9 @@ from restapi.utils.permissions import (
     is_super_admin_role,
 )
 
+# 🔥 ADD THIS
+from restapi.utils.clinic_context import resolve_request_clinic
+
 
 def _resolve_default_role(request):
     user_role = Role.objects.filter(name__iexact="User").first()
@@ -53,8 +56,6 @@ def _build_media_api_url(file_field):
     if not file_name:
         return None
 
-    # Route media through the API-backed media endpoint so uploaded files work
-    # consistently in production even when the web server is not serving /media/.
     try:
         return build_media_api_url(file_name)
     except Exception:
@@ -162,6 +163,11 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.pop("remove_photo", False)
 
+        request = self.context.get("request")
+
+        # 🔥 FIX: get clinic from request (NOT from user profile)
+        clinic = resolve_request_clinic(request)
+
         profile_data = {
             "first_name": validated_data.pop("first_name", None),
             "last_name": validated_data.pop("last_name", None),
@@ -170,10 +176,10 @@ class UserSerializer(serializers.ModelSerializer):
             "date_of_joining": validated_data.pop("date_of_joining", None),
             "mobile_no": validated_data.pop("mobile_no", None),
             "photo": validated_data.pop("photo", None),
+            "clinic": clinic,   # 🔥 IMPORTANT CHANGE
         }
 
         role = validated_data.pop("role", None)
-        request = self.context.get("request")
 
         if not role:
             role = _resolve_default_role(request)
@@ -183,10 +189,6 @@ class UserSerializer(serializers.ModelSerializer):
 
         profile_data["role"] = role
 
-        if request and hasattr(request.user, "profile"):
-            profile_data["clinic"] = request.user.profile.clinic
-
-        # ✅ IMPORTANT
         if request and hasattr(request, "user"):
             profile_data["created_by"] = request.user
 
@@ -201,7 +203,7 @@ class UserSerializer(serializers.ModelSerializer):
             password=password
         )
 
-        profile, _ = UserProfile.objects.update_or_create(
+        UserProfile.objects.update_or_create(
             user=user,
             defaults=profile_data
         )
@@ -266,11 +268,13 @@ class UserSerializer(serializers.ModelSerializer):
         except ObjectDoesNotExist:
             profile = None
 
+        request = self.context.get("request")
+
         permissions = {}
         if profile and profile.role:
+            # 🔥 pass request if needed later
             permissions = get_user_permissions(instance)
 
-        request = self.context.get("request")
         photo_url = None
 
         if profile and profile.photo:
@@ -312,7 +316,8 @@ class UserSerializer(serializers.ModelSerializer):
             return data
 
         user = getattr(request, "user", None)
-        if not user or not hasattr(user, "profile") or not getattr(user, "profile", None):
+
+        if not user or not hasattr(user, "profile"):
             return data
 
         if getattr(user, "id", None) == instance.id:

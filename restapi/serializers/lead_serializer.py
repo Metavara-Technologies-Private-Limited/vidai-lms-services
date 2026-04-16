@@ -12,7 +12,7 @@ from restapi.services.lead_service import create_lead, update_lead
 
 
 # =====================================================
-# 🔥 CUSTOM FIELD (ADD THIS)
+# 🔥 CUSTOM FIELD (UNCHANGED)
 # =====================================================
 class MultiFileField(serializers.ListField):
     child = serializers.FileField()
@@ -24,7 +24,7 @@ class MultiFileField(serializers.ListField):
 
 
 # =====================================================
-# Lead READ Serializer (UNCHANGED)
+# Lead READ Serializer (ONLY ADDED FIELDS)
 # =====================================================
 class LeadReadSerializer(serializers.ModelSerializer):
 
@@ -48,6 +48,9 @@ class LeadReadSerializer(serializers.ModelSerializer):
     created_by_id = serializers.IntegerField(read_only=True)
     created_by_name = serializers.CharField(read_only=True)
 
+    # ✅ ONLY ADD THESE 3 LINES
+    from restapi.serializers.referral_serializer import ReferralSourceSerializer
+    referral_source = ReferralSourceSerializer(read_only=True)
     documents = serializers.SerializerMethodField()
 
     class Meta:
@@ -76,12 +79,15 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
 
 # =====================================================
-# Lead WRITE Serializer (UPDATED)
+# Lead WRITE Serializer (ONLY ADDED FIELD)
 # =====================================================
 class LeadSerializer(serializers.ModelSerializer):
 
     clinic_id = serializers.IntegerField(write_only=True, required=False)
     department_id = serializers.IntegerField(write_only=True, required=False)
+
+    # ✅ ONLY ADD THIS FIELD
+    referral_source = serializers.IntegerField(required=False, allow_null=True)
 
     assigned_to_id = serializers.IntegerField(required=False, allow_null=True)
     assigned_to_name = serializers.CharField(required=False, allow_null=True)
@@ -102,6 +108,10 @@ class LeadSerializer(serializers.ModelSerializer):
             "clinic_id",
             "department_id",
             "campaign_id",
+
+            # ✅ ONLY ADD HERE
+            "referral_source",
+
             "assigned_to_id",
             "assigned_to_name",
             "personal_id",
@@ -156,7 +166,7 @@ class LeadSerializer(serializers.ModelSerializer):
         return attrs
 
     # =====================================================
-    # CREATE (FIXED)
+    # CREATE (UNCHANGED)
     # =====================================================
     def create(self, validated_data):
         request = self.context.get("request")
@@ -165,7 +175,6 @@ class LeadSerializer(serializers.ModelSerializer):
             validated_data["created_by_id"] = request.user.employee.id
             validated_data["created_by_name"] = request.user.employee.emp_name
 
-        # ✅ ONLY CHANGE: pass request
         return create_lead(validated_data, request=request)
 
     # =====================================================
