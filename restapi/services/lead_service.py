@@ -15,9 +15,6 @@ from restapi.models import (
     LeadEmail,
 )
 
-# ✅ IMPORT
-from restapi.models import ReferralSource
-
 
 def _resolve_assignee_name(assigned_to_id, assigned_to_name):
     if isinstance(assigned_to_name, str):
@@ -36,13 +33,14 @@ def _resolve_assignee_name(assigned_to_id, assigned_to_name):
 
 
 # =====================================================
-# CREATE LEAD (FIXED)
+# CREATE LEAD (FIXED 🔥)
 # =====================================================
 @transaction.atomic
 def create_lead(validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
+    # 🔥 GET CLINIC FROM REQUEST (SELECTED CLINIC)
     clinic_id = None
     if request:
         clinic_id = request.headers.get("X-Clinic-Id") or request.data.get("clinic_id")
@@ -55,10 +53,11 @@ def create_lead(validated_data, request=None):
     except Clinic.DoesNotExist:
         raise ValidationError({"clinic": "Invalid clinic"})
 
+    # ✅ REMOVE clinic_id from validated_data if exists
     validated_data.pop("clinic_id", None)
 
     # =====================================================
-    # DEPARTMENT
+    # DEPARTMENT VALIDATION (CLINIC SAFE)
     # =====================================================
     raw_department_id = validated_data.pop("department_id", None)
     department = None
@@ -70,12 +69,14 @@ def create_lead(validated_data, request=None):
             is_active=True,
         ).first()
 
+    # If provided ID is invalid/missing, fall back to first active department for this clinic
     if department is None:
         department = Department.objects.filter(
             clinic=clinic,
             is_active=True,
         ).first()
 
+    # Last resort: auto-create a default department so clinics without departments still work
     if department is None:
         department = Department.objects.create(
             clinic=clinic,
@@ -84,7 +85,7 @@ def create_lead(validated_data, request=None):
         )
 
     # =====================================================
-    # CAMPAIGN
+    # CAMPAIGN VALIDATION (CLINIC SAFE)
     # =====================================================
     campaign = None
     campaign_id = validated_data.pop("campaign_id", None)
@@ -92,17 +93,6 @@ def create_lead(validated_data, request=None):
         campaign = Campaign.objects.filter(
             id=campaign_id,
             clinic=clinic
-        ).first()
-
-    # =====================================================
-    # 🔥 FIXED REFERRAL SOURCE
-    # =====================================================
-    referral_source_id = validated_data.pop("referral_source", None)
-
-    referral_source = None
-    if referral_source_id:
-        referral_source = ReferralSource.objects.filter(
-            id=referral_source_id   # ✅ FIXED HERE (removed clinic filter)
         ).first()
 
     # =====================================================
@@ -127,11 +117,9 @@ def create_lead(validated_data, request=None):
     # CREATE LEAD
     # =====================================================
     lead = Lead.objects.create(
-        clinic=clinic,
+        clinic=clinic,   # ✅ FIXED HERE
         department=department,
         campaign=campaign,
-
-        referral_source=referral_source,  # ✅ working now
 
         assigned_to_id=assigned_to_id,
         assigned_to_name=assigned_to_name,
@@ -149,7 +137,7 @@ def create_lead(validated_data, request=None):
     )
 
     # =====================================================
-    # DOCUMENTS
+    # SAVE DOCUMENTS
     # =====================================================
     for file_object in documents:
         LeadDocument.objects.create(
