@@ -186,7 +186,7 @@ def has_action_permission_for_labels(user, action, labels):
 
 
 # =========================
-# FILTER BY CLINIC
+# FILTER BY CLINIC (FINAL FIX)
 # =========================
 def filter_by_clinic(queryset, request):
     user = request.user
@@ -194,18 +194,16 @@ def filter_by_clinic(queryset, request):
     if not user or not hasattr(user, "profile") or not user.profile:
         return queryset.none()
 
-    role = get_user_role(user)
-    clinic_id = request.query_params.get("clinic_id")
+    clinic_id = (
+        request.query_params.get("clinic_id")
+        or request.headers.get("X-Clinic-Id")
+    )
 
-    # ✅ SUPER ADMIN
-    if is_super_admin_role(role):
+    # ✅ If clinic passed → allow ALL roles
+    if clinic_id and str(clinic_id).isdigit():
+        return queryset.filter(profile__clinic_id=int(clinic_id))
 
-        if clinic_id and str(clinic_id).isdigit():
-            return queryset.filter(profile__clinic_id=int(clinic_id))
-
-        return queryset.none()
-
-    # ✅ NORMAL USER
+    # ✅ fallback → user clinic
     if user.profile.clinic_id:
         return queryset.filter(profile__clinic_id=user.profile.clinic_id)
 
