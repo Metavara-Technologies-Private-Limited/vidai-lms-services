@@ -290,4 +290,4 @@ class LeadSoftDeleteAPIView(APIView):
             raise NotFound("Lead not found")
 
     def delete(self, request, lead_id):
-        return self.patch(request, lead_id)
+        return self.patch(request, lead_id) 

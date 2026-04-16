@@ -1,7 +1,17 @@
+import os
+import uuid
+
 from django.db import models
 from django.contrib.auth.models import User
 from .role import Role
 from .clinic import Clinic
+
+
+def user_profile_photo_upload_to(instance, filename):
+    _, ext = os.path.splitext(filename or "")
+    normalized_ext = ext.lower() or ".jpg"
+    user_id = getattr(instance, "user_id", None) or "pending"
+    return f"user_profiles/user_{user_id}/{uuid.uuid4().hex}{normalized_ext}"
 
 
 class UserProfile(models.Model):
@@ -42,7 +52,11 @@ class UserProfile(models.Model):
         related_name="created_users"
     )
 
-    photo = models.ImageField(upload_to="user_profiles/", null=True, blank=True)
+    photo = models.ImageField(
+        upload_to=user_profile_photo_upload_to,
+        null=True,
+        blank=True,
+    )
 
     is_active = models.BooleanField(default=True)
 

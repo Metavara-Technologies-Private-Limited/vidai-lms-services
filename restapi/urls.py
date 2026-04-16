@@ -23,6 +23,7 @@ urlpatterns = [
 
     path("users/permissions/", UserPermissionAPIView.as_view()),
     path("me/photo/", MyProfilePhotoAPIView.as_view(), name="my-profile-photo"),
+    path("media/<path:path>", MediaFileAPIView.as_view(), name="media-file"),
 
 
     path("users/", UserCreateAPIView.as_view()),

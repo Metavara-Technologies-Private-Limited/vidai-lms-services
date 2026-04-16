@@ -16,15 +16,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import AllowAny
+from restapi.utils.media import build_media_api_url
 
 logger = logging.getLogger(__name__)
-
-
-def build_media_api_url(path: str) -> str:
-    media_api_prefix = getattr(settings, "MEDIA_API_URL", "/api/media/")
-    normalized_prefix = f"/{str(media_api_prefix).strip('/')}/"
-    normalized_path = str(path or "").lstrip("/")
-    return f"{normalized_prefix}{normalized_path}"
 
 
 # =====================================================

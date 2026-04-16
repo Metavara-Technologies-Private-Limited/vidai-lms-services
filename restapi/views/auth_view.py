@@ -12,6 +12,7 @@ from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 
 from restapi.services import get_user_permissions
+from restapi.utils.media import build_media_api_url
 
 
 def _get_profile_photo_url(user, request):
@@ -25,9 +26,7 @@ def _get_profile_photo_url(user, request):
         if not profile or not profile.photo:
             return None
         if os.path.exists(profile.photo.path):
-            # Return relative media URL. Frontend resolves origin/protocol,
-            # which avoids mixed-content issues behind reverse proxies.
-            return profile.photo.url
+            return build_media_api_url(profile.photo.name)
         # File missing on disk — clear the stale DB reference
         profile.photo = None
         profile.save(update_fields=["photo"])

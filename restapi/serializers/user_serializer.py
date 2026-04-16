@@ -6,6 +6,7 @@ import os
 
 from restapi.models.user_profile import UserProfile
 from restapi.models.role import Role
+from restapi.utils.media import build_media_api_url
 from restapi.utils.permissions import (
     get_user_permissions,
     has_permission,
@@ -52,15 +53,13 @@ def _build_media_api_url(file_field):
     if not file_name:
         return None
 
-    # Use Django-managed media URL so serialized paths always match actual serving.
-    # This avoids stale custom prefixes such as /api/media when MEDIA_URL is /media/.
+    # Route media through the API-backed media endpoint so uploaded files work
+    # consistently in production even when the web server is not serving /media/.
     try:
-        return str(file_field.url)
+        return build_media_api_url(file_name)
     except Exception:
-        media_url = str(getattr(settings, "MEDIA_URL", "/media/") or "/media/")
-        normalized_media_url = f"/{media_url.strip('/')}/"
         normalized_name = str(file_name).replace("\\", "/").lstrip("/")
-        return f"{normalized_media_url}{normalized_name}"
+        return build_media_api_url(normalized_name)
 
 
 class UserSerializer(serializers.ModelSerializer):
