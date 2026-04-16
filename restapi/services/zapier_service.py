@@ -67,6 +67,22 @@ def send_to_zapier_email(data):
     return response.status_code if response else None
 
 
+def send_to_zapier_reputation_email(data):
+    """
+    Send reputation review-request emails to the dedicated Zapier webhook.
+    """
+    response = _post_to_webhook(
+        label="Zapier Reputation Email",
+        webhook_url=(
+            getattr(settings, "ZAPIER_WEBHOOK_REPUTATION_EMAIL_URL", "")
+            or "https://hooks.zapier.com/hooks/catch/25767405/u771d3l/"
+        ),
+        payload=data,
+        timeout=8,
+    )
+    return response.status_code if response else None
+
+
 def send_to_zapier_social(data):
     """
     Send email campaign data to the unified Mailchimp Zapier webhook.

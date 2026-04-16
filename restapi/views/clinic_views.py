@@ -12,8 +12,8 @@ from drf_yasg.utils import swagger_auto_schema
 
 from django.shortcuts import get_object_or_404
 
-from restapi.models import Clinic, Employee
-from restapi.serializers.clinic import ClinicSerializer, ClinicReadSerializer
+from restapi.models import Clinic, Department, Employee
+from restapi.serializers.clinic import ClinicSerializer, ClinicReadSerializer, DepartmentReadSerializer
 from restapi.serializers.employee import EmployeeReadSerializer
 
 logger = logging.getLogger(__name__)
@@ -238,4 +238,24 @@ class ClinicEmployeesAPIView(APIView):
         get_object_or_404(Clinic, id=clinic_id)
         employees = Employee.objects.filter(clinic_id=clinic_id)
         serializer = EmployeeReadSerializer(employees, many=True)
+        return Response(serializer.data)
+
+
+# -------------------------------------------------------------------
+# Departments by Clinic (GET /departments/?clinic_id=X)
+# -------------------------------------------------------------------
+class DepartmentListAPIView(APIView):
+
+    def get(self, request):
+        clinic_id = request.query_params.get("clinic_id")
+        if not clinic_id:
+            return Response({"error": "clinic_id is required"}, status=400)
+
+        try:
+            clinic = Clinic.objects.get(id=clinic_id)
+        except Clinic.DoesNotExist:
+            return Response({"error": "Clinic not found"}, status=404)
+
+        departments = Department.objects.filter(clinic=clinic, is_active=True)
+        serializer = DepartmentReadSerializer(departments, many=True)
         return Response(serializer.data)

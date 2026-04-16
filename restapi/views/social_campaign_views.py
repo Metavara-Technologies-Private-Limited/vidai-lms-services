@@ -27,6 +27,7 @@ from restapi.services.campaign_social_post_service import (
     post_to_linkedin,
 )
 from restapi.services.zapier_service import send_to_zapier_social
+from restapi.utils.clinic_scope import resolve_request_clinic
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +50,11 @@ class SocialMediaCampaignCreateAPIView(APIView):
     @transaction.atomic
     def post(self, request):
         try:
+            clinic = resolve_request_clinic(request, required=True)
             print("SOCIAL DATA:", request.data)
-            serializer = SocialMediaCampaignSerializer(data=request.data)
+            payload = request.data.copy()
+            payload["clinic"] = clinic.id
+            serializer = SocialMediaCampaignSerializer(data=payload)
             serializer.is_valid(raise_exception=True)
 
             data = serializer.validated_data

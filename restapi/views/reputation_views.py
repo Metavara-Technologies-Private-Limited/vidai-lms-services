@@ -13,6 +13,7 @@ from restapi.serializers.reputation_serializer import (
     ReviewRequestSerializer,
     ReviewSerializer,
 )
+from restapi.utils.clinic_scope import resolve_request_clinic
 
 # =====================================================
 # =====================================================
@@ -22,8 +23,11 @@ from restapi.serializers.reputation_serializer import (
 class ReviewRequestCreateAPIView(APIView):
 
     def post(self, request):
+        clinic = resolve_request_clinic(request, required=True)
+        payload = request.data.copy()
+        payload["clinic"] = clinic.id
 
-        serializer = ReviewRequestSerializer(data=request.data)
+        serializer = ReviewRequestSerializer(data=payload)
 
         serializer.is_valid(raise_exception=True)
         review_request = serializer.save()
@@ -55,8 +59,13 @@ class ReviewRequestCreateAPIView(APIView):
 class ReviewRequestListAPIView(APIView):
 
     def get(self, request):
-
-        review_requests = ReviewRequest.objects.all().prefetch_related("leads", "reviews").order_by("-created_at")
+        clinic = resolve_request_clinic(request, required=True)
+        review_requests = (
+            ReviewRequest.objects
+            .filter(clinic=clinic)
+            .prefetch_related("leads", "reviews")
+            .order_by("-created_at")
+        )
 
         serializer = ReviewRequestSerializer(review_requests, many=True)
 
@@ -73,10 +82,12 @@ class ReviewRequestListAPIView(APIView):
 class ReviewRequestDetailAPIView(APIView):
 
     def get(self, request, request_id):
+        clinic = resolve_request_clinic(request, required=True)
 
         review_request = get_object_or_404(
             ReviewRequest.objects.prefetch_related("leads", "reviews"),
             id=request_id,
+            clinic=clinic,
         )
 
         serializer = ReviewRequestSerializer(review_request)
@@ -93,8 +104,12 @@ class ReviewRequestDetailAPIView(APIView):
 # GET /api/reputation/review-request/<request_id>/reviews/
 class ReviewListAPIView(APIView):
     def get(self, request, request_id):
+        clinic = resolve_request_clinic(request, required=True)
 
-        reviews = Review.objects.filter(review_request_id=request_id)
+        reviews = Review.objects.filter(
+            review_request_id=request_id,
+            review_request__clinic=clinic,
+        )
 
         serializer = ReviewSerializer(reviews, many=True)
 
@@ -143,16 +158,20 @@ class ReviewCreateAPIView(APIView):
 class ReputationDashboardAPIView(APIView):
 
     def get(self, request):
+        clinic = resolve_request_clinic(request, required=True)
 
         from django.db.models import Avg
         from restapi.models.reputation import ReviewRequest, Review, ReviewRequestLead
 
-        total_requests = ReviewRequest.objects.count()
-        total_sent_requests = ReviewRequestLead.objects.filter(request_sent=True).count()
+        total_requests = ReviewRequest.objects.filter(clinic=clinic).count()
+        total_sent_requests = ReviewRequestLead.objects.filter(
+            request_sent=True,
+            review_request__clinic=clinic,
+        ).count()
 
-        total_reviews = Review.objects.count()
+        total_reviews = Review.objects.filter(review_request__clinic=clinic).count()
 
-        avg_rating = Review.objects.aggregate(
+        avg_rating = Review.objects.filter(review_request__clinic=clinic).aggregate(
             avg_rating=Avg("rating")
         )["avg_rating"] or 0
 

@@ -24,6 +24,7 @@ from restapi.services.mailchimp_service import (
     create_and_send_mailchimp_campaign,
 )
 from restapi.services.zapier_service import send_to_zapier_email
+from restapi.utils.clinic_scope import resolve_request_clinic
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,11 @@ class EmailCampaignCreateAPIView(APIView):
     @transaction.atomic
     def post(self, request):
         try:
-            serializer = EmailCampaignCreateSerializer(data=request.data)
+            clinic = resolve_request_clinic(request, required=True)
+            payload = request.data.copy()
+            payload["clinic"] = clinic.id
+
+            serializer = EmailCampaignCreateSerializer(data=payload)
             serializer.is_valid(raise_exception=True)
             data = serializer.validated_data
 
@@ -218,6 +223,7 @@ class EmailCampaignCreateAPIView(APIView):
 
 class EmailSaveMailchimpCampaignIdAPIView(APIView):
     def post(self, request):
+        clinic = resolve_request_clinic(request, required=True)
         campaign_id = request.data.get("campaign_id")
         mailchimp_id = request.data.get("mailchimp_campaign_id")
 
@@ -226,7 +232,10 @@ class EmailSaveMailchimpCampaignIdAPIView(APIView):
 
         # Get latest email config for this campaign
         email_config = (
-            CampaignEmailConfig.objects.filter(campaign_id=campaign_id)
+            CampaignEmailConfig.objects.filter(
+                campaign_id=campaign_id,
+                campaign__clinic=clinic,
+            )
             .order_by("-created_at")
             .first()
         )

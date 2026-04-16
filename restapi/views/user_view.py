@@ -5,7 +5,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import User
-from django.db.models import Q
 
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
@@ -80,11 +79,10 @@ class UserListAPIView(APIView):
         if not _has_users_permission(request.user, "view"):
             return _permission_denied("view")
 
-        # ✅ BASE QUERY (FIXED - removed first_name filter)
+        # Base query: all active users with profile.
         users = User.objects.filter(
             profile__isnull=False,
             profile__is_active=True,
-            profile__created_by=request.user
         ).select_related(
             "profile",
             "profile__role",
@@ -95,13 +93,11 @@ class UserListAPIView(APIView):
 
         if hasattr(user, "profile") and user.profile and user.profile.role:
 
-            # ✅ SUPER ADMIN → ONLY CREATED USERS
+            # Super Admin can view all users across clinics.
             if is_super_admin_role(user.profile.role):
-                users = users.filter(
-                    Q(profile__created_by=user)
-                )
+                pass
             else:
-                # ✅ CLINIC FILTER
+                # Non-super-admin users can view only users from their clinic.
                 users = users.filter(
                     profile__clinic=user.profile.clinic
                 )

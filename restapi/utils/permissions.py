@@ -216,23 +216,42 @@ def has_action_permission_for_labels(user, action, labels):
 
 
 # =========================
-# FILTER QUERYSET BY CLINIC
+# FILTER QUERYSET BY CLINIC (FINAL - STRICT)
 # =========================
-def filter_by_clinic(queryset, user):
+def filter_by_clinic(queryset, request):
+    """
+    Multi-clinic behavior:
+    - Super Admin → MUST provide clinic_id
+    - Normal users → only their clinic
+    """
+
+    user = request.user
+
+    if not user or not hasattr(user, "profile") or not user.profile:
+        return queryset.none()
+
     role = get_user_role(user)
 
-    if role:
+    clinic_id = request.query_params.get("clinic_id")
 
-        # ✅ SUPER ADMIN → ONLY SHOW CREATED USERS
-        if is_super_admin_role(role):
-            return queryset.filter(profile__created_by=user)
+    # =====================================
+    # ✅ SUPER ADMIN (STRICT)
+    # =====================================
+    if is_super_admin_role(role):
 
-        # ✅ EXISTING LOGIC
-        try:
-            clinic = getattr(user.profile, "clinic", None)
-        except Exception:
-            clinic = None
+        # ❗ REQUIRE clinic_id
+        if not clinic_id:
+            return queryset.none()
 
-        return queryset.filter(profile__clinic=clinic)
+        if str(clinic_id).isdigit():
+            return queryset.filter(profile__clinic_id=int(clinic_id))
+
+        return queryset.none()
+
+    # =====================================
+    # ✅ NORMAL USERS
+    # =====================================
+    if user.profile.clinic_id:
+        return queryset.filter(profile__clinic_id=user.profile.clinic_id)
 
     return queryset.none()

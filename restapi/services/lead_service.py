@@ -59,13 +59,30 @@ def create_lead(validated_data, request=None):
     # =====================================================
     # DEPARTMENT VALIDATION (CLINIC SAFE)
     # =====================================================
-    try:
-        department = Department.objects.get(
-            id=validated_data.pop("department_id"),
-            clinic=clinic
+    raw_department_id = validated_data.pop("department_id", None)
+    department = None
+
+    if raw_department_id:
+        department = Department.objects.filter(
+            id=raw_department_id,
+            clinic=clinic,
+            is_active=True,
+        ).first()
+
+    # If provided ID is invalid/missing, fall back to first active department for this clinic
+    if department is None:
+        department = Department.objects.filter(
+            clinic=clinic,
+            is_active=True,
+        ).first()
+
+    # Last resort: auto-create a default department so clinics without departments still work
+    if department is None:
+        department = Department.objects.create(
+            clinic=clinic,
+            name="General",
+            is_active=True,
         )
-    except Department.DoesNotExist:
-        raise ValidationError({"department_id": "Invalid department for this clinic"})
 
     # =====================================================
     # CAMPAIGN VALIDATION (CLINIC SAFE)

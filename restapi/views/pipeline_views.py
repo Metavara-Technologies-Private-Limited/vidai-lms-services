@@ -28,8 +28,19 @@ from restapi.services.pipeline_service import (
     archive_stage,
     duplicate_stage,
 )
+from restapi.utils.clinic_scope import resolve_request_clinic
 
 logger = logging.getLogger(__name__)
+
+
+def _get_scoped_pipeline(request, pipeline_id):
+    clinic = resolve_request_clinic(request, required=True)
+    return Pipeline.objects.get(id=pipeline_id, clinic=clinic, is_deleted=False)
+
+
+def _get_scoped_stage(request, stage_id):
+    clinic = resolve_request_clinic(request, required=True)
+    return PipelineStage.objects.get(id=stage_id, pipeline__clinic=clinic)
 
 
 
@@ -92,12 +103,10 @@ class PipelineListAPIView(APIView):
     )
     def get(self, request):
         try:
-            clinic_id = request.query_params.get("clinic_id")
-            if not clinic_id:
-                raise ValidationError({"clinic_id": "This field is required"})
+            clinic = resolve_request_clinic(request, required=True)
 
             pipelines = Pipeline.objects.filter(
-                clinic_id=clinic_id,
+                clinic=clinic,
                 is_active=True,
                 is_deleted=False,
             )
@@ -134,7 +143,7 @@ class PipelineDetailAPIView(APIView):
     )
     def get(self, request, pipeline_id):
         try:
-            pipeline = Pipeline.objects.get(id=pipeline_id, is_deleted=False)
+            pipeline = _get_scoped_pipeline(request, pipeline_id)
 
             return Response(
                 PipelineReadSerializer(pipeline, context={"request": request}).data,
@@ -209,7 +218,7 @@ class PipelineStageUpdateAPIView(APIView):
     )
     def put(self, request, stage_id):
         try:
-            stage = PipelineStage.objects.get(id=stage_id)
+            stage = _get_scoped_stage(request, stage_id)
             stage = update_stage(stage, request.data)
 
             return Response(
@@ -249,7 +258,7 @@ class StageRuleSaveAPIView(APIView):
     )
     def post(self, request, stage_id):
         try:
-            stage = PipelineStage.objects.get(id=stage_id)
+            stage = _get_scoped_stage(request, stage_id)
             save_stage_rules(stage, request.data.get("rules", []))
 
             return Response(
@@ -289,7 +298,7 @@ class StageFieldSaveAPIView(APIView):
     )
     def post(self, request, stage_id):
         try:
-            stage = PipelineStage.objects.get(id=stage_id)
+            stage = _get_scoped_stage(request, stage_id)
             save_stage_fields(stage, request.data.get("fields", []))
 
             return Response(
@@ -331,7 +340,7 @@ class PipelineDuplicateAPIView(APIView):
     def post(self, request, pipeline_id):
         try:
             from restapi.services.pipeline_service import duplicate_pipeline
-            
+            _get_scoped_pipeline(request, pipeline_id)
             new_pipeline = duplicate_pipeline(pipeline_id)
             return Response(
                 PipelineReadSerializer(new_pipeline).data,
@@ -367,7 +376,7 @@ class PipelineArchiveAPIView(APIView):
     def post(self, request, pipeline_id):
         try:
             from restapi.services.pipeline_service import archive_pipeline
-            
+            _get_scoped_pipeline(request, pipeline_id)
             pipeline = archive_pipeline(pipeline_id)
             return Response(
                 PipelineReadSerializer(pipeline).data,
@@ -403,7 +412,7 @@ class PipelineDeleteAPIView(APIView):
     def delete(self, request, pipeline_id):
         try:
             from restapi.services.pipeline_service import delete_pipeline
-            
+            _get_scoped_pipeline(request, pipeline_id)
             delete_pipeline(pipeline_id)
             return Response(
                 {"message": "Pipeline deleted successfully"},
@@ -438,6 +447,7 @@ class StageDuplicateAPIView(APIView):
     )
     def post(self, request, stage_id):
         try:
+            _get_scoped_stage(request, stage_id)
             new_stage = duplicate_stage(stage_id)
             return Response(
                 PipelineStageReadSerializer(new_stage, context={"request": request}).data,
@@ -472,6 +482,7 @@ class StageArchiveAPIView(APIView):
     )
     def put(self, request, stage_id):
         try:
+            _get_scoped_stage(request, stage_id)
             stage = archive_stage(stage_id)
             return Response(
                 PipelineStageReadSerializer(stage, context={"request": request}).data,
@@ -509,6 +520,7 @@ class StageDeleteAPIView(APIView):
     )
     def delete(self, request, stage_id):
         try:
+            _get_scoped_stage(request, stage_id)
             delete_stage(stage_id)
             return Response(
                 {"message": "Stage deleted successfully"},
@@ -542,7 +554,7 @@ class StageDetailAPIView(APIView):
     )
     def put(self, request, stage_id):
         try:
-            stage = PipelineStage.objects.get(id=stage_id)
+            stage = _get_scoped_stage(request, stage_id)
             stage = update_stage(stage, request.data)
 
             return Response(
@@ -577,6 +589,7 @@ class StageDetailAPIView(APIView):
     )
     def delete(self, request, stage_id):
         try:
+            _get_scoped_stage(request, stage_id)
             delete_stage(stage_id)
             return Response(status=status.HTTP_204_NO_CONTENT)
 

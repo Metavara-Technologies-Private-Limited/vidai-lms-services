@@ -6,6 +6,7 @@ import traceback
 
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.db.models import Q
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -23,8 +24,29 @@ from restapi.serializers.ticket_serializer import (
     TicketListSerializer,
 )
 from restapi.utils.permissions import has_action_permission_for_labels
+from restapi.utils.clinic_scope import resolve_request_clinic
 
 logger = logging.getLogger(__name__)
+
+
+def _scoped_ticket_queryset(request):
+    clinic = resolve_request_clinic(request, required=True)
+    queryset = Ticket.objects.filter(is_deleted=False).filter(
+        Q(lab__clinic=clinic) | Q(department__clinic=clinic)
+    ).distinct()
+    return clinic, queryset
+
+
+def _validate_ticket_payload_for_clinic(clinic, serializer):
+    validated = getattr(serializer, "validated_data", {})
+    lab = validated.get("lab")
+    department = validated.get("department")
+
+    if lab is not None and getattr(lab, "clinic_id", None) != clinic.id:
+        raise ValidationError({"lab": "Lab does not belong to selected clinic"})
+
+    if department is not None and getattr(department, "clinic_id", None) != clinic.id:
+        raise ValidationError({"department": "Department does not belong to selected clinic"})
 
 
 def _has_tickets_permission(user, action: str) -> bool:
@@ -66,12 +88,14 @@ class TicketCreateAPIView(APIView):
             return _ticket_permission_denied("add")
 
         try:
+            clinic, _ = _scoped_ticket_queryset(request)
             serializer = TicketWriteSerializer(
                 data=request.data,
                 context={"request": request},
             )
 
             serializer.is_valid(raise_exception=True)
+            _validate_ticket_payload_for_clinic(clinic, serializer)
 
             ticket = serializer.save()
 
@@ -116,10 +140,8 @@ class TicketUpdateAPIView(APIView):
             return _ticket_permission_denied("edit")
 
         try:
-            ticket = Ticket.objects.filter(
-                id=ticket_id,
-                is_deleted=False
-            ).first()
+            clinic, queryset = _scoped_ticket_queryset(request)
+            ticket = queryset.filter(id=ticket_id).first()
 
             if not ticket:
                 return Response(
@@ -134,6 +156,7 @@ class TicketUpdateAPIView(APIView):
             )
 
             serializer.is_valid(raise_exception=True)
+            _validate_ticket_payload_for_clinic(clinic, serializer)
 
             updated_ticket = serializer.save()
 
@@ -186,7 +209,7 @@ class TicketListAPIView(APIView):
             return _ticket_permission_denied("view")
 
         try:
-            queryset = Ticket.objects.filter(is_deleted=False)
+            _, queryset = _scoped_ticket_queryset(request)
 
             if request.query_params.get("status"):
                 queryset = queryset.filter(status=request.query_params.get("status"))
@@ -249,10 +272,8 @@ class TicketDetailAPIView(APIView):
             return Response(status=200)
 
         try:
-            ticket = Ticket.objects.filter(
-                id=ticket_id,
-                is_deleted=False
-            ).first()
+            _, queryset = _scoped_ticket_queryset(request)
+            ticket = queryset.filter(id=ticket_id).first()
 
             if not ticket:
                 return Response(
@@ -302,10 +323,8 @@ class TicketAssignAPIView(APIView):
             return _ticket_permission_denied("edit")
 
         try:
-            ticket = Ticket.objects.filter(
-                id=ticket_id,
-                is_deleted=False
-            ).first()
+            _, queryset = _scoped_ticket_queryset(request)
+            ticket = queryset.filter(id=ticket_id).first()
 
             if not ticket:
                 return Response(
@@ -390,10 +409,8 @@ class TicketStatusUpdateAPIView(APIView):
             return _ticket_permission_denied("edit")
 
         try:
-            ticket = Ticket.objects.filter(
-                id=ticket_id,
-                is_deleted=False
-            ).first()
+            _, queryset = _scoped_ticket_queryset(request)
+            ticket = queryset.filter(id=ticket_id).first()
 
             if not ticket:
                 return Response(
@@ -557,10 +574,8 @@ class TicketDocumentUploadAPIView(APIView):
             return Response(status=200)
 
         try:
-            ticket = Ticket.objects.filter(
-                id=ticket_id,
-                is_deleted=False
-            ).first()
+            _, queryset = _scoped_ticket_queryset(request)
+            ticket = queryset.filter(id=ticket_id).first()
 
             if not ticket:
                 return Response(
@@ -622,10 +637,8 @@ class TicketDeleteAPIView(APIView):
             return _ticket_permission_denied("print")
 
         try:
-            ticket = Ticket.objects.filter(
-                id=ticket_id,
-                is_deleted=False
-            ).first()
+            _, queryset = _scoped_ticket_queryset(request)
+            ticket = queryset.filter(id=ticket_id).first()
 
             if not ticket:
                 return Response(
@@ -668,7 +681,7 @@ class TicketDashboardCountAPIView(APIView):
             return _ticket_permission_denied("view")
 
         try:
-            queryset = Ticket.objects.filter(is_deleted=False)
+            _, queryset = _scoped_ticket_queryset(request)
 
             response_data = {
                 "new": queryset.filter(status="new").count(),

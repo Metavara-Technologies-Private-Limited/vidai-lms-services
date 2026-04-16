@@ -25,7 +25,7 @@ def get_user_permissions(user):
             result[module].setdefault(category, {})
 
             if not subcategory:
-                continue  # skip null
+                continue
 
             result[module][category].setdefault(subcategory, [])
 
@@ -52,21 +52,41 @@ def get_user_permissions(user):
 
 
 # =========================
-# ✅ ADD THIS FUNCTION (NEW)
+# ✅ FINAL CLINIC FILTER FUNCTION
 # =========================
-def filter_users_for_superadmin(queryset, user):
+def filter_by_clinic(queryset, request):
     """
-    Super Admin → only users created by them
-    Others → no change
+    Multi-clinic behavior:
+    - Super Admin → sees users of selected clinic
+    - Normal users → sees only their clinic users
     """
 
-    if not user or not hasattr(user, "profile"):
+    user = request.user
+
+    if not user or not hasattr(user, "profile") or not user.profile:
         return queryset.none()
 
     role = get_user_role(user)
 
-    # ✅ SUPER ADMIN FILTER
-    if is_super_admin_role(role):
-        return queryset.filter(profile__created_by=user)
+    clinic_id = request.query_params.get("clinic_id")
 
-    return queryset
+    # =====================================
+    # ✅ SUPER ADMIN
+    # =====================================
+    if is_super_admin_role(role):
+
+        if clinic_id and str(clinic_id).isdigit():
+            return queryset.filter(profile__clinic_id=int(clinic_id))
+
+        if user.profile.clinic_id:
+            return queryset.filter(profile__clinic_id=user.profile.clinic_id)
+
+        return queryset.none()
+
+    # =====================================
+    # ✅ NORMAL USERS
+    # =====================================
+    if user.profile.clinic_id:
+        return queryset.filter(profile__clinic_id=user.profile.clinic_id)
+
+    return queryset.none()

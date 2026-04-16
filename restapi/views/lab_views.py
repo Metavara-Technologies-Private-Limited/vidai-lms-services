@@ -15,6 +15,7 @@ from restapi.serializers.ticket_serializer import (
     LabWriteSerializer,
     LabReadSerializer,
 )
+from restapi.utils.clinic_scope import resolve_request_clinic
 
 
 
@@ -35,7 +36,11 @@ class LabCreateAPIView(APIView):
     )
     def post(self, request):
         try:
-            serializer = LabWriteSerializer(data=request.data)
+            clinic = resolve_request_clinic(request, required=True)
+            payload = request.data.copy()
+            payload["clinic"] = clinic.id
+
+            serializer = LabWriteSerializer(data=payload)
             serializer.is_valid(raise_exception=True)
 
             lab = serializer.save()
@@ -63,10 +68,12 @@ class LabListAPIView(APIView):
         tags=["Labs"],
     )
     def get(self, request):
+        clinic = resolve_request_clinic(request, required=True)
 
         labs = Lab.objects.filter(
             is_deleted=False,
-            is_active=True
+            is_active=True,
+            clinic=clinic,
         )
 
         return Response(
@@ -90,16 +97,21 @@ class LabUpdateAPIView(APIView):
         tags=["Labs"],
     )
     def put(self, request, lab_id):
+        clinic = resolve_request_clinic(request, required=True)
 
         lab = get_object_or_404(
             Lab,
             id=lab_id,
-            is_deleted=False
+            is_deleted=False,
+            clinic=clinic,
         )
+
+        payload = request.data.copy()
+        payload["clinic"] = clinic.id
 
         serializer = LabWriteSerializer(
             lab,
-            data=request.data,
+            data=payload,
             partial=True
         )
 
@@ -123,11 +135,13 @@ class LabSoftDeleteAPIView(APIView):
         tags=["Labs"],
     )
     def delete(self, request, lab_id):
+        clinic = resolve_request_clinic(request, required=True)
 
         lab = get_object_or_404(
             Lab,
             id=lab_id,
-            is_deleted=False
+            is_deleted=False,
+            clinic=clinic,
         )
 
         lab.is_deleted = True

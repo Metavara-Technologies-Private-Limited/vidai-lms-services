@@ -3,7 +3,6 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
 from django.conf import settings
 import os
-from urllib.parse import quote
 
 from restapi.models.user_profile import UserProfile
 from restapi.models.role import Role
@@ -53,10 +52,15 @@ def _build_media_api_url(file_field):
     if not file_name:
         return None
 
-    media_api_prefix = getattr(settings, "MEDIA_API_URL", "/api/media/")
-    normalized_prefix = f"/{str(media_api_prefix).strip('/')}/"
-    encoded_name = quote(file_name, safe="/")
-    return f"{normalized_prefix}{encoded_name}"
+    # Use Django-managed media URL so serialized paths always match actual serving.
+    # This avoids stale custom prefixes such as /api/media when MEDIA_URL is /media/.
+    try:
+        return str(file_field.url)
+    except Exception:
+        media_url = str(getattr(settings, "MEDIA_URL", "/media/") or "/media/")
+        normalized_media_url = f"/{media_url.strip('/')}/"
+        normalized_name = str(file_name).replace("\\", "/").lstrip("/")
+        return f"{normalized_media_url}{normalized_name}"
 
 
 class UserSerializer(serializers.ModelSerializer):

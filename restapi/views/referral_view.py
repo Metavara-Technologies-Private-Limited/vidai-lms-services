@@ -12,6 +12,7 @@ from restapi.services.referral_service import (
     get_dashboard_counts
 )
 from restapi.serializers.referral_serializer import ReferralSourceSerializer
+from restapi.utils.clinic_scope import resolve_request_clinic
 
 
 # ==========================================
@@ -72,7 +73,7 @@ class ReferralSourceListAPIView(APIView):
             source_type = request.GET.get("type")
             search = request.GET.get("search")
 
-            clinic = getattr(request.user, "clinic", None)
+            clinic = resolve_request_clinic(request, required=True)
 
             queryset = get_referral_sources(source_type, search, clinic)
 
@@ -127,7 +128,7 @@ class ReferralDashboardAPIView(APIView):
     )
     def get(self, request):
         try:
-            clinic = getattr(request.user, "clinic", None)
+            clinic = resolve_request_clinic(request, required=True)
 
             data = get_dashboard_counts(clinic)
 
