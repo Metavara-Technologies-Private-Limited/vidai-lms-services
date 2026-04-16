@@ -16,16 +16,7 @@ from restapi.utils.permissions import (
     is_super_admin_role
 )
 
-# 🔥 IMPORTANT
-from restapi.utils.clinic_context import (
-    resolve_request_clinic,
-    ensure_object_in_request_clinic
-)
 
-
-# =========================
-# PERMISSION HELPERS
-# =========================
 def _has_users_permission(user, action: str) -> bool:
     return has_action_permission_for_labels(
         user,
@@ -62,9 +53,6 @@ class UserCreateAPIView(APIView):
         if not _has_users_permission(request.user, "add"):
             return _permission_denied("add")
 
-        # 🔥 Ensure clinic is selected
-        resolve_request_clinic(request)
-
         serializer = UserSerializer(
             data=request.data,
             context={"request": request}
@@ -81,7 +69,7 @@ class UserCreateAPIView(APIView):
 
 
 # =========================
-# LIST USERS
+# LIST USERS (FIXED)
 # =========================
 class UserListAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -91,8 +79,7 @@ class UserListAPIView(APIView):
         if not _has_users_permission(request.user, "view"):
             return _permission_denied("view")
 
-        user = request.user
-
+        # Base query: all active users with profile.
         users = User.objects.filter(
             profile__isnull=False,
             profile__is_active=True,
@@ -102,23 +89,18 @@ class UserListAPIView(APIView):
             "profile__clinic"
         )
 
-        # =========================
-        # SUPER ADMIN → ALL USERS
-        # =========================
-        if hasattr(user, "profile") and user.profile and user.profile.role and \
-           is_super_admin_role(user.profile.role):
+        user = request.user
 
-            clinic_id = request.query_params.get("clinic_id")
+        if hasattr(user, "profile") and user.profile and user.profile.role:
 
-            if clinic_id and str(clinic_id).isdigit():
-                users = users.filter(profile__clinic_id=int(clinic_id))
-
-        # =========================
-        # ADMIN / USER → SELECTED CLINIC
-        # =========================
-        else:
-            clinic = resolve_request_clinic(request)
-            users = users.filter(profile__clinic=clinic)
+            # Super Admin can view all users across clinics.
+            if is_super_admin_role(user.profile.role):
+                pass
+            else:
+                # Non-super-admin users can view only users from their clinic.
+                users = users.filter(
+                    profile__clinic=user.profile.clinic
+                )
 
         users = users.distinct()
 
@@ -142,16 +124,12 @@ class UserDetailAPIView(APIView):
     @swagger_auto_schema(tags=["User"])
     def get(self, request, pk):
         user = get_object_or_404(
-            User.objects.select_related("profile", "profile__role", "profile__clinic"),
+            User.objects.select_related("profile", "profile__role"),
             id=pk
         )
 
         if not _can_access_user_record(request.user, user, "view"):
             return _permission_denied("view")
-
-        # 🔥 Ensure clinic isolation
-        if not is_super_admin_role(request.user.profile.role):
-            ensure_object_in_request_clinic(request, user.profile.clinic)
 
         return Response({
             "success": True,
@@ -170,15 +148,12 @@ class UserUpdateAPIView(APIView):
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def put(self, request, pk):
         user = get_object_or_404(
-            User.objects.select_related("profile", "profile__role", "profile__clinic"),
+            User.objects.select_related("profile", "profile__role"),
             id=pk,
         )
 
         if not _can_access_user_record(request.user, user, "edit"):
             return _permission_denied("edit")
-
-        if not is_super_admin_role(request.user.profile.role):
-            ensure_object_in_request_clinic(request, user.profile.clinic)
 
         serializer = UserSerializer(
             user,
@@ -207,15 +182,12 @@ class UserPartialUpdateAPIView(APIView):
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def patch(self, request, pk):
         user = get_object_or_404(
-            User.objects.select_related("profile", "profile__role", "profile__clinic"),
+            User.objects.select_related("profile", "profile__role"),
             id=pk,
         )
 
         if not _can_access_user_record(request.user, user, "edit"):
             return _permission_denied("edit")
-
-        if not is_super_admin_role(request.user.profile.role):
-            ensure_object_in_request_clinic(request, user.profile.clinic)
 
         serializer = UserSerializer(
             user,
@@ -255,12 +227,9 @@ class UserStatusUpdateAPIView(APIView):
             return _permission_denied("edit")
 
         user = get_object_or_404(
-            User.objects.select_related("profile", "profile__clinic"),
+            User.objects.select_related("profile"),
             id=pk
         )
-
-        if not is_super_admin_role(request.user.profile.role):
-            ensure_object_in_request_clinic(request, user.profile.clinic)
 
         is_active = request.data.get("is_active")
 
@@ -291,14 +260,7 @@ class UserDeleteAPIView(APIView):
         if not _has_users_permission(request.user, "print"):
             return _permission_denied("print")
 
-        user = get_object_or_404(
-            User.objects.select_related("profile", "profile__clinic"),
-            id=pk
-        )
-
-        if not is_super_admin_role(request.user.profile.role):
-            ensure_object_in_request_clinic(request, user.profile.clinic)
-
+        user = get_object_or_404(User, id=pk)
         user.delete()
 
         return Response({

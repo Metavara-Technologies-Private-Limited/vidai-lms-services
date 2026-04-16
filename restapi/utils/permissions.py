@@ -1,88 +1,92 @@
 from restapi.models import RolePermission
-from restapi.utils.clinic_context import resolve_request_clinic
 
 
-# =========================
-# NORMALIZE ROLE NAME
-# =========================
 def normalize_role_name(role_name):
-    return str(role_name or "").strip().lower().replace("-", " ").replace("_", " ")
+    if not role_name:
+        return ""
+    return str(role_name).strip().lower().replace("-", " ").replace("_", " ")
 
 
-# =========================
-# SUPER ADMIN CHECK
-# =========================
 def is_super_admin_role(role):
-    return normalize_role_name(getattr(role, "name", "")) in {"super admin", "superadmin"}
-
-
-# =========================
-# GET USER ROLE
-# =========================
-def get_user_role(user):
-    profile = getattr(user, "profile", None)
-    return getattr(profile, "role", None) if profile else None
-
-
-# =========================
-# GET ROLE PERMISSIONS (OPTIMIZED)
-# =========================
-def _get_role_permissions(role):
     if not role:
-        return RolePermission.objects.none()
-    return RolePermission.objects.filter(role=role)
+        return False
+
+    normalized = normalize_role_name(getattr(role, "name", ""))
+    return normalized in {"super admin", "superadmin"}
+
+
+def get_user_role(user):
+    if not user:
+        return None
+
+    try:
+        profile = getattr(user, "profile", None)
+    except Exception:
+        return None
+
+    if not profile:
+        return None
+
+    try:
+        return getattr(profile, "role", None)
+    except Exception:
+        return None
 
 
 # =========================
-# FINAL PERMISSIONS
+# GET USER PERMISSIONS
 # =========================
 def get_user_permissions(user):
     role = get_user_role(user)
+    if not role:
+        return {}
 
-    permissions = (
-        RolePermission.objects.all()
-        if is_super_admin_role(role)
-        else _get_role_permissions(role)
-    )
-
+    permissions = RolePermission.objects.filter(role=role)
     result = {}
 
     for perm in permissions:
-        module = perm.module_key or "default"
-        category = perm.category_key or "default"
+        module = perm.module_key
+        category = perm.category_key
         subcategory = perm.subcategory_key
 
-        result.setdefault(module, {})
+        if module not in result:
+            result[module] = {}
 
+        # SETTINGS (WITH SUBCATEGORY)
         if category.lower() == "settings":
-            result[module].setdefault("settings", {})
+
+            if category not in result[module]:
+                result[module][category] = {}
 
             if not subcategory:
                 continue
 
-            result[module]["settings"].setdefault(subcategory, [{
-                "can_view": False,
-                "can_add": False,
-                "can_edit": False,
-                "can_print": False,
-            }])
+            if subcategory not in result[module][category]:
+                result[module][category][subcategory] = []
 
-            obj = result[module]["settings"][subcategory][0]
+            result[module][category][subcategory].append(
+                {
+                    "can_view": perm.can_view,
+                    "can_add": perm.can_add,
+                    "can_edit": perm.can_edit,
+                    "can_print": perm.can_print,
+                }
+            )
 
+        # OTHER MODULES
         else:
-            result[module].setdefault(category, [{
-                "can_view": False,
-                "can_add": False,
-                "can_edit": False,
-                "can_print": False,
-            }])
 
-            obj = result[module][category][0]
+            if category not in result[module]:
+                result[module][category] = []
 
-        obj["can_view"] |= perm.can_view
-        obj["can_add"] |= perm.can_add
-        obj["can_edit"] |= perm.can_edit
-        obj["can_print"] |= perm.can_print
+            result[module][category].append(
+                {
+                    "can_view": perm.can_view,
+                    "can_add": perm.can_add,
+                    "can_edit": perm.can_edit,
+                    "can_print": perm.can_print,
+                }
+            )
 
     return result
 
@@ -91,109 +95,163 @@ def get_user_permissions(user):
 # CHECK PERMISSION
 # =========================
 def has_permission(user, module, category, action):
-    if action not in {"view", "add", "edit", "print"}:
-        return False
-
     role = get_user_role(user)
 
+    # SUPER ADMIN -> FULL ACCESS
     if is_super_admin_role(role):
         return True
 
-    permissions = _get_role_permissions(role)
+    if action not in {"view", "add", "edit", "print"}:
+        return False
+
+    if not role:
+        return False
 
     module_norm = normalize_role_name(module)
     category_norm = normalize_role_name(category)
 
-    return any(
-        normalize_role_name(p.module_key) in {module_norm, "_", ""}
-        and normalize_role_name(p.category_key) in {category_norm, "_", ""}
-        and getattr(p, f"can_{action}", False)
-        for p in permissions
-    )
+    permissions = RolePermission.objects.filter(role=role)
+
+    for perm in permissions:
+        module_key = normalize_role_name(perm.module_key)
+        category_key = normalize_role_name(perm.category_key)
+
+        module_match = module_key in {module_norm, "_", ""}
+        category_match = category_key in {category_norm, "_", ""}
+
+        if not (module_match and category_match):
+            continue
+
+        if getattr(perm, f"can_{action}", False):
+            return True
+
+    return False
 
 
-# =========================
-# SUBCATEGORY PERMISSION
-# =========================
 def has_subcategory_permission(user, module, category, subcategory, action):
     if action not in {"view", "add", "edit", "print"}:
         return False
 
     role = get_user_role(user)
 
+    # SUPER ADMIN -> FULL ACCESS
     if is_super_admin_role(role):
         return True
 
-    permissions = _get_role_permissions(role)
+    if not role:
+        return False
 
     module_norm = normalize_role_name(module)
     category_norm = normalize_role_name(category)
-    sub_norm = normalize_role_name(subcategory)
+    subcategory_norm = normalize_role_name(subcategory)
+    sub_aliases = {subcategory_norm}
+    if subcategory_norm.endswith("s"):
+        sub_aliases.add(subcategory_norm[:-1])
+    else:
+        sub_aliases.add(f"{subcategory_norm}s")
 
-    return any(
-        normalize_role_name(p.module_key) in {module_norm, "_", ""}
-        and normalize_role_name(p.category_key) in {category_norm, "_", ""}
-        and normalize_role_name(p.subcategory_key) == sub_norm
-        and getattr(p, f"can_{action}", False)
-        for p in permissions
-    )
+    permissions = RolePermission.objects.filter(role=role)
+
+    for perm in permissions:
+        module_key = normalize_role_name(perm.module_key)
+        category_key = normalize_role_name(perm.category_key)
+        sub_key = normalize_role_name(perm.subcategory_key)
+
+        module_match = module_key in {module_norm, "_", ""}
+        category_match = category_key in {category_norm, "_", ""}
+        sub_match = sub_key in sub_aliases
+
+        if not (module_match and category_match and sub_match):
+            continue
+
+        if getattr(perm, f"can_{action}", False):
+            return True
+
+    return False
 
 
-# =========================
-# LABEL PERMISSION
-# =========================
 def has_action_permission_for_labels(user, action, labels):
     if action not in {"view", "add", "edit", "print"}:
         return False
 
     role = get_user_role(user)
-
     if is_super_admin_role(role):
         return True
 
-    permissions = _get_role_permissions(role)
+    if not role:
+        return False
 
-    normalized_labels = {
-        normalize_role_name(label)
-        for label in (labels or [])
-        if normalize_role_name(label)
-    }
+    normalized_labels = set()
+    for label in labels or []:
+        normalized = normalize_role_name(label)
+        if not normalized or normalized == "_":
+            continue
+        normalized_labels.add(normalized)
+        if normalized.endswith("s"):
+            normalized_labels.add(normalized[:-1])
+        else:
+            normalized_labels.add(f"{normalized}s")
 
-    return any(
-        getattr(p, f"can_{action}", False)
-        and {
-            normalize_role_name(p.module_key),
-            normalize_role_name(p.category_key),
-            normalize_role_name(p.subcategory_key),
-        } & normalized_labels
-        for p in permissions
-    )
+    if not normalized_labels:
+        return False
+
+    permissions = RolePermission.objects.filter(role=role)
+
+    for perm in permissions:
+        if not getattr(perm, f"can_{action}", False):
+            continue
+
+        keys = {
+            normalize_role_name(getattr(perm, "module_key", "")),
+            normalize_role_name(getattr(perm, "category_key", "")),
+            normalize_role_name(getattr(perm, "subcategory_key", "")),
+        }
+        keys.discard("")
+        keys.discard("_")
+
+        if keys & normalized_labels:
+            return True
+
+    return False
 
 
 # =========================
-# FINAL CLINIC FILTER
+# FILTER QUERYSET BY CLINIC (FINAL - STRICT)
 # =========================
 def filter_by_clinic(queryset, request):
     """
-    🔥 FINAL ARCHITECTURE:
-    - All roles can switch clinics
-    - Data is always isolated by selected clinic
+    Multi-clinic behavior:
+    - Super Admin → MUST provide clinic_id
+    - Normal users → only their clinic
     """
 
-    try:
-        clinic = resolve_request_clinic(request)
-    except Exception:
+    user = request.user
+
+    if not user or not hasattr(user, "profile") or not user.profile:
         return queryset.none()
 
-    model = queryset.model
+    role = get_user_role(user)
 
-    if model.__name__ == "User":
-        return queryset.filter(profile__clinic=clinic)
+    clinic_id = request.query_params.get("clinic_id")
 
-    if model.__name__ == "UserProfile":
-        return queryset.filter(clinic=clinic)
+    # =====================================
+    # ✅ SUPER ADMIN (STRICT)
+    # =====================================
+    if is_super_admin_role(role):
 
-    if hasattr(model, "clinic"):
-        return queryset.filter(clinic=clinic)
+        # ❗ REQUIRE clinic_id
+        if not clinic_id:
+            return queryset.none()
+
+        if str(clinic_id).isdigit():
+            return queryset.filter(profile__clinic_id=int(clinic_id))
+
+        return queryset.none()
+
+    # =====================================
+    # ✅ NORMAL USERS
+    # =====================================
+    if user.profile.clinic_id:
+        return queryset.filter(profile__clinic_id=user.profile.clinic_id)
 
     return queryset.none()

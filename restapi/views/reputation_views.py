@@ -100,6 +100,31 @@ class ReviewRequestDetailAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
+# =====================================================
+# PUBLIC ENDPOINT — No auth required
+# Used by ReviewForm page when a lead opens the review link in their email
+# GET /api/reputation/public/requests/<request_id>/
+# =====================================================
+class ReviewRequestPublicDetailAPIView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request, request_id):
+        review_request = get_object_or_404(ReviewRequest, id=request_id)
+
+        return Response(
+            {
+                "status": "success",
+                "data": {
+                    "id": str(review_request.id),
+                    "request_name": review_request.request_name,
+                    "description": review_request.description,
+                    "collect_on": review_request.collect_on,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
 # REPUTATION MANAGEMENT - LIST REVIEWS FOR A REQUEST
 # GET /api/reputation/review-request/<request_id>/reviews/
 class ReviewListAPIView(APIView):
@@ -123,6 +148,9 @@ class ReviewListAPIView(APIView):
 # REPUTATION MANAGEMENT - SUBMIT REVIEW
 # POST /api/reputation/submit-review/
 class ReviewCreateAPIView(APIView):
+    # ✅ No auth — leads are not registered users, they open the link from email
+    authentication_classes = []
+    permission_classes = []
 
     def post(self, request):
 

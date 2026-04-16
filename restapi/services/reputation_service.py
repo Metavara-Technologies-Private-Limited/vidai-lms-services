@@ -115,7 +115,21 @@ def build_review_link(review_request, lead, feedback_token=None):
     frontend_base_url = get_frontend_base_url()
 
     if review_request.collect_on == "google":
-        return "https://g.page/review/your-clinic"
+        # ✅ FIXED: Read Google Review URL from Django settings instead of hardcoded value.
+        # Set GOOGLE_REVIEW_URL in settings.py — get it from Google Business Profile > "Ask for reviews"
+        # Example: GOOGLE_REVIEW_URL = "https://g.page/r/YOUR_CLINIC_ID/review"
+        google_url = str(getattr(settings, "GOOGLE_REVIEW_URL", "") or "").strip()
+        if google_url:
+            return google_url
+        # Fallback: if not configured, send to the form so the lead can still leave feedback
+        logger.warning(
+            "GOOGLE_REVIEW_URL is not set in Django settings. "
+            "Falling back to feedback form for lead %s on request %s.",
+            lead.id,
+            review_request.id,
+        )
+        return f"{frontend_base_url}/review/{review_request.id}/{lead.id}"
+
     if review_request.collect_on in {"form", "both"}:
         # Always send the direct public review form URL to avoid auth redirects.
         return f"{frontend_base_url}/review/{review_request.id}/{lead.id}"
