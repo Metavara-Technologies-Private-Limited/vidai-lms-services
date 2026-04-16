@@ -51,6 +51,9 @@ def get_user_clinic(user) -> Optional[Clinic]:
     return getattr(profile, "clinic", None)
 
 
+# =========================
+# ✅ FINAL FIX (ONLY SMALL CHANGE)
+# =========================
 def resolve_request_clinic(request, required: bool = True) -> Optional[Clinic]:
     user = getattr(request, "user", None)
     profile = getattr(user, "profile", None)
@@ -60,15 +63,12 @@ def resolve_request_clinic(request, required: bool = True) -> Optional[Clinic]:
 
     if requested_clinic_id:
         clinic = Clinic.objects.filter(id=requested_clinic_id).first()
+
         if clinic is None:
             raise ValidationError({"clinic_id": "Invalid clinic_id"})
 
-        if not is_super_admin_role(user_role):
-            if user_clinic is None:
-                raise ValidationError({"clinic_id": "Clinic access denied"})
-            if clinic.id != user_clinic.id:
-                raise ValidationError({"clinic_id": "Clinic access denied"})
-
+        # ✅ ONLY CHANGE HERE
+        # Allow ALL roles to switch clinic (remove restriction)
         return clinic
 
     if user_clinic is not None:
@@ -80,6 +80,9 @@ def resolve_request_clinic(request, required: bool = True) -> Optional[Clinic]:
     return None
 
 
+# =========================
+# ✅ KEEP THIS SAME (IMPORTANT)
+# =========================
 def ensure_object_in_request_clinic(request, object_clinic: Optional[Clinic]) -> None:
     if object_clinic is None:
         raise ValidationError({"clinic_id": "Object has no clinic"})
@@ -93,6 +96,7 @@ def ensure_object_in_request_clinic(request, object_clinic: Optional[Clinic]) ->
     if requested_clinic_id and object_clinic.id != requested_clinic_id:
         raise ValidationError({"clinic_id": "Object does not belong to requested clinic"})
 
+    # 🔥 KEEP THIS (DO NOT REMOVE)
     if not is_super_admin_role(user_role):
         if user_clinic is None or object_clinic.id != user_clinic.id:
             raise ValidationError({"clinic_id": "Clinic access denied"})
