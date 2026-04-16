@@ -53,8 +53,6 @@ def _build_media_api_url(file_field):
     if not file_name:
         return None
 
-    # Route media through the API-backed media endpoint so uploaded files work
-    # consistently in production even when the web server is not serving /media/.
     try:
         return build_media_api_url(file_name)
     except Exception:
@@ -186,7 +184,6 @@ class UserSerializer(serializers.ModelSerializer):
         if request and hasattr(request.user, "profile"):
             profile_data["clinic"] = request.user.profile.clinic
 
-        # ✅ IMPORTANT
         if request and hasattr(request, "user"):
             profile_data["created_by"] = request.user
 
@@ -201,7 +198,7 @@ class UserSerializer(serializers.ModelSerializer):
             password=password
         )
 
-        profile, _ = UserProfile.objects.update_or_create(
+        UserProfile.objects.update_or_create(
             user=user,
             defaults=profile_data
         )
@@ -267,8 +264,12 @@ class UserSerializer(serializers.ModelSerializer):
             profile = None
 
         permissions = {}
-        if profile and profile.role:
-            permissions = get_user_permissions(instance)
+        try:
+            if profile and profile.role:
+                permissions = get_user_permissions(instance) or {}
+        except Exception as e:
+            print("Permission error:", str(e))
+            permissions = {}
 
         request = self.context.get("request")
         photo_url = None
@@ -321,11 +322,15 @@ class UserSerializer(serializers.ModelSerializer):
         if is_super_admin_role(user.profile.role):
             return data
 
-        can_view_users = (
-            has_permission(user, "user_management", "users", "view")
-            or has_subcategory_permission(user, "settings", "settings", "users", "view")
-            or has_subcategory_permission(user, "settings", "settings", "user", "view")
-        )
+        try:
+            can_view_users = (
+                has_permission(user, "user_management", "users", "view")
+                or has_subcategory_permission(user, "settings", "settings", "users", "view")
+                or has_subcategory_permission(user, "settings", "settings", "user", "view")
+            )
+        except Exception as e:
+            print("Permission check error:", str(e))
+            can_view_users = False
 
         if not can_view_users:
             return {}

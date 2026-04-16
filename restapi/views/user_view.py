@@ -5,12 +5,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import User
-
+from restapi.utils.permissions import get_user_permissions
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 
 from restapi.serializers.user_serializer import UserSerializer
-from restapi.services import get_user_permissions
+
 from restapi.utils.permissions import (
     has_action_permission_for_labels,
     is_super_admin_role
