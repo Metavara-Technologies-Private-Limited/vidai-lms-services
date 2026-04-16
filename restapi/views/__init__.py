@@ -24,7 +24,7 @@ from .template_views import *
 from .social_auth_views import *
 from .auth_proxy_views import *
 
-from .media_views import *
+
 
 from .mail_insights_views import *
 from .interaction_views import *
