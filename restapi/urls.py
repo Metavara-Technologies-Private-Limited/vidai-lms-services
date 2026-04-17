@@ -226,6 +226,7 @@ urlpatterns = [
 
     path("sources/", ReferralSourceListAPIView.as_view(), name="referral-sources"),
     path("dashboard/", ReferralDashboardAPIView.as_view(), name="referral-dashboard"),
+    path("referral-departments/", ReferralDepartmentListAPIView.as_view(), name="referral-departments"),
     
     path("reports/calls/", CallReportView.as_view(), name="call-reports"),
     path("reports/campaigns/", CampaignReportView.as_view(), name="campaign-reports"),
