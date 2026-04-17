@@ -1,0 +1,203 @@
+[ERROR] 2026-04-09 12:47:34 restapi.exception_handler:30 — [ERROR][2026-04-09 07:17:34.626633][ReqID: a6fdba6aaed2][IP: 127.0.0.1]
+Path: /api/campaigns/
+Error: Method "GET" not allowed.
+[ERROR] 2026-04-09 14:13:31 django.request:253 — Internal Server Error: /api/social-media-campaign/create
+Traceback (most recent call last):
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\utils\deprecation.py", line 122, in __call__
+    response = self.process_response(request, response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 108, in process_response
+    return self.response_redirect_class(self.get_full_path_with_slash(request))
+                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\middleware\common.py", line 87, in get_full_path_with_slash
+    raise RuntimeError(
+RuntimeError: You called this URL via POST, but the URL doesn't end in a slash and you have APPEND_SLASH set. Django can't redirect to the slash URL while maintaining POST data. Change your form to point to 127.0.0.1:8000/api/social-media-campaign/create/ (note the trailing slash), or set APPEND_SLASH=False in your Django settings.
+[ERROR] 2026-04-09 14:13:31 django.server:213 — "POST /api/social-media-campaign/create HTTP/1.1" 500 84063
+[ERROR] 2026-04-09 14:16:41 restapi.exception_handler:30 — [ERROR][2026-04-09 08:46:41.286022][ReqID: fd77c3d3a231][IP: 127.0.0.1]
+Path: /api/social-media-campaign/create/
+Error: insert or update on table "restapi_campaign" violates foreign key constraint "restapi_campaign_clinic_id_7a6cfacd_fk_restapi_clinic_id"
+DETAIL:  Key (clinic_id)=(1) is not present in table "restapi_clinic".
+
+[ERROR] 2026-04-09 14:16:41 django.request:253 — Internal Server Error: /api/social-media-campaign/create/
+[ERROR] 2026-04-09 14:16:41 django.server:213 — "POST /api/social-media-campaign/create/ HTTP/1.1" 500 61
+[ERROR] 2026-04-09 14:26:50 restapi.exception_handler:30 — [ERROR][2026-04-09 08:56:50.745603][ReqID: 1a3c4ce625c6][IP: 127.0.0.1]
+Path: /api/social-media-campaign/create/
+Error: insert or update on table "restapi_campaign" violates foreign key constraint "restapi_campaign_clinic_id_7a6cfacd_fk_restapi_clinic_id"
+DETAIL:  Key (clinic_id)=(1) is not present in table "restapi_clinic".
+
+[ERROR] 2026-04-09 14:26:50 django.request:253 — Internal Server Error: /api/social-media-campaign/create/
+[ERROR] 2026-04-09 14:26:50 django.server:213 — "POST /api/social-media-campaign/create/ HTTP/1.1" 500 61
+[ERROR] 2026-04-09 14:32:02 restapi.exception_handler:30 — [ERROR][2026-04-09 09:02:02.997615][ReqID: db93360a6f39][IP: 127.0.0.1]
+Path: /api/social-media-campaign/create/
+Error: insert or update on table "restapi_campaign" violates foreign key constraint "restapi_campaign_clinic_id_7a6cfacd_fk_restapi_clinic_id"
+DETAIL:  Key (clinic_id)=(1) is not present in table "restapi_clinic".
+
+[ERROR] 2026-04-09 14:32:03 django.request:253 — Internal Server Error: /api/social-media-campaign/create/
+[ERROR] 2026-04-09 14:32:03 django.server:213 — "POST /api/social-media-campaign/create/ HTTP/1.1" 500 61
+[ERROR] 2026-04-09 14:36:54 restapi.exception_handler:30 — [ERROR][2026-04-09 09:06:54.946282][ReqID: cef53baf073b][IP: 127.0.0.1]
+Path: /api/social-media-campaign/create/
+Error: insert or update on table "restapi_campaign" violates foreign key constraint "restapi_campaign_clinic_id_7a6cfacd_fk_restapi_clinic_id"
+DETAIL:  Key (clinic_id)=(1) is not present in table "restapi_clinic".
+
+[ERROR] 2026-04-09 14:36:54 django.request:253 — Internal Server Error: /api/social-media-campaign/create/
+[ERROR] 2026-04-09 14:36:54 django.server:213 — "POST /api/social-media-campaign/create/ HTTP/1.1" 500 61
+[ERROR] 2026-04-09 14:39:14 restapi.exception_handler:30 — [ERROR][2026-04-09 09:09:14.335077][ReqID: f4cbdc36f4c8][IP: 127.0.0.1]
+Path: /api/social-media-campaign/create/
+Error: insert or update on table "restapi_campaign" violates foreign key constraint "restapi_campaign_clinic_id_7a6cfacd_fk_restapi_clinic_id"
+DETAIL:  Key (clinic_id)=(1) is not present in table "restapi_clinic".
+
+[ERROR] 2026-04-09 14:39:14 django.request:253 — Internal Server Error: /api/social-media-campaign/create/
+[ERROR] 2026-04-09 14:39:14 django.server:213 — "POST /api/social-media-campaign/create/ HTTP/1.1" 500 61
+[ERROR] 2026-04-09 14:43:31 django.request:253 — Internal Server Error: /api/social-media-campaign/create/
+Traceback (most recent call last):
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\db\backends\base\base.py", line 303, in _commit
+    return self.connection.commit()
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.ForeignKeyViolation: insert or update on table "restapi_campaign" violates foreign key constraint "restapi_campaign_clinic_id_7a6cfacd_fk_restapi_clinic_id"
+DETAIL:  Key (clinic_id)=(1) is not present in table "restapi_clinic".
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\views\decorators\csrf.py", line 65, in _view_wrapper
+    return view_func(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\views\generic\base.py", line 105, in view
+    return self.dispatch(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\rest_framework\views.py", line 515, in dispatch
+    response = self.handle_exception(exc)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\rest_framework\views.py", line 475, in handle_exception
+    self.raise_uncaught_exception(exc)
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\rest_framework\views.py", line 486, in raise_uncaught_exception
+    raise exc
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\rest_framework\views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\contextlib.py", line 80, in inner
+    with self._recreate_cm():
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\db\transaction.py", line 263, in __exit__
+    connection.commit()
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\utils\asyncio.py", line 26, in inner
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\db\backends\base\base.py", line 327, in commit
+    self._commit()
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\db\backends\base\base.py", line 302, in _commit
+    with debug_transaction(self, "COMMIT"), self.wrap_database_errors:
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\db\utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\db\backends\base\base.py", line 303, in _commit
+    return self.connection.commit()
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: insert or update on table "restapi_campaign" violates foreign key constraint "restapi_campaign_clinic_id_7a6cfacd_fk_restapi_clinic_id"
+DETAIL:  Key (clinic_id)=(1) is not present in table "restapi_clinic".
+
+[ERROR] 2026-04-09 14:43:31 django.server:213 — "POST /api/social-media-campaign/create/ HTTP/1.1" 500 138379
+[ERROR] 2026-04-09 18:20:02 django.request:253 — Internal Server Error: /api/google-ads/create/
+Traceback (most recent call last):
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\views\decorators\csrf.py", line 65, in _view_wrapper
+    return view_func(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\views\generic\base.py", line 105, in view
+    return self.dispatch(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\rest_framework\views.py", line 515, in dispatch
+    response = self.handle_exception(exc)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\rest_framework\views.py", line 475, in handle_exception
+    self.raise_uncaught_exception(exc)
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\rest_framework\views.py", line 486, in raise_uncaught_exception
+    raise exc
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\rest_framework\views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\restapi\views\google_ads_views.py", line 13, in post
+    result = create_google_ads_campaign(auth, campaign)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\restapi\services\google_ads_service.py", line 9, in create_google_ads_campaign
+    client = get_google_ads_client(auth)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\restapi\services\google_ads_client.py", line 15, in get_google_ads_client
+    return GoogleAdsClient.load_from_dict(config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\google\ads\googleads\client.py", line 297, in load_from_dict
+    kwargs: Dict[str, Any] = cls._get_client_kwargs(config_data)
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\google\ads\googleads\client.py", line 198, in _get_client_kwargs
+    "credentials": oauth2.get_credentials(config_data),
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\google\ads\googleads\oauth2.py", line 151, in get_credentials
+    return get_installed_app_credentials(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\google\ads\googleads\oauth2.py", line 56, in initialize_credentials_wrapper
+    credentials.refresh(Request())
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\google\oauth2\credentials.py", line 400, in refresh
+    raise exceptions.RefreshError(
+google.auth.exceptions.RefreshError: The credentials do not contain the necessary fields need to refresh the access token. You must specify refresh_token, token_uri, client_id, and client_secret.
+[ERROR] 2026-04-09 18:20:02 django.server:213 — "POST /api/google-ads/create/ HTTP/1.1" 500 137417
+[ERROR] 2026-04-09 18:20:14 django.request:253 — Internal Server Error: /api/google-ads/create/
+Traceback (most recent call last):
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\views\decorators\csrf.py", line 65, in _view_wrapper
+    return view_func(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\django\views\generic\base.py", line 105, in view
+    return self.dispatch(request, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\rest_framework\views.py", line 515, in dispatch
+    response = self.handle_exception(exc)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\rest_framework\views.py", line 475, in handle_exception
+    self.raise_uncaught_exception(exc)
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\rest_framework\views.py", line 486, in raise_uncaught_exception
+    raise exc
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\rest_framework\views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\restapi\views\google_ads_views.py", line 13, in post
+    result = create_google_ads_campaign(auth, campaign)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\restapi\services\google_ads_service.py", line 9, in create_google_ads_campaign
+    client = get_google_ads_client(auth)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\restapi\services\google_ads_client.py", line 15, in get_google_ads_client
+    return GoogleAdsClient.load_from_dict(config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\google\ads\googleads\client.py", line 297, in load_from_dict
+    kwargs: Dict[str, Any] = cls._get_client_kwargs(config_data)
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\google\ads\googleads\client.py", line 198, in _get_client_kwargs
+    "credentials": oauth2.get_credentials(config_data),
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\google\ads\googleads\oauth2.py", line 151, in get_credentials
+    return get_installed_app_credentials(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\google\ads\googleads\oauth2.py", line 56, in initialize_credentials_wrapper
+    credentials.refresh(Request())
+  File "S:\Learning\LMSVIDAI\vidai-lms-services\venv\Lib\site-packages\google\oauth2\credentials.py", line 400, in refresh
+    raise exceptions.RefreshError(
+google.auth.exceptions.RefreshError: The credentials do not contain the necessary fields need to refresh the access token. You must specify refresh_token, token_uri, client_id, and client_secret.
+[ERROR] 2026-04-09 18:20:14 django.server:213 — "POST /api/google-ads/create/ HTTP/1.1" 500 137327
