@@ -3,6 +3,7 @@
 # =====================================================
 import logging
 import traceback
+from django.db.models import Q
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -21,6 +22,7 @@ from restapi.serializers.ticket_serializer import (
 
 from restapi.services.ticket_service import send_ticket_reply_service
 from restapi.utils.permissions import has_action_permission_for_labels
+from restapi.utils.clinic_scope import resolve_request_clinic
 
 logger = logging.getLogger(__name__)
 
@@ -90,10 +92,11 @@ class TicketReplyAPIView(APIView):
             return _ticket_permission_denied("add")
 
         try:
+            clinic = resolve_request_clinic(request, required=True)
             ticket = Ticket.objects.filter(
                 id=ticket_id,
                 is_deleted=False,
-            ).first()
+            ).filter(Q(lab__clinic=clinic) | Q(department__clinic=clinic)).first()
 
             if not ticket:
                 return Response(

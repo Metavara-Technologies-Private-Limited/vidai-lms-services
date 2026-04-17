@@ -30,6 +30,7 @@ from restapi.serializers.template_serializers import (
     TemplateSMSReadSerializer,
     TemplateWhatsAppReadSerializer,
 )
+from restapi.utils.clinic_scope import resolve_request_clinic
 
 logger = logging.getLogger(__name__)
 
@@ -45,16 +46,17 @@ class TemplateListAPIView(APIView):
     )
     def get(self, request, template_type):
         try:
+            clinic = resolve_request_clinic(request, required=True)
             if template_type == "mail":
-                templates = TemplateMail.objects.filter(is_deleted=False)
+                templates = TemplateMail.objects.filter(is_deleted=False, clinic=clinic)
                 serializer = TemplateMailReadSerializer(templates, many=True)
 
             elif template_type == "sms":
-                templates = TemplateSMS.objects.filter(is_deleted=False)
+                templates = TemplateSMS.objects.filter(is_deleted=False, clinic=clinic)
                 serializer = TemplateSMSReadSerializer(templates, many=True)
 
             elif template_type == "whatsapp":
-                templates = TemplateWhatsApp.objects.filter(is_deleted=False)
+                templates = TemplateWhatsApp.objects.filter(is_deleted=False, clinic=clinic)
                 serializer = TemplateWhatsAppReadSerializer(templates, many=True)
 
             else:
@@ -86,11 +88,13 @@ class TemplateDetailAPIView(APIView):
 
     def get(self, request, template_type, template_id):
         try:
+            clinic = resolve_request_clinic(request, required=True)
 
             if template_type == "mail":
                 template_instance = TemplateMail.objects.filter(
                     id=template_id,
-                    is_deleted=False
+                    is_deleted=False,
+                    clinic=clinic,
                 ).first()
 
                 if not template_instance:
@@ -104,7 +108,8 @@ class TemplateDetailAPIView(APIView):
             elif template_type == "sms":
                 template_instance = TemplateSMS.objects.filter(
                     id=template_id,
-                    is_deleted=False
+                    is_deleted=False,
+                    clinic=clinic,
                 ).first()
 
                 if not template_instance:
@@ -118,7 +123,8 @@ class TemplateDetailAPIView(APIView):
             elif template_type == "whatsapp":
                 template_instance = TemplateWhatsApp.objects.filter(
                     id=template_id,
-                    is_deleted=False
+                    is_deleted=False,
+                    clinic=clinic,
                 ).first()
 
                 if not template_instance:
@@ -158,16 +164,20 @@ class TemplateCreateAPIView(APIView):
     )
     def post(self, request, template_type):
         try:
+            clinic = resolve_request_clinic(request, required=True)
+            payload = request.data.copy()
+            payload["clinic"] = clinic.id
+
             if template_type == "mail":
-                write_serializer = TemplateMailSerializer(data=request.data)
+                write_serializer = TemplateMailSerializer(data=payload)
                 read_serializer_class = TemplateMailReadSerializer
 
             elif template_type == "sms":
-                write_serializer = TemplateSMSSerializer(data=request.data)
+                write_serializer = TemplateSMSSerializer(data=payload)
                 read_serializer_class = TemplateSMSReadSerializer
 
             elif template_type == "whatsapp":
-                write_serializer = TemplateWhatsAppSerializer(data=request.data)
+                write_serializer = TemplateWhatsAppSerializer(data=payload)
                 read_serializer_class = TemplateWhatsAppReadSerializer
 
             else:
@@ -204,10 +214,15 @@ class TemplateUpdateAPIView(APIView):
 
     def put(self, request, template_type, template_id):
         try:
+            clinic = resolve_request_clinic(request, required=True)
+            payload = request.data.copy()
+            payload["clinic"] = clinic.id
+
             if template_type == "mail":
                 template_instance = TemplateMail.objects.filter(
                     id=template_id,
-                    is_deleted=False
+                    is_deleted=False,
+                    clinic=clinic,
                 ).first()
 
                 if not template_instance:
@@ -218,7 +233,7 @@ class TemplateUpdateAPIView(APIView):
 
                 serializer = TemplateMailSerializer(
                     template_instance,
-                    data=request.data,
+                    data=payload,
                     partial=True
                 )
 
@@ -227,7 +242,8 @@ class TemplateUpdateAPIView(APIView):
             elif template_type == "sms":
                 template_instance = TemplateSMS.objects.filter(
                     id=template_id,
-                    is_deleted=False
+                    is_deleted=False,
+                    clinic=clinic,
                 ).first()
 
                 if not template_instance:
@@ -238,7 +254,7 @@ class TemplateUpdateAPIView(APIView):
 
                 serializer = TemplateSMSSerializer(
                     template_instance,
-                    data=request.data,
+                    data=payload,
                     partial=True
                 )
 
@@ -247,7 +263,8 @@ class TemplateUpdateAPIView(APIView):
             elif template_type == "whatsapp":
                 template_instance = TemplateWhatsApp.objects.filter(
                     id=template_id,
-                    is_deleted=False
+                    is_deleted=False,
+                    clinic=clinic,
                 ).first()
 
                 if not template_instance:
@@ -258,7 +275,7 @@ class TemplateUpdateAPIView(APIView):
 
                 serializer = TemplateWhatsAppSerializer(
                     template_instance,
-                    data=request.data,
+                    data=payload,
                     partial=True
                 )
 
@@ -331,10 +348,12 @@ class TemplateDocumentUploadAPIView(APIView):
             return Response(status=200)
 
         try:
+            clinic = resolve_request_clinic(request, required=True)
             if template_type == "mail":
                 template_instance = TemplateMail.objects.filter(
                     id=template_id,
-                    is_deleted=False
+                    is_deleted=False,
+                    clinic=clinic,
                 ).first()
 
                 if not template_instance:
@@ -348,7 +367,8 @@ class TemplateDocumentUploadAPIView(APIView):
             elif template_type == "sms":
                 template_instance = TemplateSMS.objects.filter(
                     id=template_id,
-                    is_deleted=False
+                    is_deleted=False,
+                    clinic=clinic,
                 ).first()
 
                 if not template_instance:
@@ -362,7 +382,8 @@ class TemplateDocumentUploadAPIView(APIView):
             elif template_type == "whatsapp":
                 template_instance = TemplateWhatsApp.objects.filter(
                     id=template_id,
-                    is_deleted=False
+                    is_deleted=False,
+                    clinic=clinic,
                 ).first()
 
                 if not template_instance:
@@ -424,22 +445,26 @@ class TemplateDeleteAPIView(APIView):
 
     def delete(self, request, template_type, template_id):
         try:
+            clinic = resolve_request_clinic(request, required=True)
             if template_type == "mail":
                 template_instance = TemplateMail.objects.filter(
                     id=template_id,
-                    is_deleted=False
+                    is_deleted=False,
+                    clinic=clinic,
                 ).first()
 
             elif template_type == "sms":
                 template_instance = TemplateSMS.objects.filter(
                     id=template_id,
-                    is_deleted=False
+                    is_deleted=False,
+                    clinic=clinic,
                 ).first()
 
             elif template_type == "whatsapp":
                 template_instance = TemplateWhatsApp.objects.filter(
                     id=template_id,
-                    is_deleted=False
+                    is_deleted=False,
+                    clinic=clinic,
                 ).first()
 
             else:

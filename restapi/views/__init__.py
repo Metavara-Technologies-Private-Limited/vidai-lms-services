@@ -24,7 +24,7 @@ from .template_views import *
 from .social_auth_views import *
 from .auth_proxy_views import *
 
-from .media_views import *
+
 
 from .mail_insights_views import *
 from .interaction_views import *
@@ -49,3 +49,5 @@ from .role_permission_views import *
 from .referral_view import *  
 
 from .report_view import *
+
+from .media_view import *

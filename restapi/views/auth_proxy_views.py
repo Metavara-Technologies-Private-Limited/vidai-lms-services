@@ -8,6 +8,10 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
+from rest_framework.exceptions import AuthenticationFailed
+
+from restapi.serializers.user_serializer import UserSerializer
+from restapi.utils.jwt_authentication import JWTAuthentication
 
 
 class LoginProxyAPIView(APIView):
@@ -87,6 +91,26 @@ class ProfileProxyAPIView(APIView):
             )
 
         try:
+            try:
+                local_auth = JWTAuthentication().authenticate(request)
+            except AuthenticationFailed:
+                local_auth = None
+
+            if local_auth:
+                user, _ = local_auth
+                request.user = user
+                return Response(
+                    {
+                        "success": True,
+                        "status_code": 200,
+                        "data": UserSerializer(
+                            user,
+                            context={"request": request},
+                        ).data,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
             auth_header = token if token.startswith("Bearer ") else f"Bearer {token}"
 
             resp = requests.get(

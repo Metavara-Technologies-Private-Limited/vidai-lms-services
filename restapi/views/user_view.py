@@ -2,16 +2,19 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import User
-
+from restapi.utils.permissions import get_user_permissions
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
-from restapi.utils.permissions import get_user_permissions
+
 from restapi.serializers.user_serializer import UserSerializer
 
-from restapi.services import get_user_permissions
-from restapi.utils.permissions import has_action_permission_for_labels
+from restapi.utils.permissions import (
+    has_action_permission_for_labels,
+    is_super_admin_role
+)
 
 
 def _has_users_permission(user, action: str) -> bool:
@@ -31,7 +34,11 @@ def _permission_denied(action: str):
         status=status.HTTP_403_FORBIDDEN,
     )
 
-from restapi.utils.permissions import get_user_permissions  
+
+def _can_access_user_record(request_user, target_user, action: str) -> bool:
+    if request_user.id == target_user.id and action in {"view", "edit"}:
+        return True
+    return _has_users_permission(request_user, action)
 
 
 # =========================
@@ -39,6 +46,7 @@ from restapi.utils.permissions import get_user_permissions
 # =========================
 class UserCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def post(self, request):
@@ -56,12 +64,12 @@ class UserCreateAPIView(APIView):
         return Response({
             "success": True,
             "message": "User created successfully",
-            "data": UserSerializer(user, context={"request": request}).data   # ✅ FIX
+            "data": UserSerializer(user, context={"request": request}).data
         }, status=status.HTTP_201_CREATED)
 
 
 # =========================
-# LIST USERS
+# LIST USERS (FIXED)
 # =========================
 class UserListAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -71,82 +79,81 @@ class UserListAPIView(APIView):
         if not _has_users_permission(request.user, "view"):
             return _permission_denied("view")
 
-        users = User.objects.filter(profile__isnull=False).select_related(
-            "profile", "profile__role"
+        # Base query: all active users with profile.
+        users = User.objects.filter(
+            profile__isnull=False,
+            profile__is_active=True,
+        ).select_related(
+            "profile",
+            "profile__role",
+            "profile__clinic"
         )
+
+        user = request.user
+
+        if hasattr(user, "profile") and user.profile and user.profile.role:
+
+            # Super Admin can view all users across clinics.
+            if is_super_admin_role(user.profile.role):
+                pass
+            else:
+                # Non-super-admin users can view only users from their clinic.
+                users = users.filter(
+                    profile__clinic=user.profile.clinic
+                )
+
+        users = users.distinct()
 
         return Response({
             "success": True,
             "message": "Users fetched successfully",
-            "data": UserSerializer(users, many=True, context={"request": request}).data  # ✅ FIX
-        })
+            "data": UserSerializer(
+                users,
+                many=True,
+                context={"request": request}
+            ).data
+        }, status=status.HTTP_200_OK)
 
 
 # =========================
 # RETRIEVE USER
 # =========================
 class UserDetailAPIView(APIView):
-    permission_classes = [IsAuthenticated]   # ✅ FIX
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(tags=["User"])
     def get(self, request, pk):
-        if not _has_users_permission(request.user, "view"):
-            return _permission_denied("view")
-
         user = get_object_or_404(
             User.objects.select_related("profile", "profile__role"),
             id=pk
         )
 
+        if not _can_access_user_record(request.user, user, "view"):
+            return _permission_denied("view")
+
         return Response({
             "success": True,
             "message": "User fetched successfully",
-            "data": UserSerializer(user).data
+            "data": UserSerializer(user, context={"request": request}).data
         })
 
 
 # =========================
-# UPDATE USER (PUT)
+# UPDATE USER
 # =========================
 class UserUpdateAPIView(APIView):
-    permission_classes = [IsAuthenticated]   # ✅ FIX
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
     def put(self, request, pk):
-        if not _has_users_permission(request.user, "edit"):
-            return _permission_denied("edit")
-
-        user = get_object_or_404(User, id=pk)
-
-        serializer = UserSerializer(
-            user,
-            data=request.data,
-            partial=True,   # ✅ IMPORTANT FIX
-            context={"request": request}
+        user = get_object_or_404(
+            User.objects.select_related("profile", "profile__role"),
+            id=pk,
         )
-        serializer.is_valid(raise_exception=True)
 
-        user = serializer.save()
-
-        return Response({
-            "success": True,
-            "message": "User updated successfully",
-            "data": UserSerializer(user).data
-        })
-
-
-# =========================
-# PARTIAL UPDATE USER (PATCH)
-# =========================
-class UserPartialUpdateAPIView(APIView):
-    permission_classes = [IsAuthenticated]   # ✅ FIX
-
-    @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
-    def patch(self, request, pk):
-        if not _has_users_permission(request.user, "edit"):
+        if not _can_access_user_record(request.user, user, "edit"):
             return _permission_denied("edit")
-
-        user = get_object_or_404(User, id=pk)
 
         serializer = UserSerializer(
             user,
@@ -161,7 +168,41 @@ class UserPartialUpdateAPIView(APIView):
         return Response({
             "success": True,
             "message": "User updated successfully",
-            "data": UserSerializer(user).data
+            "data": UserSerializer(user, context={"request": request}).data
+        })
+
+
+# =========================
+# PARTIAL UPDATE USER
+# =========================
+class UserPartialUpdateAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
+    def patch(self, request, pk):
+        user = get_object_or_404(
+            User.objects.select_related("profile", "profile__role"),
+            id=pk,
+        )
+
+        if not _can_access_user_record(request.user, user, "edit"):
+            return _permission_denied("edit")
+
+        serializer = UserSerializer(
+            user,
+            data=request.data,
+            partial=True,
+            context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+
+        user = serializer.save()
+
+        return Response({
+            "success": True,
+            "message": "User updated successfully",
+            "data": UserSerializer(user, context={"request": request}).data
         })
 
 
@@ -169,7 +210,7 @@ class UserPartialUpdateAPIView(APIView):
 # UPDATE USER STATUS
 # =========================
 class UserStatusUpdateAPIView(APIView):
-    permission_classes = [IsAuthenticated]   # ✅ FIX
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         tags=["User"],
@@ -212,7 +253,7 @@ class UserStatusUpdateAPIView(APIView):
 # DELETE USER
 # =========================
 class UserDeleteAPIView(APIView):
-    permission_classes = [IsAuthenticated]   # ✅ FIX
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(tags=["User"])
     def delete(self, request, pk):
@@ -236,7 +277,6 @@ class UserPermissionAPIView(APIView):
 
     @swagger_auto_schema(tags=["User"])
     def get(self, request):
-
         permissions = get_user_permissions(request.user)
 
         return Response({
@@ -244,6 +284,31 @@ class UserPermissionAPIView(APIView):
             "message": "Permissions fetched successfully",
             "data": {
                 "role": request.user.profile.role.name if request.user.profile.role else None,
-                "permissions": permissions   # ✅ FIXED FORMAT
+                "permissions": permissions
             }
+        })
+
+
+# =========================
+# PROFILE PHOTO UPDATE
+# =========================
+class MyProfilePhotoAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    @swagger_auto_schema(tags=["User"], request_body=UserSerializer)
+    def patch(self, request):
+        serializer = UserSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        return Response({
+            "success": True,
+            "message": "Profile photo updated successfully",
+            "data": UserSerializer(user, context={"request": request}).data
         })

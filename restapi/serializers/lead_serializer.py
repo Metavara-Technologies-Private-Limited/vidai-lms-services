@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from restapi.utils.permissions import get_user_permissions, has_permission
 from restapi.models import (
     Lead,
     Clinic,
@@ -8,18 +7,27 @@ from restapi.models import (
     Employee,
     Campaign,
     LeadDocument,
+    ReferralSource,
+    ReferralDepartment,
 )
-
-from restapi.services.lead_service import (
-    create_lead,
-    update_lead,
-)
+from restapi.services.lead_service import create_lead, update_lead
 
 
 # =====================================================
-# Lead READ Serializer
+# 🔥 CUSTOM FIELD
 # =====================================================
+class MultiFileField(serializers.ListField):
+    child = serializers.FileField()
 
+    def to_internal_value(self, data):
+        if hasattr(data, "getlist"):
+            data = data.getlist("documents")
+        return super().to_internal_value(data)
+
+
+# =====================================================
+# READ SERIALIZER
+# =====================================================
 class LeadReadSerializer(serializers.ModelSerializer):
 
     clinic_id = serializers.IntegerField(source="clinic.id", read_only=True)
@@ -42,82 +50,25 @@ class LeadReadSerializer(serializers.ModelSerializer):
     created_by_id = serializers.IntegerField(read_only=True)
     created_by_name = serializers.CharField(read_only=True)
 
-    documents = serializers.SerializerMethodField()
+    # 🔥 REFERRAL DISPLAY
+    referral_department_id = serializers.IntegerField(source="referral_department.id", read_only=True)
+    referral_department_name = serializers.CharField(source="referral_department.name", read_only=True)
 
-    # 🔥 ADDED (Referral - SAFE)
     referral_source_id = serializers.IntegerField(source="referral_source.id", read_only=True)
     referral_source_name = serializers.CharField(source="referral_source.name", read_only=True)
-    referral_source_type = serializers.CharField(source="referral_source.type", read_only=True)
-    referral_clinic_name = serializers.CharField(
-        source="referral_source.external_clinic.name",
-        read_only=True
-    )
+
+    documents = serializers.SerializerMethodField()
 
     class Meta:
         model = Lead
-        fields = [
-            "id",
-
-            "clinic_id", "clinic_name",
-            "department_id", "department_name",
-            "campaign_id", "campaign_name", "campaign_duration",
-            "assigned_to_id", "assigned_to_name",
-            "personal_id", "personal_name",
-
-            "created_by_id",
-            "created_by_name",
-
-            # 🔥 ADDED
-            "referral_source_id",
-            "referral_source_name",
-            "referral_source_type",
-            "referral_clinic_name",
-
-            "full_name",
-            "age",
-            "gender",
-            "marital_status",
-            "email",
-            "contact_no",
-            "language_preference",
-            "location",
-            "address",
-            "partner_inquiry",
-            "partner_full_name",
-            "partner_age",
-            "partner_gender",
-            "source",
-            "sub_source",
-            "lead_status",
-            "next_action_status",
-            "next_action_type",
-            "next_action_description",
-            "treatment_interest",
-            "book_appointment",
-            "appointment_date",
-            "slot",
-            "remark",
-
-            "documents",
-
-            "created_at",
-            "modified_at",
-            "is_active",
-            "converted_at",
-        ]
+        fields = "__all__"
 
     def get_campaign_duration(self, obj):
         campaign = obj.campaign
-        if not campaign:
+        if not campaign or not campaign.start_date or not campaign.end_date:
             return None
 
-        start = campaign.start_date
-        end = campaign.end_date
-
-        if not start or not end:
-            return None
-
-        return f"{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}"
+        return f"{campaign.start_date.strftime('%d/%m/%Y')} - {campaign.end_date.strftime('%d/%m/%Y')}"
 
     def get_documents(self, obj):
         return [
@@ -129,36 +80,10 @@ class LeadReadSerializer(serializers.ModelSerializer):
             for doc in obj.documents.all()
         ]
 
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-
-        request = self.context.get("request")
-        if not request:
-            return data
-
-        user = request.user
-
-        if user.profile.role.name.lower() == "super admin":
-            return data
-
-        if not has_permission(user, "lead", "leads", "view"):
-            return {}
-
-        allowed_fields = [
-            "id",
-            "full_name",
-            "contact_no",
-            "lead_status",
-            "created_at"
-        ]
-
-        return {k: v for k, v in data.items() if k in allowed_fields}
-
 
 # =====================================================
-# Lead WRITE Serializer
+# WRITE SERIALIZER
 # =====================================================
-
 class LeadSerializer(serializers.ModelSerializer):
 
     clinic_id = serializers.IntegerField(write_only=True, required=False)
@@ -172,15 +97,11 @@ class LeadSerializer(serializers.ModelSerializer):
 
     campaign_id = serializers.UUIDField(required=False, allow_null=True)
 
-    # 🔥 ADDED (Referral input - SAFE)
+    # 🔥 REFERRAL
+    referral_department_id = serializers.IntegerField(required=False, allow_null=True)
     referral_source_id = serializers.IntegerField(required=False, allow_null=True)
 
-    documents = serializers.ListField(
-        child=serializers.FileField(),
-        write_only=True,
-        required=False
-    )
-
+    documents = MultiFileField(write_only=True, required=False)
     is_active = serializers.BooleanField(required=False)
 
     class Meta:
@@ -193,12 +114,8 @@ class LeadSerializer(serializers.ModelSerializer):
 
             "assigned_to_id",
             "assigned_to_name",
-
             "personal_id",
             "personal_name",
-
-            # 🔥 ADDED
-            "referral_source_id",
 
             "full_name",
             "age",
@@ -209,30 +126,43 @@ class LeadSerializer(serializers.ModelSerializer):
             "language_preference",
             "location",
             "address",
+
             "partner_inquiry",
             "partner_full_name",
             "partner_age",
             "partner_gender",
+
             "source",
             "sub_source",
+
+            # 🔥 REFERRAL
+            "referral_department_id",
+            "referral_source_id",
+
             "lead_status",
             "next_action_status",
             "next_action_type",
             "next_action_description",
+
             "treatment_interest",
             "book_appointment",
             "appointment_date",
             "slot",
             "remark",
+
             "documents",
             "is_active",
         ]
 
         read_only_fields = ("id",)
 
+    # =====================================================
+    # VALIDATION
+    # =====================================================
     def validate(self, attrs):
         request = self.context.get("request")
 
+        # ================= BASIC =================
         if self.instance is None:
             if "clinic_id" not in attrs:
                 raise ValidationError({"clinic_id": "This field is required."})
@@ -244,47 +174,64 @@ class LeadSerializer(serializers.ModelSerializer):
             if payload_id and str(payload_id) != str(self.instance.id):
                 raise ValidationError({"id": "Lead ID mismatch"})
 
-            if "clinic_id" in attrs:
-                if attrs["clinic_id"] != self.instance.clinic_id:
-                    raise ValidationError({"clinic_id": "Cannot change clinic"})
-                attrs.pop("clinic_id")
+        # ================= REFERRAL =================
+        ref_dept_id = attrs.get("referral_department_id")
+        ref_source_id = attrs.get("referral_source_id")
 
-            if "department_id" in attrs:
-                if attrs["department_id"] != self.instance.department_id:
-                    raise ValidationError({"department_id": "Cannot change department"})
-                attrs.pop("department_id")
+        clinic_id = (
+            attrs.get("clinic_id")
+            or request.headers.get("X-Clinic-Id")
+            or request.data.get("clinic_id")
+        )
+
+        if ref_source_id and not ref_dept_id:
+            raise ValidationError({
+                "referral_department_id": "Required when referral_source is provided"
+            })
+
+        if ref_dept_id:
+            dept = ReferralDepartment.objects.filter(
+                id=ref_dept_id,
+                clinic_id=clinic_id,
+                is_active=True
+            ).first()
+
+            if not dept:
+                raise ValidationError({"referral_department_id": "Invalid referral department"})
+
+        if ref_source_id:
+            source = ReferralSource.objects.filter(
+                id=ref_source_id,
+                clinic_id=clinic_id
+            ).first()
+
+            if not source:
+                raise ValidationError({"referral_source_id": "Invalid referral source"})
+
+            if ref_dept_id and source.referral_department_id != ref_dept_id:
+                raise ValidationError(
+                    "Referral Source does not belong to selected Department"
+                )
 
         return attrs
 
+    # =====================================================
+    # CREATE
+    # =====================================================
     def create(self, validated_data):
         request = self.context.get("request")
-
-        # 🔥 ADDED (Referral handling)
-        referral_source_id = validated_data.pop("referral_source_id", None)
-        if referral_source_id:
-            from restapi.models.referral import ReferralSource
-            try:
-                validated_data["referral_source"] = ReferralSource.objects.get(id=referral_source_id)
-            except ReferralSource.DoesNotExist:
-                raise ValidationError({"referral_source_id": "Invalid referral source"})
 
         if request and hasattr(request.user, "employee"):
             validated_data["created_by_id"] = request.user.employee.id
             validated_data["created_by_name"] = request.user.employee.emp_name
 
-        return create_lead(validated_data)
+        return create_lead(validated_data, request=request)
 
+    # =====================================================
+    # UPDATE
+    # =====================================================
     def update(self, instance, validated_data):
         request = self.context.get("request")
-
-        # 🔥 ADDED (Referral handling)
-        referral_source_id = validated_data.pop("referral_source_id", None)
-        if referral_source_id is not None:
-            from restapi.models.referral import ReferralSource
-            try:
-                instance.referral_source = ReferralSource.objects.get(id=referral_source_id)
-            except ReferralSource.DoesNotExist:
-                raise ValidationError({"referral_source_id": "Invalid referral source"})
 
         if request and hasattr(request.user, "employee"):
             validated_data["updated_by_id"] = request.user.employee.id

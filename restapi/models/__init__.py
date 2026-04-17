@@ -8,14 +8,21 @@ from .role_permission import RolePermission
 from .lead import Lead
 from .campaign import Campaign
 
+# ✅ ADD THIS LINE (IMPORTANT FIX)
+from .referral import ReferralSource
+from .referral_department import ReferralDepartment
+from .external_clinic import ExternalClinic
+ 
 # Campaign configs
 from .campaign_social_media_config import CampaignSocialMediaConfig
 from .campaign_email_config import CampaignEmailConfig
+
 # Campaign execution tracking
 from .campaign_social_post import CampaignSocialPost
 
 from .mailchip import MarketingEvent
 from .twilio import TwilioMessage, TwilioCall
+
 # Legacy / shared models
 from .clinic import Clinic
 from .department import Department
@@ -32,6 +39,7 @@ from .lab import Lab
 from .ticket import Ticket
 from .ticket_document import Document
 from .ticket_timeline import TicketTimeline
+from .ticket_reply import TicketReply
 
 # Templates Module
 from .template_mail import TemplateMail
@@ -47,5 +55,4 @@ from .lead_note import LeadNote
 from .lead_document import LeadDocument
 from .lead_mail import LeadEmail
 
-from .ticket import Ticket
-from .ticket_reply import TicketReply
+

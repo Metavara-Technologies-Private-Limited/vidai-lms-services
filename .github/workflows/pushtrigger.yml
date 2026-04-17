@@ -82,6 +82,8 @@ jobs:
               -e ZAPIER_WEBHOOK_TWILIO_URL="${{ secrets.ZAPIER_WEBHOOK_TWILIO_URL }}" \
               -e STAGE_PROFILE_URL="${{ secrets.STAGE_PROFILE_URL }}" \
               -e STAGE_LOGIN_URL="${{ secrets.STAGE_LOGIN_URL }}" \
+              -e DEFAULT_FROM_EMAIL="${{ secrets.DEFAULT_FROM_EMAIL }}" \
+              -e GOOGLE_REVIEW_URL="${{ secrets.GOOGLE_REVIEW_URL }}" \
               ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
 
             echo "Wait container boot"

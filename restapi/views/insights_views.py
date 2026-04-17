@@ -17,12 +17,14 @@ from restapi.models.social_account import SocialAccount
 from restapi.services.campaign_social_post_service import get_facebook_post_insights
 from restapi.services.mailchimp_service import get_mailchimp_campaign_report
 from restapi.services.zapier_service import send_to_zapier_mailchimp_insights
+from restapi.utils.clinic_scope import resolve_request_clinic
 
 logger = logging.getLogger(__name__)
 
 class CampaignFacebookInsightsAPIView(APIView):
     def get(self, request, campaign_id):
-        campaign = get_object_or_404(Campaign, id=campaign_id)
+        clinic = resolve_request_clinic(request, required=True)
+        campaign = get_object_or_404(Campaign, id=campaign_id, clinic=clinic)
 
         if not campaign.post_id:
             return Response({"error": "Campaign has no Facebook post"}, status=400)
@@ -89,10 +91,11 @@ class CampaignMailchimpInsightsAPIView(APIView):
 
     def get(self, request, campaign_id):
         try:
+            clinic = resolve_request_clinic(request, required=True)
             # Same logic as your POST → consistency
             email_config = (
                 CampaignEmailConfig.objects
-                .filter(campaign_id=campaign_id)
+                .filter(campaign_id=campaign_id, campaign__clinic=clinic)
                 .order_by("-created_at")
                 .first()
             )

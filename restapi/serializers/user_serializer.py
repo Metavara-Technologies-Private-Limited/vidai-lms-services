@@ -1,9 +1,12 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
+from django.conf import settings
+import os
 
 from restapi.models.user_profile import UserProfile
 from restapi.models.role import Role
+from restapi.utils.media import build_media_api_url
 from restapi.utils.permissions import (
     get_user_permissions,
     has_permission,
@@ -22,6 +25,39 @@ def _resolve_default_role(request):
             return request.user.profile.role
 
     return Role.objects.filter(is_active=True).first() or Role.objects.first()
+
+
+def _validate_profile_photo(file_obj):
+    if not file_obj:
+        return
+
+    max_size = int(
+        getattr(settings, "MAX_PROFILE_PHOTO_UPLOAD_BYTES", 20 * 1024 * 1024)
+    )
+    file_size = getattr(file_obj, "size", 0) or 0
+    if file_size > max_size:
+        raise serializers.ValidationError(
+            {"photo": f"Profile photo must be {max_size // (1024 * 1024)}MB or smaller"}
+        )
+
+    content_type = getattr(file_obj, "content_type", "") or ""
+    if content_type and not content_type.lower().startswith("image/"):
+        raise serializers.ValidationError({"photo": "Only image files are allowed"})
+
+
+def _build_media_api_url(file_field):
+    if not file_field:
+        return None
+
+    file_name = getattr(file_field, "name", "") or ""
+    if not file_name:
+        return None
+
+    try:
+        return build_media_api_url(file_name)
+    except Exception:
+        normalized_name = str(file_name).replace("\\", "/").lstrip("/")
+        return build_media_api_url(normalized_name)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -44,6 +80,7 @@ class UserSerializer(serializers.ModelSerializer):
     )
 
     photo = serializers.ImageField(required=False)
+    remove_photo = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
         model = User
@@ -60,7 +97,8 @@ class UserSerializer(serializers.ModelSerializer):
             "date_of_joining",
             "mobile_no",
             "role",
-            "photo"
+            "photo",
+            "remove_photo"
         ]
 
     # =========================
@@ -74,6 +112,10 @@ class UserSerializer(serializers.ModelSerializer):
         confirm_password = data.get("confirm_password")
         email = data.get("email")
         role = data.get("role")
+        photo = data.get("photo")
+
+        if photo is not None:
+            _validate_profile_photo(photo)
 
         if not self.instance:
             if not email:
@@ -116,6 +158,7 @@ class UserSerializer(serializers.ModelSerializer):
     # CREATE USER
     # =========================
     def create(self, validated_data):
+        validated_data.pop("remove_photo", False)
 
         profile_data = {
             "first_name": validated_data.pop("first_name", None),
@@ -141,6 +184,9 @@ class UserSerializer(serializers.ModelSerializer):
         if request and hasattr(request.user, "profile"):
             profile_data["clinic"] = request.user.profile.clinic
 
+        if request and hasattr(request, "user"):
+            profile_data["created_by"] = request.user
+
         password = validated_data.pop("password", None)
         validated_data.pop("confirm_password", None)
 
@@ -152,13 +198,12 @@ class UserSerializer(serializers.ModelSerializer):
             password=password
         )
 
-        profile, _ = UserProfile.objects.update_or_create(
+        UserProfile.objects.update_or_create(
             user=user,
             defaults=profile_data
         )
 
         user.refresh_from_db()
-
         return user
 
     # =========================
@@ -167,6 +212,7 @@ class UserSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
 
         profile, _ = UserProfile.objects.get_or_create(user=instance)
+        remove_photo = validated_data.pop("remove_photo", False)
 
         if "email" in validated_data:
             instance.email = validated_data["email"]
@@ -194,13 +240,17 @@ class UserSerializer(serializers.ModelSerializer):
         if "role" in validated_data:
             profile.role = validated_data["role"]
 
+        if remove_photo:
+            if profile.photo:
+                profile.photo.delete(save=False)
+            profile.photo = None
+
         if "photo" in validated_data:
             if profile.photo:
                 profile.photo.delete(save=False)
             profile.photo = validated_data.get("photo")
 
         profile.save()
-
         return instance
 
     # =========================
@@ -214,8 +264,26 @@ class UserSerializer(serializers.ModelSerializer):
             profile = None
 
         permissions = {}
-        if profile and profile.role:
-            permissions = get_user_permissions(instance)
+        try:
+            if profile and profile.role:
+                permissions = get_user_permissions(instance) or {}
+        except Exception as e:
+            print("Permission error:", str(e))
+            permissions = {}
+
+        request = self.context.get("request")
+        photo_url = None
+
+        if profile and profile.photo:
+            try:
+                file_path = profile.photo.path
+                if os.path.exists(file_path):
+                    photo_url = _build_media_api_url(profile.photo)
+                else:
+                    profile.photo = None
+                    profile.save(update_fields=["photo"])
+            except Exception:
+                pass
 
         data = {
             "id": instance.id,
@@ -235,37 +303,36 @@ class UserSerializer(serializers.ModelSerializer):
                 "id": profile.clinic.id if profile and profile.clinic else None,
                 "name": profile.clinic.name if profile and profile.clinic else None
             },
-            "photo": profile.photo.url if profile and profile.photo else None,
+            "created_by": profile.created_by.id if profile and profile.created_by else None,
+            "photo": photo_url,
             "is_active": profile.is_active if profile else False,
             "permissions": permissions
         }
 
-        request = self.context.get("request")
         if not request:
             return data
 
-        user = request.user
+        user = getattr(request, "user", None)
+        if not user or not hasattr(user, "profile") or not getattr(user, "profile", None):
+            return data
+
+        if getattr(user, "id", None) == instance.id:
+            return data
 
         if is_super_admin_role(user.profile.role):
             return data
 
-        can_view_users = (
-            has_permission(user, "user_management", "users", "view")
-            or has_subcategory_permission(user, "settings", "settings", "users", "view")
-            or has_subcategory_permission(user, "settings", "settings", "user", "view")
-        )
+        try:
+            can_view_users = (
+                has_permission(user, "user_management", "users", "view")
+                or has_subcategory_permission(user, "settings", "settings", "users", "view")
+                or has_subcategory_permission(user, "settings", "settings", "user", "view")
+            )
+        except Exception as e:
+            print("Permission check error:", str(e))
+            can_view_users = False
 
         if not can_view_users:
             return {}
 
-        allowed_fields = [
-            "id",
-            "username",
-            "first_name",
-            "role",
-            "clinic",
-            "is_active",
-            "permissions"
-        ]
-
-        return {k: v for k, v in data.items() if k in allowed_fields}
+        return data

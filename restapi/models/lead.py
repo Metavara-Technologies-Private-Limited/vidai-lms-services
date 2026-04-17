@@ -123,18 +123,29 @@ class Lead(models.Model):
     )
 
     # =============================
-    # SOURCE
-    # =============================
+# SOURCE
+# =============================
 
     source = models.CharField(max_length=100)
     sub_source = models.CharField(max_length=100, blank=True)
 
-    # 🔥 ADD THIS
-    referral_source = models.ForeignKey("restapi.ReferralSource", on_delete=models.SET_NULL,
-    null=True,
-    blank=True,
-    related_name="leads"
-)
+    # 🔥 NEW → Referral Department (Dropdown 1)
+    referral_department = models.ForeignKey(
+        "restapi.ReferralDepartment",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="leads"
+    )
+
+    # 🔥 EXISTING → Referral Source (Dropdown 2)
+    referral_source = models.ForeignKey(
+        "restapi.ReferralSource",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="leads"
+    )
 
     # =============================
     # STATUS

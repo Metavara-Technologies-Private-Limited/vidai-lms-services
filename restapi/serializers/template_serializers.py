@@ -25,24 +25,54 @@ from restapi.services.template_service import (
 # =====================================================
 
 class TemplateMailDocumentSerializer(serializers.ModelSerializer):
+
+    file = serializers.SerializerMethodField()
+
     class Meta:
         model = TemplateMailDocument
-        fields = ["id", "file"]
-        read_only_fields = ["id"]
+        fields = ["id", "file", "uploaded_at"]
+
+    def get_file(self, obj):
+        request = self.context.get("request")
+        if obj.file:
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
 
 
 class TemplateSMSDocumentSerializer(serializers.ModelSerializer):
+
+    file = serializers.SerializerMethodField()
+
     class Meta:
         model = TemplateSMSDocument
-        fields = ["id", "file"]
-        read_only_fields = ["id"]
+        fields = ["id", "file", "uploaded_at"]
+
+    def get_file(self, obj):
+        request = self.context.get("request")
+        if obj.file:
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
 
 
 class TemplateWhatsAppDocumentSerializer(serializers.ModelSerializer):
+
+    file = serializers.SerializerMethodField()
+
     class Meta:
         model = TemplateWhatsAppDocument
-        fields = ["id", "file"]
-        read_only_fields = ["id"]
+        fields = ["id", "file", "uploaded_at"]
+
+    def get_file(self, obj):
+        request = self.context.get("request")
+        if obj.file:
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
 
 # =====================================================
 # EMAIL TEMPLATE SERIALIZERS

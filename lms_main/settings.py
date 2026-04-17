@@ -157,6 +157,10 @@ STATIC_ROOT = BASE_DIR / 'static'
 # ================================
 MEDIA_URL  = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_API_URL = '/api/media/'
+MAX_PROFILE_PHOTO_UPLOAD_BYTES = 20 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
 
 
 # ================================
@@ -170,7 +174,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ================================
 CORS_ALLOW_ALL_ORIGINS = True
 
-
+# Respect reverse-proxy forwarded headers for correct scheme/host resolution
+# in production (e.g., nginx, Cloudflare, load balancers).
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
 # ================================
 # DRF
 # ================================
@@ -277,11 +284,16 @@ ZAPIER_WEBHOOK_TWILIO_URL = os.getenv("ZAPIER_WEBHOOK_TWILIO_URL",)
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND")
 
 EMAIL_HOST = os.getenv("EMAIL_HOST")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT"))
-EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS") == "True"
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").strip().lower() in (
+    "1", "true", "yes", "on"
+)
 
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL")
 
 # MAILCHIMP
 # ================================
@@ -313,15 +325,6 @@ STAGE_USERS_URL = os.getenv(
     "https://99999.preview-api.vidaisolutions.com/api/users/"
 )
 
-# --- Google OAuth ---
-GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET  = os.getenv("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REDIRECT_URI   = os.getenv("GOOGLE_REDIRECT_URI", "")
-
-# --- Google Ads ---
-GOOGLE_ADS_DEVELOPER_TOKEN   = os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN")
-GOOGLE_ADS_LOGIN_CUSTOMER_ID = os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
-
-# Add these at the bottom of your Google Ads section
-GOOGLE_ACCESS_TOKEN = os.getenv("GOOGLE_ACCESS_TOKEN")
-GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")

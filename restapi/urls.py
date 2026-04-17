@@ -22,6 +22,8 @@ urlpatterns = [
     path("permissions/<int:pk>/update/", RolePermissionUpdateAPIView.as_view()),
 
     path("users/permissions/", UserPermissionAPIView.as_view()),
+    path("me/photo/", MyProfilePhotoAPIView.as_view(), name="my-profile-photo"),
+    path("media/<path:path>", MediaFileAPIView.as_view(), name="media-file"),
 
 
     path("users/", UserCreateAPIView.as_view()),
@@ -111,8 +113,15 @@ urlpatterns = [
     path("pipelines/create/", PipelineCreateAPIView.as_view(), name="pipeline-create"),
     path("pipelines/", PipelineListAPIView.as_view(), name="pipeline-list"),
     path("pipelines/<uuid:pipeline_id>/", PipelineDetailAPIView.as_view(), name="pipeline-detail"),
+    path("pipelines/<uuid:pipeline_id>/duplicate/", PipelineDuplicateAPIView.as_view(), name="pipeline-duplicate"),
+    path("pipelines/<uuid:pipeline_id>/archive/", PipelineArchiveAPIView.as_view(), name="pipeline-archive"),
+    path("pipelines/<uuid:pipeline_id>/delete/", PipelineDeleteAPIView.as_view(), name="pipeline-delete"),
     path("pipelines/stages/create/", PipelineStageCreateAPIView.as_view(), name="stage-create"),
+    path("pipelines/stages/<uuid:stage_id>/", StageDetailAPIView.as_view(), name="stage-detail"),
     path("pipelines/stages/<uuid:stage_id>/update/", PipelineStageUpdateAPIView.as_view(), name="stage-update"),
+    path("pipelines/stages/<uuid:stage_id>/duplicate/", StageDuplicateAPIView.as_view(), name="stage-duplicate"),
+    path("pipelines/stages/<uuid:stage_id>/archive/", StageArchiveAPIView.as_view(), name="stage-archive"),
+    path("pipelines/stages/<uuid:stage_id>/delete/", StageDeleteAPIView.as_view(), name="stage-delete"),
     path("pipelines/stages/<uuid:stage_id>/rules/", StageRuleSaveAPIView.as_view(), name="stage-rules"),
     path("pipelines/stages/<uuid:stage_id>/fields/", StageFieldSaveAPIView.as_view(), name="stage-fields"),
 
