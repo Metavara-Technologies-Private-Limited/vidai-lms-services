@@ -214,6 +214,11 @@ urlpatterns = [
     path("reputation/requests/create/", ReviewRequestCreateAPIView.as_view(), name="review-create"),
     path("reputation/requests/", ReviewRequestListAPIView.as_view(), name="review-list"),
     path("reputation/requests/<uuid:request_id>/", ReviewRequestDetailAPIView.as_view(), name="review-detail"),
+    path(
+        "reputation/public/requests/<uuid:request_id>/",
+        ReviewRequestPublicDetailAPIView.as_view(),
+        name="review-public-detail",
+    ),
     path("reputation/requests/<uuid:request_id>/reviews/", ReviewListAPIView.as_view(), name="review-sub-list"),
     path("reputation/dashboard/", ReputationDashboardAPIView.as_view(), name="reputation-dashboard"),
     path("reputation/reviews/create/", ReviewCreateAPIView.as_view(), name="review-submit"),
