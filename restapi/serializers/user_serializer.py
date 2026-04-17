@@ -2,7 +2,6 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
 from django.conf import settings
-import os
 
 from restapi.models.user_profile import UserProfile
 from restapi.models.role import Role
@@ -45,7 +44,8 @@ def _validate_profile_photo(file_obj):
         raise serializers.ValidationError({"photo": "Only image files are allowed"})
 
 
-def _build_media_api_url(file_field):
+# ✅ FIXED FUNCTION (supports server automatically)
+def _build_media_api_url(file_field, request=None):
     if not file_field:
         return None
 
@@ -53,11 +53,12 @@ def _build_media_api_url(file_field):
     if not file_name:
         return None
 
-    try:
-        return build_media_api_url(file_name)
-    except Exception:
-        normalized_name = str(file_name).replace("\\", "/").lstrip("/")
-        return build_media_api_url(normalized_name)
+    url = f"{settings.MEDIA_URL}{file_name}"
+
+    if request:
+        return request.build_absolute_uri(url)
+
+    return url
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -267,23 +268,18 @@ class UserSerializer(serializers.ModelSerializer):
         try:
             if profile and profile.role:
                 permissions = get_user_permissions(instance) or {}
-        except Exception as e:
-            print("Permission error:", str(e))
+        except Exception:
             permissions = {}
 
         request = self.context.get("request")
-        photo_url = None
 
+        # ✅ FIXED (NO FILE DELETION + SERVER SAFE)
+        photo_url = None
         if profile and profile.photo:
             try:
-                file_path = profile.photo.path
-                if os.path.exists(file_path):
-                    photo_url = _build_media_api_url(profile.photo)
-                else:
-                    profile.photo = None
-                    profile.save(update_fields=["photo"])
+                photo_url = _build_media_api_url(profile.photo, request)
             except Exception:
-                pass
+                photo_url = None
 
         data = {
             "id": instance.id,
@@ -328,8 +324,7 @@ class UserSerializer(serializers.ModelSerializer):
                 or has_subcategory_permission(user, "settings", "settings", "users", "view")
                 or has_subcategory_permission(user, "settings", "settings", "user", "view")
             )
-        except Exception as e:
-            print("Permission check error:", str(e))
+        except Exception:
             can_view_users = False
 
         if not can_view_users:
