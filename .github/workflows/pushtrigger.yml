@@ -95,6 +95,7 @@ jobs:
               -e GOOGLE_REFRESH_TOKEN="${{ secrets.GOOGLE_REFRESH_TOKEN }}" \
               -e ZAPIER_WEBHOOK_SOCIAL_URL="${{ secrets.ZAPIER_WEBHOOK_SOCIAL_URL }}" \
 
+
               ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
 
             echo "Wait container boot"
