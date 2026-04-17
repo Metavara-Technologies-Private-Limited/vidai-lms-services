@@ -312,11 +312,30 @@ class UserSerializer(serializers.ModelSerializer):
 
         # ✅ FINAL PERMISSION FIX (ROBUST)
         can_view_users = (
-            has_action_permission_for_labels(user, "view", ["user rights", "users", "user"])
-            or has_permission(user, "user_management", "users", "view")
-            or has_subcategory_permission(user, "settings", "settings", "user", "view")
-            or has_subcategory_permission(user, "settings", "settings", "users", "view")
-        )
+    is_super_admin_role(user.profile.role)  # ✅ ALWAYS allow superadmin
+
+    or has_action_permission_for_labels(
+        user,
+        "view",
+        ["user", "users", "user rights"]
+    )
+
+    or has_subcategory_permission(
+        user,
+        "",          # ✅ IGNORE module
+        "settings",
+        "user",
+        "view"
+    )
+
+    or has_subcategory_permission(
+        user,
+        "",          # ✅ IGNORE module
+        "settings",
+        "users",
+        "view"
+    )
+)
 
         if not can_view_users:
             return {}
