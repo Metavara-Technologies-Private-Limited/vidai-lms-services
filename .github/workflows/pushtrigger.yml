@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - devops-build
+      - googleads_feature
 
 jobs:
   build-and-deploy:
