@@ -112,7 +112,11 @@ class PipelineListAPIView(APIView):
             )
 
             return Response(
-                PipelineReadSerializer(pipelines, many=True).data,
+                PipelineReadSerializer(
+                    pipelines,
+                    many=True,
+                    context={"request": request},
+                ).data,
                 status=status.HTTP_200_OK,
             )
 
@@ -159,6 +163,91 @@ class PipelineDetailAPIView(APIView):
         except Exception:
             logger.error(
                 "Unhandled Pipeline Detail Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @swagger_auto_schema(
+        operation_description="Update pipeline",
+        request_body=PipelineSerializer,
+        responses={200: PipelineReadSerializer},
+        tags=["Pipelines"],
+    )
+    def put(self, request, pipeline_id):
+        try:
+            pipeline = _get_scoped_pipeline(request, pipeline_id)
+            serializer = PipelineSerializer(
+                pipeline,
+                data=request.data,
+                context={"request": request},
+                partial=True,
+            )
+            serializer.is_valid(raise_exception=True)
+            updated = serializer.save()
+
+            return Response(
+                PipelineReadSerializer(updated, context={"request": request}).data,
+                status=status.HTTP_200_OK,
+            )
+
+        except Pipeline.DoesNotExist:
+            return Response(
+                {"error": "Pipeline not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        except ValidationError as ve:
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Pipeline Update Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    def patch(self, request, pipeline_id):
+        return self.put(request, pipeline_id)
+
+    @swagger_auto_schema(
+        operation_description="Delete pipeline",
+        responses={200: openapi.Schema(type=openapi.TYPE_OBJECT)},
+        tags=["Pipelines"],
+    )
+    def delete(self, request, pipeline_id):
+        try:
+            from restapi.services.pipeline_service import delete_pipeline
+
+            _get_scoped_pipeline(request, pipeline_id)
+            delete_pipeline(pipeline_id)
+
+            return Response(
+                {"message": "Pipeline deleted successfully"},
+                status=status.HTTP_200_OK,
+            )
+
+        except Pipeline.DoesNotExist:
+            return Response(
+                {"error": "Pipeline not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        except ValidationError as ve:
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Pipeline Detail DELETE Error:\n" + traceback.format_exc()
             )
             return Response(
                 {"error": "Internal Server Error"},
@@ -416,7 +505,7 @@ class PipelineDeleteAPIView(APIView):
             delete_pipeline(pipeline_id)
             return Response(
                 {"message": "Pipeline deleted successfully"},
-                status=status.HTTP_204_NO_CONTENT,
+                status=status.HTTP_200_OK,
             )
 
         except ValidationError as ve:
@@ -433,6 +522,9 @@ class PipelineDeleteAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    def post(self, request, pipeline_id):
+        return self.delete(request, pipeline_id)
 
 
 # -------------------------------------------------------------------
@@ -524,7 +616,7 @@ class StageDeleteAPIView(APIView):
             delete_stage(stage_id)
             return Response(
                 {"message": "Stage deleted successfully"},
-                status=status.HTTP_204_NO_CONTENT,
+                status=status.HTTP_200_OK,
             )
 
         except ValidationError as ve:
@@ -541,6 +633,9 @@ class StageDeleteAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    def post(self, request, stage_id):
+        return self.delete(request, stage_id)
 
 
 # -------------------------------------------------------------------
@@ -582,6 +677,9 @@ class StageDetailAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    def patch(self, request, stage_id):
+        return self.put(request, stage_id)
 
     @swagger_auto_schema(
         operation_description="Fallback delete endpoint for pipeline stage",

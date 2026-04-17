@@ -12,6 +12,7 @@ from restapi.utils.permissions import (
     has_permission,
     has_subcategory_permission,
     is_super_admin_role,
+    has_action_permission_for_labels,  # ✅ REQUIRED
 )
 
 
@@ -177,7 +178,7 @@ class UserSerializer(serializers.ModelSerializer):
             role = _resolve_default_role(request)
 
         if not role:
-            raise serializers.ValidationError("No role configured. Please create a role first")
+            raise serializers.ValidationError("No role configured.")
 
         profile_data["role"] = role
 
@@ -227,12 +228,8 @@ class UserSerializer(serializers.ModelSerializer):
         instance.save()
 
         for field in [
-            "first_name",
-            "last_name",
-            "gender",
-            "date_of_birth",
-            "date_of_joining",
-            "mobile_no"
+            "first_name", "last_name", "gender",
+            "date_of_birth", "date_of_joining", "mobile_no"
         ]:
             if field in validated_data:
                 setattr(profile, field, validated_data[field])
@@ -267,23 +264,18 @@ class UserSerializer(serializers.ModelSerializer):
         try:
             if profile and profile.role:
                 permissions = get_user_permissions(instance) or {}
-        except Exception as e:
-            print("Permission error:", str(e))
+        except Exception:
             permissions = {}
 
         request = self.context.get("request")
-        photo_url = None
 
+        # ✅ FIXED IMAGE HANDLING
+        photo_url = None
         if profile and profile.photo:
             try:
-                file_path = profile.photo.path
-                if os.path.exists(file_path):
-                    photo_url = _build_media_api_url(profile.photo)
-                else:
-                    profile.photo = None
-                    profile.save(update_fields=["photo"])
+                photo_url = _build_media_api_url(profile.photo)
             except Exception:
-                pass
+                photo_url = None
 
         data = {
             "id": instance.id,
@@ -313,24 +305,22 @@ class UserSerializer(serializers.ModelSerializer):
             return data
 
         user = getattr(request, "user", None)
-        if not user or not hasattr(user, "profile") or not getattr(user, "profile", None):
+
+        if not user or not hasattr(user, "profile") or not user.profile:
             return data
 
-        if getattr(user, "id", None) == instance.id:
+        if user.id == instance.id:
             return data
 
         if is_super_admin_role(user.profile.role):
             return data
 
-        try:
-            can_view_users = (
-                has_permission(user, "user_management", "users", "view")
-                or has_subcategory_permission(user, "settings", "settings", "users", "view")
-                or has_subcategory_permission(user, "settings", "settings", "user", "view")
-            )
-        except Exception as e:
-            print("Permission check error:", str(e))
-            can_view_users = False
+        # ✅ FIXED PERMISSION CHECK
+        can_view_users = has_action_permission_for_labels(
+            user,
+            "view",
+            ["user rights", "users", "user"]
+        )
 
         if not can_view_users:
             return {}
