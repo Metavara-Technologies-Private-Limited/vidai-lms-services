@@ -107,6 +107,14 @@ def create_lead(validated_data, request=None):
     updated_by_id = validated_data.pop("updated_by_id", None)
     updated_by_name = validated_data.pop("updated_by_name", None)
 
+    if request:
+        employee = getattr(request.user, "employee", None)
+        if employee:
+            if created_by_id is None:
+                created_by_id = employee.id
+            if not created_by_name:
+                created_by_name = employee.emp_name
+
     # ===================== REFERRAL =====================
     referral_department = None
     referral_source = None

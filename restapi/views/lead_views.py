@@ -17,7 +17,10 @@ from django.shortcuts import get_object_or_404
 from restapi.models import Lead, Clinic
 from restapi.serializers.lead_serializer import LeadSerializer, LeadReadSerializer
 from restapi.services.zapier_service import send_to_zapier
-from restapi.utils.permissions import has_action_permission_for_labels
+from restapi.utils.permissions import (
+    has_action_permission_for_labels,
+    normalize_role_name,
+)
 
 LEAD_LABELS = ["leads hub"]
 
@@ -37,6 +40,44 @@ def get_request_clinic(request):
         return Clinic.objects.get(id=clinic_id)
     except Clinic.DoesNotExist:
         raise ValidationError({"clinic": "Invalid clinic"})
+
+
+def get_request_user_role(request):
+    role = getattr(getattr(request.user, "profile", None), "role", None)
+    return normalize_role_name(getattr(role, "name", ""))
+
+
+def get_request_employee(request):
+    return getattr(request.user, "employee", None)
+
+
+def is_restricted_lead_user(request):
+    return get_request_user_role(request) == "user"
+
+
+def apply_lead_visibility_scope(queryset, request):
+    if not is_restricted_lead_user(request):
+        return queryset
+
+    employee = get_request_employee(request)
+    if not employee:
+        return queryset.none()
+
+    return queryset.filter(created_by_id=employee.id)
+
+
+def get_scoped_lead_or_404(request, clinic, lead_id):
+    queryset = Lead.objects.select_related(
+        "clinic",
+        "department",
+        "campaign",
+        "referral_department",
+        "referral_source",
+    ).filter(
+        id=lead_id,
+        clinic=clinic,
+    )
+    return get_object_or_404(apply_lead_visibility_scope(queryset, request))
 
 
 # -------------------------------------------------------------------
@@ -110,13 +151,7 @@ class LeadUpdateAPIView(APIView):
             clinic = get_request_clinic(request)
 
             # 🔥 IMPROVED (safe + optimized)
-            lead = get_object_or_404(
-                Lead.objects.select_related("clinic"),
-                id=lead_id
-            )
-
-            if lead.clinic != clinic:
-                return Response({"error": "Unauthorized"}, status=403)
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
             serializer = LeadSerializer(lead, data=request.data, context={"request": request})
             serializer.is_valid(raise_exception=True)
@@ -159,13 +194,16 @@ class LeadListAPIView(APIView):
         try:
             clinic = get_request_clinic(request)
 
-            queryset = Lead.objects.filter(
-                clinic=clinic,
-                is_deleted=False
-            ).select_related(
-                "referral_department",
-                "referral_source"
-            ).order_by("-created_at")
+            queryset = apply_lead_visibility_scope(
+                Lead.objects.filter(
+                    clinic=clinic,
+                    is_deleted=False
+                ).select_related(
+                    "referral_department",
+                    "referral_source"
+                ).order_by("-created_at"),
+                request,
+            )
 
             lead_status = request.query_params.get("lead_status")
             assigned_to = request.query_params.get("assigned_to")
@@ -206,17 +244,7 @@ class LeadGetAPIView(APIView):
         try:
             clinic = get_request_clinic(request)
 
-            lead = get_object_or_404(
-                Lead.objects.select_related(
-                    "clinic",
-                    "department",
-                    "campaign",
-                    "referral_department",
-                    "referral_source"
-                ),
-                id=lead_id,
-                clinic=clinic
-            )
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
             return Response(LeadReadSerializer(lead).data, status=200)
 
@@ -237,10 +265,7 @@ class LeadActivateAPIView(APIView):
     def post(self, request, lead_id):
         try:
             clinic = get_request_clinic(request)
-            lead = get_object_or_404(Lead, id=lead_id)
-
-            if lead.clinic != clinic:
-                return Response({"error": "Unauthorized"}, status=403)
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
             lead.is_active = True
             lead.save(update_fields=["is_active"])
@@ -260,10 +285,7 @@ class LeadInactivateAPIView(APIView):
     def patch(self, request, lead_id):
         try:
             clinic = get_request_clinic(request)
-            lead = get_object_or_404(Lead, id=lead_id)
-
-            if lead.clinic != clinic:
-                return Response({"error": "Unauthorized"}, status=403)
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
             lead.is_active = False
             lead.save(update_fields=["is_active"])
@@ -283,10 +305,7 @@ class LeadSoftDeleteAPIView(APIView):
     def patch(self, request, lead_id):
         try:
             clinic = get_request_clinic(request)
-            lead = get_object_or_404(Lead, id=lead_id)
-
-            if lead.clinic != clinic:
-                return Response({"error": "Unauthorized"}, status=403)
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
             lead.is_deleted = True
             lead.is_active = False
