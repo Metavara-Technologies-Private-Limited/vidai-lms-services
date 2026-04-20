@@ -112,6 +112,7 @@ urlpatterns = [
     # ============================
     path("pipelines/create/", PipelineCreateAPIView.as_view(), name="pipeline-create"),
     path("pipelines/", PipelineListAPIView.as_view(), name="pipeline-list"),
+    path("pipelines/<uuid:pipeline_id>/stages/", PipelineStagesListAPIView.as_view(), name="pipeline-stages-list"),
     path("pipelines/<uuid:pipeline_id>/", PipelineDetailAPIView.as_view(), name="pipeline-detail"),
     path("pipelines/<uuid:pipeline_id>/duplicate/", PipelineDuplicateAPIView.as_view(), name="pipeline-duplicate"),
     path("pipelines/<uuid:pipeline_id>/archive/", PipelineArchiveAPIView.as_view(), name="pipeline-archive"),

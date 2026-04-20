@@ -14,7 +14,7 @@ from drf_yasg.utils import swagger_auto_schema
 
 from django.shortcuts import get_object_or_404
 
-from restapi.models import Lead, Clinic
+from restapi.models import Lead, Clinic, PipelineStage  # 🔥 UPDATED
 from restapi.serializers.lead_serializer import LeadSerializer, LeadReadSerializer
 from restapi.services.zapier_service import send_to_zapier
 from restapi.utils.permissions import (
@@ -73,6 +73,7 @@ def get_scoped_lead_or_404(request, clinic, lead_id):
         "campaign",
         "referral_department",
         "referral_source",
+        "stage",
     ).filter(
         id=lead_id,
         clinic=clinic,
@@ -100,6 +101,28 @@ class LeadCreateAPIView(APIView):
             return Response({"error": "You do not have permission to add leads."}, status=403)
 
         try:
+            clinic = get_request_clinic(request)  # 🔥 FIX ADDED
+
+            # 🔥 OPTIONAL VALIDATION (extra safety)
+            stage_id = request.data.get("stage_id")
+            pipeline_id = request.data.get("pipeline_id")
+
+            if stage_id:
+                stage = PipelineStage.objects.filter(
+                    id=stage_id,
+                    is_active=True,
+                    is_deleted=False
+                ).select_related("pipeline").first()
+
+                if not stage:
+                    raise ValidationError({"stage_id": "Invalid stage"})
+
+                if str(stage.pipeline.clinic_id) != str(clinic.id):
+                    raise ValidationError({"stage_id": "Stage does not belong to this clinic"})
+
+                if pipeline_id and str(stage.pipeline_id) != str(pipeline_id):
+                    raise ValidationError({"stage_id": "Stage does not belong to selected pipeline"})
+
             serializer = LeadSerializer(data=request.data, context={"request": request})
             serializer.is_valid(raise_exception=True)
 
@@ -150,10 +173,34 @@ class LeadUpdateAPIView(APIView):
         try:
             clinic = get_request_clinic(request)
 
-            # 🔥 IMPROVED (safe + optimized)
             lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
-            serializer = LeadSerializer(lead, data=request.data, context={"request": request})
+            # 🔥 SAME VALIDATION FOR UPDATE
+            stage_id = request.data.get("stage_id")
+            pipeline_id = request.data.get("pipeline_id")
+
+            if stage_id:
+                stage = PipelineStage.objects.filter(
+                    id=stage_id,
+                    is_active=True,
+                    is_deleted=False
+                ).select_related("pipeline").first()
+
+                if not stage:
+                    raise ValidationError({"stage_id": "Invalid stage"})
+
+                if str(stage.pipeline.clinic_id) != str(clinic.id):
+                    raise ValidationError({"stage_id": "Stage does not belong to this clinic"})
+
+                if pipeline_id and str(stage.pipeline_id) != str(pipeline_id):
+                    raise ValidationError({"stage_id": "Stage does not belong to selected pipeline"})
+
+            serializer = LeadSerializer(
+                lead,
+                data=request.data,
+                context={"request": request},
+                partial=True  # 🔥 FIX
+            )
             serializer.is_valid(raise_exception=True)
 
             updated_lead = serializer.save()
@@ -173,7 +220,6 @@ class LeadUpdateAPIView(APIView):
         except Exception:
             logger.error("Unhandled Lead Update Error:\n" + traceback.format_exc())
             return Response({"error": "Internal Server Error"}, status=500)
-
 
 # -------------------------------------------------------------------
 # Lead List API View (GET)
@@ -200,7 +246,8 @@ class LeadListAPIView(APIView):
                     is_deleted=False
                 ).select_related(
                     "referral_department",
-                    "referral_source"
+                    "referral_source",
+                    "stage",  # 🔥 ADDED
                 ).order_by("-created_at"),
                 request,
             )

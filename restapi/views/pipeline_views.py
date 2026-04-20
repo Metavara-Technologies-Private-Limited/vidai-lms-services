@@ -111,6 +111,11 @@ class PipelineListAPIView(APIView):
                 is_deleted=False,
             )
 
+            # ✅ INDUSTRY FILTER (CORRECT)
+            industry = request.query_params.get("industry")
+            if industry:
+                pipelines = pipelines.filter(industry_type=industry)
+
             return Response(
                 PipelineReadSerializer(
                     pipelines,
@@ -121,19 +126,11 @@ class PipelineListAPIView(APIView):
             )
 
         except ValidationError as ve:
-            return Response(
-                {"error": ve.detail},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"error": ve.detail}, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception:
-            logger.error(
-                "Unhandled Pipeline List Error:\n" + traceback.format_exc()
-            )
-            return Response(
-                {"error": "Internal Server Error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            logger.error("Unhandled Pipeline List Error:\n" + traceback.format_exc())
+            return Response({"error": "Internal Server Error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # -------------------------------------------------------------------
 # GET SINGLE PIPELINE (GET)
@@ -709,3 +706,46 @@ CAMPAIGN_OBJECTIVES = {
     "awareness": "Brand Awareness",
     "leads": "Lead Generation",
 }
+
+
+# -------------------------------------------------------------------
+# ✅ NEW REQUIRED API → GET STAGES BY PIPELINE
+# -------------------------------------------------------------------
+class PipelineStagesListAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Get all stages for a pipeline",
+        responses={200: PipelineStageReadSerializer(many=True)},  # ✅ FIX
+        tags=["Pipeline Stages"],
+    )
+    def get(self, request, pipeline_id):
+        try:
+            pipeline = _get_scoped_pipeline(request, pipeline_id)
+
+            stages = PipelineStage.objects.filter(
+                pipeline=pipeline,
+                is_deleted=False,
+                is_active=True
+            ).order_by("stage_order")
+
+            return Response(
+                PipelineStageReadSerializer(
+                    stages,
+                    many=True,
+                    context={"request": request}
+                ).data,
+                status=status.HTTP_200_OK
+            )
+
+        except Pipeline.DoesNotExist:
+            return Response(
+                {"error": "Pipeline not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        except Exception:
+            logger.error("Stage List Error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

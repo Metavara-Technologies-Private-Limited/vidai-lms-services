@@ -15,21 +15,21 @@ from restapi.models import (
     LeadEmail,
     ReferralDepartment,
     ReferralSource,
+    PipelineStage,
 )
 
 
+# =====================================================
+# HELPER
+# =====================================================
 def _resolve_assignee_name(assigned_to_id, assigned_to_name):
-    if isinstance(assigned_to_name, str):
-        normalized_name = assigned_to_name.strip()
-        if normalized_name:
-            return normalized_name
+    if isinstance(assigned_to_name, str) and assigned_to_name.strip():
+        return assigned_to_name.strip()
 
-    if assigned_to_id is None:
-        return None
-
-    employee = Employee.objects.filter(id=assigned_to_id).only("emp_name").first()
-    if employee and employee.emp_name:
-        return employee.emp_name
+    if assigned_to_id:
+        employee = Employee.objects.filter(id=assigned_to_id).only("emp_name").first()
+        if employee:
+            return employee.emp_name
 
     return None
 
@@ -43,36 +43,41 @@ def create_lead(validated_data, request=None):
     documents = validated_data.pop("documents", [])
 
     # ===================== CLINIC =====================
-    clinic_id = None
-    if request:
-        clinic_id = request.headers.get("X-Clinic-Id") or request.data.get("clinic_id")
+    clinic_id = request.headers.get("X-Clinic-Id") if request else None
 
     if not clinic_id:
         raise ValidationError({"clinic": "Clinic is required"})
 
-    try:
-        clinic = Clinic.objects.get(id=clinic_id)
-    except Clinic.DoesNotExist:
-        raise ValidationError({"clinic": "Invalid clinic"})
+    clinic = get_object_or_404(Clinic, id=clinic_id)
 
     validated_data.pop("clinic_id", None)
 
-    # ===================== DEPARTMENT =====================
-    raw_department_id = validated_data.pop("department_id", None)
+    # ===================== STAGE =====================
+    stage_id = validated_data.pop("stage_id", None)
+    stage = None
 
-    department = None
-    if raw_department_id:
-        department = Department.objects.filter(
-            id=raw_department_id,
-            clinic=clinic,
-            is_active=True
-        ).first()
+    if stage_id:
+        stage = PipelineStage.objects.filter(
+            id=stage_id,
+            is_active=True,
+            is_deleted=False,
+            pipeline__clinic=clinic   # 🔥 safety check
+        ).select_related("pipeline").first()
+
+        if not stage:
+            raise ValidationError({"stage_id": "Invalid stage"})
+
+    # ===================== DEPARTMENT =====================
+    department_id = validated_data.pop("department_id", None)
+
+    department = Department.objects.filter(
+        id=department_id,
+        clinic=clinic,
+        is_active=True
+    ).first()
 
     if not department:
-        department = Department.objects.filter(
-            clinic=clinic,
-            is_active=True
-        ).first()
+        department = Department.objects.filter(clinic=clinic, is_active=True).first()
 
     if not department:
         department = Department.objects.create(
@@ -82,14 +87,12 @@ def create_lead(validated_data, request=None):
         )
 
     # ===================== CAMPAIGN =====================
-    campaign = None
     campaign_id = validated_data.pop("campaign_id", None)
 
-    if campaign_id:
-        campaign = Campaign.objects.filter(
-            id=campaign_id,
-            clinic=clinic
-        ).first()
+    campaign = Campaign.objects.filter(
+        id=campaign_id,
+        clinic=clinic
+    ).first() if campaign_id else None
 
     # ===================== ASSIGNEE =====================
     assigned_to_id = validated_data.pop("assigned_to_id", None)
@@ -98,74 +101,85 @@ def create_lead(validated_data, request=None):
         validated_data.pop("assigned_to_name", None)
     )
 
-    personal_id = validated_data.pop("personal_id", None)
-    personal_name = validated_data.pop("personal_name", None)
-
+    # ===================== CREATED BY =====================
     created_by_id = validated_data.pop("created_by_id", None)
     created_by_name = validated_data.pop("created_by_name", None)
 
-    updated_by_id = validated_data.pop("updated_by_id", None)
-    updated_by_name = validated_data.pop("updated_by_name", None)
+    if request and hasattr(request.user, "employee"):
+        employee = request.user.employee
+        created_by_id = created_by_id or employee.id
+        created_by_name = created_by_name or employee.emp_name
 
-    if request:
-        employee = getattr(request.user, "employee", None)
-        if employee:
-            if created_by_id is None:
-                created_by_id = employee.id
-            if not created_by_name:
-                created_by_name = employee.emp_name
-
-    # ===================== REFERRAL =====================
+    # =====================================================
+    # 🔥 REFERRAL (OBJECT + ID SUPPORT)
+    # =====================================================
     referral_department = None
     referral_source = None
 
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)
 
-    if ref_source_id and not ref_dept_id:
-        raise ValidationError({
-            "referral_department_id": "Required when referral_source is provided"
-        })
+    referral_source_data = request.data.get("referral_source") if request else None
 
-    if ref_dept_id:
-        referral_department = ReferralDepartment.objects.filter(
-            id=ref_dept_id,
+    # 🔥 OBJECT FLOW
+    if referral_source_data:
+        first_name = referral_source_data.get("first_name", "").strip()
+        last_name = referral_source_data.get("last_name", "").strip()
+        email = referral_source_data.get("email")
+        role = referral_source_data.get("role")
+
+        full_name = f"{first_name} {last_name}".strip()
+
+        if role:
+            referral_department = ReferralDepartment.objects.filter(
+                name__iexact=role.strip(),
+                clinic=clinic,
+                is_active=True
+            ).first()
+
+        referral_source = ReferralSource.objects.create(
+            name=full_name,
+            email=email,
             clinic=clinic,
-            is_active=True
-        ).only("id").first()
+            referral_department=referral_department,
+            created_by=request.user if request else None
+        )
 
-        if not referral_department:
-            raise ValidationError({"referral_department_id": "Invalid referral department"})
+    # 🔹 ID FLOW
+    else:
+        if ref_source_id and not ref_dept_id:
+            raise ValidationError({"referral_department_id": "Required"})
 
-    if ref_source_id:
-        referral_source = ReferralSource.objects.filter(
-            id=ref_source_id,
-            clinic=clinic
-        ).only("id", "referral_department_id").first()
+        if ref_dept_id:
+            referral_department = get_object_or_404(
+                ReferralDepartment,
+                id=ref_dept_id,
+                clinic=clinic,
+                is_active=True
+            )
 
-        if not referral_source:
-            raise ValidationError({"referral_source_id": "Invalid referral source"})
+        if ref_source_id:
+            referral_source = get_object_or_404(
+                ReferralSource,
+                id=ref_source_id,
+                clinic=clinic
+            )
 
-        if referral_department and referral_source.referral_department_id != referral_department.pk:
-            raise ValidationError("Referral Source does not belong to selected Department")
+            if referral_department and referral_source.referral_department_id != referral_department.id:
+                raise ValidationError("Referral mismatch")
 
     # ===================== CREATE =====================
     lead = Lead.objects.create(
         clinic=clinic,
         department=department,
         campaign=campaign,
+        stage=stage,
 
         assigned_to_id=assigned_to_id,
         assigned_to_name=assigned_to_name,
 
-        personal_id=personal_id,
-        personal_name=personal_name,
-
         created_by_id=created_by_id,
         created_by_name=created_by_name,
-
-        updated_by_id=updated_by_id,
-        updated_by_name=updated_by_name,
 
         referral_department=referral_department,
         referral_source=referral_source,
@@ -173,9 +187,8 @@ def create_lead(validated_data, request=None):
         **validated_data
     )
 
-    # ===================== DOCUMENTS =====================
-    for file_object in documents:
-        LeadDocument.objects.create(lead=lead, file=file_object)
+    for file in documents:
+        LeadDocument.objects.create(lead=lead, file=file)
 
     return lead
 
@@ -184,9 +197,25 @@ def create_lead(validated_data, request=None):
 # UPDATE LEAD
 # =====================================================
 @transaction.atomic
-def update_lead(instance, validated_data):
+def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
+
+    # ===================== STAGE =====================
+    stage_id = validated_data.pop("stage_id", None)
+
+    if stage_id:
+        stage = PipelineStage.objects.filter(
+            id=stage_id,
+            is_active=True,
+            is_deleted=False,
+            pipeline__clinic=instance.clinic
+        ).first()
+
+        if not stage:
+            raise ValidationError({"stage_id": "Invalid stage"})
+
+        instance.stage = stage
 
     # ===================== ASSIGNEE =====================
     if "assigned_to_id" in validated_data:
@@ -199,51 +228,60 @@ def update_lead(instance, validated_data):
             assigned_to_name
         )
 
-    elif "assigned_to_name" in validated_data:
-        instance.assigned_to_name = _resolve_assignee_name(
-            instance.assigned_to_id,
-            validated_data.pop("assigned_to_name")
-        )
-
-    # ===================== REFERRAL UPDATE =====================
+    # =====================================================
+    # 🔥 REFERRAL UPDATE (FIXED)
+    # =====================================================
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)
 
-    if ref_source_id and not ref_dept_id:
-        raise ValidationError({
-            "referral_department_id": "Required when referral_source is provided"
-        })
+    referral_source_data = request.data.get("referral_source") if request else None
 
-    if ref_dept_id:
-        instance.referral_department = ReferralDepartment.objects.filter(
-            id=ref_dept_id,
+    if referral_source_data:
+        full_name = f"{referral_source_data.get('first_name','')} {referral_source_data.get('last_name','')}".strip()
+        email = referral_source_data.get("email")
+        role = referral_source_data.get("role")
+
+        referral_department = None
+        if role:
+            referral_department = ReferralDepartment.objects.filter(
+                name__iexact=role,
+                clinic=instance.clinic,
+                is_active=True
+            ).first()
+
+        referral_source = ReferralSource.objects.create(
+            name=full_name,
+            email=email,
             clinic=instance.clinic,
-            is_active=True
-        ).first()
+            referral_department=referral_department
+        )
 
-    if ref_source_id:
-        instance.referral_source = ReferralSource.objects.filter(
-            id=ref_source_id,
-            clinic=instance.clinic
-        ).first()
+        instance.referral_source = referral_source
+        instance.referral_department = referral_department
 
-    # ===================== UPDATE FIELDS =====================
-    IMMUTABLE_FIELDS = {
-        "clinic", "department", "campaign",
-        "clinic_id", "department_id", "campaign_id",
-    }
+    else:
+        if ref_dept_id:
+            instance.referral_department = ReferralDepartment.objects.filter(
+                id=ref_dept_id,
+                clinic=instance.clinic
+            ).first()
 
+        if ref_source_id:
+            instance.referral_source = ReferralSource.objects.filter(
+                id=ref_source_id,
+                clinic=instance.clinic
+            ).first()
+
+    # ===================== UPDATE =====================
     for field, value in validated_data.items():
-        if field not in IMMUTABLE_FIELDS and hasattr(instance, field):
+        if hasattr(instance, field):
             setattr(instance, field, value)
 
     instance.save()
 
-    # ===================== DOCUMENTS =====================
-    for file_object in documents:
-        LeadDocument.objects.create(lead=instance, file=file_object)
+    for file in documents:
+        LeadDocument.objects.create(lead=instance, file=file)
 
-    instance.refresh_from_db()
     return instance
 
 
@@ -251,7 +289,6 @@ def update_lead(instance, validated_data):
 # CLEAN EMAIL BODY
 # =====================================================
 def _clean_email_body(text: str) -> str:
-
     if not text:
         return ""
 
