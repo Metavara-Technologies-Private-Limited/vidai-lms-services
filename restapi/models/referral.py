@@ -7,10 +7,9 @@ class ReferralSource(models.Model):
 
     name = models.CharField(max_length=255)
 
-    email = models.EmailField(blank=True, null=True)
+    email = models.EmailField(primary_key=True)  # ✅ PK here
     phone = models.CharField(max_length=15, blank=True, null=True)
 
-    # ✅ MAIN CATEGORY (drives UI)
     referral_department = models.ForeignKey(
         "restapi.ReferralDepartment",
         on_delete=models.SET_NULL,
@@ -19,7 +18,6 @@ class ReferralSource(models.Model):
         related_name="referral_sources"
     )
 
-    # ✅ Optional (only for doctors)
     external_clinic = models.ForeignKey(
         "restapi.ExternalClinic",
         on_delete=models.SET_NULL,
