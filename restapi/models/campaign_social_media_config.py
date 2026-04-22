@@ -5,14 +5,16 @@ from .campaign import Campaign
 
 class CampaignSocialMediaConfig(models.Model):
 
-    INSTAGRAM = "instagram"
-    FACEBOOK = "facebook"
-    LINKEDIN = "linkedin"
+    INSTAGRAM  = "instagram"
+    FACEBOOK   = "facebook"
+    LINKEDIN   = "linkedin"
+    GOOGLE_ADS = "google_ads"  # ✅ ADDED
 
     PLATFORM_CHOICES = (
-        (INSTAGRAM, "Instagram"),
-        (FACEBOOK, "Facebook"),
-        (LINKEDIN, "LinkedIn"),
+        (INSTAGRAM,  "Instagram"),
+        (FACEBOOK,   "Facebook"),
+        (LINKEDIN,   "LinkedIn"),
+        (GOOGLE_ADS, "Google Ads"),  # ✅ ADDED
     )
 
     campaign = models.ForeignKey(
@@ -37,3 +39,10 @@ class CampaignSocialMediaConfig(models.Model):
     is_active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # ✅ INSIGHTS
+    insights = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Stores campaign insights fetched from social media platforms"
+    )

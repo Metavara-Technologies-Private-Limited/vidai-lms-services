@@ -4,6 +4,18 @@ from django.urls import path
 from .views import *   
 from restapi.views.google_ads_views import GoogleAdsCampaignCreateAPIView
 
+from restapi.views.social_auth_views import (
+    GoogleAdsCampaignCallbackAPIView,
+    GoogleAdsInsightsAPIView,
+)
+
+from restapi.views.campaign_insights_views import (
+    CampaignInsightsTriggerAPIView,
+    CampaignInsightsCallbackAPIView,
+)
+
+
+
 
 urlpatterns = [
     
@@ -209,6 +221,11 @@ urlpatterns = [
     path("fb/campaigns/<str:campaign_id>/insights/", FBCampaignInsightsAPIView.as_view(), name="fb-insights"),
 
     path("google-ads/create/", GoogleAdsCampaignCreateAPIView.as_view()),
+     # Add these two lines in urlpatterns:
+    path("google-ads/callback/", GoogleAdsCampaignCallbackAPIView.as_view(), name="google-ads-callback"),
+    path("google-ads/insights/", GoogleAdsInsightsAPIView.as_view(), name="google-ads-insights"),
+    path("campaign/insights/trigger/",  CampaignInsightsTriggerAPIView.as_view()),
+    path("campaign/insights/callback/", CampaignInsightsCallbackAPIView.as_view()),
 
     # ============================
     # REPUTATION
