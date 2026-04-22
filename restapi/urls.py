@@ -124,6 +124,7 @@ urlpatterns = [
     # ============================
     path("pipelines/create/", PipelineCreateAPIView.as_view(), name="pipeline-create"),
     path("pipelines/", PipelineListAPIView.as_view(), name="pipeline-list"),
+    path("pipelines/<uuid:pipeline_id>/stages/", PipelineStagesListAPIView.as_view(), name="pipeline-stages-list"),
     path("pipelines/<uuid:pipeline_id>/", PipelineDetailAPIView.as_view(), name="pipeline-detail"),
     path("pipelines/<uuid:pipeline_id>/duplicate/", PipelineDuplicateAPIView.as_view(), name="pipeline-duplicate"),
     path("pipelines/<uuid:pipeline_id>/archive/", PipelineArchiveAPIView.as_view(), name="pipeline-archive"),
@@ -233,6 +234,11 @@ urlpatterns = [
     path("reputation/requests/create/", ReviewRequestCreateAPIView.as_view(), name="review-create"),
     path("reputation/requests/", ReviewRequestListAPIView.as_view(), name="review-list"),
     path("reputation/requests/<uuid:request_id>/", ReviewRequestDetailAPIView.as_view(), name="review-detail"),
+    path(
+        "reputation/public/requests/<uuid:request_id>/",
+        ReviewRequestPublicDetailAPIView.as_view(),
+        name="review-public-detail",
+    ),
     path("reputation/requests/<uuid:request_id>/reviews/", ReviewListAPIView.as_view(), name="review-sub-list"),
     path("reputation/dashboard/", ReputationDashboardAPIView.as_view(), name="reputation-dashboard"),
     path("reputation/reviews/create/", ReviewCreateAPIView.as_view(), name="review-submit"),
@@ -240,6 +246,7 @@ urlpatterns = [
 
     path("sources/", ReferralSourceListAPIView.as_view(), name="referral-sources"),
     path("dashboard/", ReferralDashboardAPIView.as_view(), name="referral-dashboard"),
+    path("referral-departments/", ReferralDepartmentListAPIView.as_view(), name="referral-departments"),
     
     path("reports/calls/", CallReportView.as_view(), name="call-reports"),
     path("reports/campaigns/", CampaignReportView.as_view(), name="campaign-reports"),

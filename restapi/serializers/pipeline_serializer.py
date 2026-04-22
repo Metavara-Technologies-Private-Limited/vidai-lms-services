@@ -79,13 +79,33 @@ class PipelineStageReadSerializer(serializers.ModelSerializer):
 
         user = request.user
 
-        # ✅ SUPER ADMIN → FULL ACCESS
-        if user.profile.role.name.lower() == "super admin":
+        # ✅ Admin-like roles → full stage access
+        role_name = (
+            getattr(getattr(getattr(user, "profile", None), "role", None), "name", "")
+            .strip()
+            .lower()
+            .replace("-", " ")
+            .replace("_", " ")
+        )
+        if role_name in {"super admin", "superadmin", "admin", "clinic admin"}:
             return data
 
-        # ❌ NO PERMISSION → RETURN EMPTY
+        # ❌ NO PERMISSION
+        # Returning an empty object causes frontend to create ghost/fallback stages
+        # or hide stages entirely depending on normalization logic. Keep a minimal,
+        # non-sensitive shape so stage cards remain stable in UI.
         if not has_permission(user, "pipeline", "stages", "view"):
-            return {}
+            return {
+                "id": data.get("id"),
+                "stage_name": data.get("stage_name"),
+                "stage_type": data.get("stage_type"),
+                "stage_status": data.get("stage_status"),
+                "stage_order": data.get("stage_order"),
+                "color_code": data.get("color_code"),
+                "entry_rule": data.get("entry_rule"),
+                "rules": [],
+                "fields": [],
+            }
 
         # 🔥 FIELD FILTERING
         allowed_fields = [

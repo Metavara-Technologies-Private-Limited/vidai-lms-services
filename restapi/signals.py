@@ -13,3 +13,26 @@ def create_user_profile(sender, instance, created, **kwargs):
             user=instance,
             role=role
         )
+
+
+DEFAULT_REFERRAL_DEPARTMENTS = [
+    "Doctors",
+    "Corporate HR",
+    "Diagnostic Labs",
+    "Insurance Partners",
+    "Practo",
+    "Zoya",
+]
+
+
+@receiver(post_save, sender="restapi.Clinic")
+def seed_referral_departments_for_new_clinic(sender, instance, created, **kwargs):
+    if not created:
+        return
+    from restapi.models.referral_department import ReferralDepartment
+    for name in DEFAULT_REFERRAL_DEPARTMENTS:
+        ReferralDepartment.objects.get_or_create(
+            clinic=instance,
+            name=name,
+            defaults={"is_active": True},
+        )

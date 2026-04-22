@@ -1,15 +1,21 @@
+# =====================================================
+# Imports
+# =====================================================
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+
 from restapi.models import (
     Lead,
-    Clinic,
     Department,
     Employee,
     Campaign,
     LeadDocument,
     ReferralSource,
     ReferralDepartment,
+    PipelineStage,
+    Pipeline,   # 🔥 REQUIRED
 )
+
 from restapi.services.lead_service import create_lead, update_lead
 
 
@@ -50,12 +56,16 @@ class LeadReadSerializer(serializers.ModelSerializer):
     created_by_id = serializers.IntegerField(read_only=True)
     created_by_name = serializers.CharField(read_only=True)
 
-    # 🔥 REFERRAL DISPLAY
+    # REFERRAL
     referral_department_id = serializers.IntegerField(source="referral_department.id", read_only=True)
     referral_department_name = serializers.CharField(source="referral_department.name", read_only=True)
 
     referral_source_id = serializers.IntegerField(source="referral_source.id", read_only=True)
     referral_source_name = serializers.CharField(source="referral_source.name", read_only=True)
+
+    # STAGE
+    stage_id = serializers.UUIDField(source="stage.id", read_only=True)
+    stage_name = serializers.CharField(source="stage.stage_name", read_only=True)
 
     documents = serializers.SerializerMethodField()
 
@@ -67,7 +77,6 @@ class LeadReadSerializer(serializers.ModelSerializer):
         campaign = obj.campaign
         if not campaign or not campaign.start_date or not campaign.end_date:
             return None
-
         return f"{campaign.start_date.strftime('%d/%m/%Y')} - {campaign.end_date.strftime('%d/%m/%Y')}"
 
     def get_documents(self, obj):
@@ -89,20 +98,26 @@ class LeadSerializer(serializers.ModelSerializer):
     clinic_id = serializers.IntegerField(write_only=True, required=False)
     department_id = serializers.IntegerField(write_only=True, required=False)
 
+    campaign_id = serializers.UUIDField(required=False, allow_null=True)
+
     assigned_to_id = serializers.IntegerField(required=False, allow_null=True)
     assigned_to_name = serializers.CharField(required=False, allow_null=True)
 
     personal_id = serializers.IntegerField(required=False, allow_null=True)
     personal_name = serializers.CharField(required=False, allow_null=True)
 
-    campaign_id = serializers.UUIDField(required=False, allow_null=True)
-
-    # 🔥 REFERRAL
+    # REFERRAL (OLD)
     referral_department_id = serializers.IntegerField(required=False, allow_null=True)
     referral_source_id = serializers.IntegerField(required=False, allow_null=True)
 
+    # 🔥 NEW OBJECT SUPPORT
+    referral_source = serializers.JSONField(required=False)
+
+    # PIPELINE + STAGE
+    pipeline_id = serializers.UUIDField(required=False, allow_null=True)
+    stage_id = serializers.UUIDField(required=False, allow_null=True)
+
     documents = MultiFileField(write_only=True, required=False)
-    is_active = serializers.BooleanField(required=False)
 
     class Meta:
         model = Lead
@@ -135,9 +150,14 @@ class LeadSerializer(serializers.ModelSerializer):
             "source",
             "sub_source",
 
-            # 🔥 REFERRAL
+            # REFERRAL
             "referral_department_id",
             "referral_source_id",
+            "referral_source",
+
+            # PIPELINE + STAGE
+            "pipeline_id",
+            "stage_id",
 
             "lead_status",
             "next_action_status",
@@ -162,41 +182,46 @@ class LeadSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get("request")
 
-        # ================= BASIC =================
-        if self.instance is None:
-            if "clinic_id" not in attrs:
-                raise ValidationError({"clinic_id": "This field is required."})
-            if "department_id" not in attrs:
-                raise ValidationError({"department_id": "This field is required."})
+        # ================= CLINIC =================
+        clinic_id = attrs.get("clinic_id") or request.headers.get("X-Clinic-Id")
 
-        if self.instance is not None and request:
-            payload_id = request.data.get("id")
-            if payload_id and str(payload_id) != str(self.instance.id):
-                raise ValidationError({"id": "Lead ID mismatch"})
+        if not clinic_id:
+            raise ValidationError({"clinic_id": "Clinic is required"})
+
+        # ================= PIPELINE =================
+        pipeline_id = attrs.get("pipeline_id")
+
+        if pipeline_id:
+            if not Pipeline.objects.filter(
+                id=pipeline_id,
+                clinic_id=clinic_id,
+                is_deleted=False
+            ).exists():
+                raise ValidationError({"pipeline_id": "Invalid pipeline"})
 
         # ================= REFERRAL =================
         ref_dept_id = attrs.get("referral_department_id")
         ref_source_id = attrs.get("referral_source_id")
 
-        clinic_id = (
-            attrs.get("clinic_id")
-            or request.headers.get("X-Clinic-Id")
-            or request.data.get("clinic_id")
-        )
+        referral_source_data = request.data.get("referral_source") if request else None
 
+        # 🔥 OBJECT VALIDATION
+        if referral_source_data:
+            if not referral_source_data.get("first_name"):
+                raise ValidationError({"referral_source": "first_name required"})
+
+        # 🔥 OLD FLOW
         if ref_source_id and not ref_dept_id:
             raise ValidationError({
                 "referral_department_id": "Required when referral_source is provided"
             })
 
         if ref_dept_id:
-            dept = ReferralDepartment.objects.filter(
+            if not ReferralDepartment.objects.filter(
                 id=ref_dept_id,
                 clinic_id=clinic_id,
                 is_active=True
-            ).first()
-
-            if not dept:
+            ).exists():
                 raise ValidationError({"referral_department_id": "Invalid referral department"})
 
         if ref_source_id:
@@ -209,9 +234,28 @@ class LeadSerializer(serializers.ModelSerializer):
                 raise ValidationError({"referral_source_id": "Invalid referral source"})
 
             if ref_dept_id and source.referral_department_id != ref_dept_id:
-                raise ValidationError(
-                    "Referral Source does not belong to selected Department"
-                )
+                raise ValidationError("Referral Source does not belong to selected Department")
+
+        # ================= STAGE =================
+        stage_id = attrs.get("stage_id")
+
+        if stage_id:
+            stage = PipelineStage.objects.filter(
+                id=stage_id,
+                is_active=True,
+                is_deleted=False
+            ).select_related("pipeline").first()
+
+            if not stage:
+                raise ValidationError({"stage_id": "Invalid stage"})
+
+            # clinic check
+            if str(stage.pipeline.clinic_id) != str(clinic_id):
+                raise ValidationError({"stage_id": "Invalid clinic stage"})
+
+            # pipeline check
+            if pipeline_id and str(stage.pipeline_id) != str(pipeline_id):
+                raise ValidationError({"stage_id": "Stage not in selected pipeline"})
 
         return attrs
 
@@ -221,9 +265,16 @@ class LeadSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context.get("request")
 
+        # remove pipeline_id (not stored in lead)
+        validated_data.pop("pipeline_id", None)
+
         if request and hasattr(request.user, "employee"):
             validated_data["created_by_id"] = request.user.employee.id
             validated_data["created_by_name"] = request.user.employee.emp_name
+
+        # 🔥 personal name auto
+        if validated_data.get("full_name"):
+            validated_data["personal_name"] = validated_data["full_name"]
 
         return create_lead(validated_data, request=request)
 
@@ -233,8 +284,13 @@ class LeadSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         request = self.context.get("request")
 
+        validated_data.pop("pipeline_id", None)
+
         if request and hasattr(request.user, "employee"):
             validated_data["updated_by_id"] = request.user.employee.id
             validated_data["updated_by_name"] = request.user.employee.emp_name
+
+        if validated_data.get("full_name"):
+            validated_data["personal_name"] = validated_data["full_name"]
 
         return update_lead(instance, validated_data)

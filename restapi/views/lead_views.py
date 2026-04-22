@@ -14,10 +14,13 @@ from drf_yasg.utils import swagger_auto_schema
 
 from django.shortcuts import get_object_or_404
 
-from restapi.models import Lead, Clinic
+from restapi.models import Lead, Clinic, PipelineStage  # 🔥 UPDATED
 from restapi.serializers.lead_serializer import LeadSerializer, LeadReadSerializer
 from restapi.services.zapier_service import send_to_zapier
-from restapi.utils.permissions import has_action_permission_for_labels
+from restapi.utils.permissions import (
+    has_action_permission_for_labels,
+    normalize_role_name,
+)
 
 LEAD_LABELS = ["leads hub"]
 
@@ -37,6 +40,45 @@ def get_request_clinic(request):
         return Clinic.objects.get(id=clinic_id)
     except Clinic.DoesNotExist:
         raise ValidationError({"clinic": "Invalid clinic"})
+
+
+def get_request_user_role(request):
+    role = getattr(getattr(request.user, "profile", None), "role", None)
+    return normalize_role_name(getattr(role, "name", ""))
+
+
+def get_request_employee(request):
+    return getattr(request.user, "employee", None)
+
+
+def is_restricted_lead_user(request):
+    return get_request_user_role(request) == "user"
+
+
+def apply_lead_visibility_scope(queryset, request):
+    if not is_restricted_lead_user(request):
+        return queryset
+
+    employee = get_request_employee(request)
+    if not employee:
+        return queryset.none()
+
+    return queryset.filter(created_by_id=employee.id)
+
+
+def get_scoped_lead_or_404(request, clinic, lead_id):
+    queryset = Lead.objects.select_related(
+        "clinic",
+        "department",
+        "campaign",
+        "referral_department",
+        "referral_source",
+        "stage",
+    ).filter(
+        id=lead_id,
+        clinic=clinic,
+    )
+    return get_object_or_404(apply_lead_visibility_scope(queryset, request))
 
 
 # -------------------------------------------------------------------
@@ -59,6 +101,28 @@ class LeadCreateAPIView(APIView):
             return Response({"error": "You do not have permission to add leads."}, status=403)
 
         try:
+            clinic = get_request_clinic(request)  # 🔥 FIX ADDED
+
+            # 🔥 OPTIONAL VALIDATION (extra safety)
+            stage_id = request.data.get("stage_id")
+            pipeline_id = request.data.get("pipeline_id")
+
+            if stage_id:
+                stage = PipelineStage.objects.filter(
+                    id=stage_id,
+                    is_active=True,
+                    is_deleted=False
+                ).select_related("pipeline").first()
+
+                if not stage:
+                    raise ValidationError({"stage_id": "Invalid stage"})
+
+                if str(stage.pipeline.clinic_id) != str(clinic.id):
+                    raise ValidationError({"stage_id": "Stage does not belong to this clinic"})
+
+                if pipeline_id and str(stage.pipeline_id) != str(pipeline_id):
+                    raise ValidationError({"stage_id": "Stage does not belong to selected pipeline"})
+
             serializer = LeadSerializer(data=request.data, context={"request": request})
             serializer.is_valid(raise_exception=True)
 
@@ -109,16 +173,34 @@ class LeadUpdateAPIView(APIView):
         try:
             clinic = get_request_clinic(request)
 
-            # 🔥 IMPROVED (safe + optimized)
-            lead = get_object_or_404(
-                Lead.objects.select_related("clinic"),
-                id=lead_id
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
+
+            # 🔥 SAME VALIDATION FOR UPDATE
+            stage_id = request.data.get("stage_id")
+            pipeline_id = request.data.get("pipeline_id")
+
+            if stage_id:
+                stage = PipelineStage.objects.filter(
+                    id=stage_id,
+                    is_active=True,
+                    is_deleted=False
+                ).select_related("pipeline").first()
+
+                if not stage:
+                    raise ValidationError({"stage_id": "Invalid stage"})
+
+                if str(stage.pipeline.clinic_id) != str(clinic.id):
+                    raise ValidationError({"stage_id": "Stage does not belong to this clinic"})
+
+                if pipeline_id and str(stage.pipeline_id) != str(pipeline_id):
+                    raise ValidationError({"stage_id": "Stage does not belong to selected pipeline"})
+
+            serializer = LeadSerializer(
+                lead,
+                data=request.data,
+                context={"request": request},
+                partial=True  # 🔥 FIX
             )
-
-            if lead.clinic != clinic:
-                return Response({"error": "Unauthorized"}, status=403)
-
-            serializer = LeadSerializer(lead, data=request.data, context={"request": request})
             serializer.is_valid(raise_exception=True)
 
             updated_lead = serializer.save()
@@ -139,7 +221,6 @@ class LeadUpdateAPIView(APIView):
             logger.error("Unhandled Lead Update Error:\n" + traceback.format_exc())
             return Response({"error": "Internal Server Error"}, status=500)
 
-
 # -------------------------------------------------------------------
 # Lead List API View (GET)
 # -------------------------------------------------------------------
@@ -159,13 +240,17 @@ class LeadListAPIView(APIView):
         try:
             clinic = get_request_clinic(request)
 
-            queryset = Lead.objects.filter(
-                clinic=clinic,
-                is_deleted=False
-            ).select_related(
-                "referral_department",
-                "referral_source"
-            ).order_by("-created_at")
+            queryset = apply_lead_visibility_scope(
+                Lead.objects.filter(
+                    clinic=clinic,
+                    is_deleted=False
+                ).select_related(
+                    "referral_department",
+                    "referral_source",
+                    "stage",  # 🔥 ADDED
+                ).order_by("-created_at"),
+                request,
+            )
 
             lead_status = request.query_params.get("lead_status")
             assigned_to = request.query_params.get("assigned_to")
@@ -206,17 +291,7 @@ class LeadGetAPIView(APIView):
         try:
             clinic = get_request_clinic(request)
 
-            lead = get_object_or_404(
-                Lead.objects.select_related(
-                    "clinic",
-                    "department",
-                    "campaign",
-                    "referral_department",
-                    "referral_source"
-                ),
-                id=lead_id,
-                clinic=clinic
-            )
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
             return Response(LeadReadSerializer(lead).data, status=200)
 
@@ -237,10 +312,7 @@ class LeadActivateAPIView(APIView):
     def post(self, request, lead_id):
         try:
             clinic = get_request_clinic(request)
-            lead = get_object_or_404(Lead, id=lead_id)
-
-            if lead.clinic != clinic:
-                return Response({"error": "Unauthorized"}, status=403)
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
             lead.is_active = True
             lead.save(update_fields=["is_active"])
@@ -260,10 +332,7 @@ class LeadInactivateAPIView(APIView):
     def patch(self, request, lead_id):
         try:
             clinic = get_request_clinic(request)
-            lead = get_object_or_404(Lead, id=lead_id)
-
-            if lead.clinic != clinic:
-                return Response({"error": "Unauthorized"}, status=403)
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
             lead.is_active = False
             lead.save(update_fields=["is_active"])
@@ -283,10 +352,7 @@ class LeadSoftDeleteAPIView(APIView):
     def patch(self, request, lead_id):
         try:
             clinic = get_request_clinic(request)
-            lead = get_object_or_404(Lead, id=lead_id)
-
-            if lead.clinic != clinic:
-                return Response({"error": "Unauthorized"}, status=403)
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
             lead.is_deleted = True
             lead.is_active = False

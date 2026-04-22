@@ -65,7 +65,18 @@ class Lead(models.Model):
 
     department = models.ForeignKey(Department, on_delete=models.CASCADE)
 
-    # ✅ ALL EMPLOYEE FKs REMOVED → REPLACED WITH IDs + NAMES
+    # ✅ NEW → STAGE (IMPORTANT)
+    stage = models.ForeignKey(
+        "restapi.PipelineStage",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="leads"
+    )
+
+    # =============================
+    # EMPLOYEE DETAILS (IDs + NAMES)
+    # =============================
 
     assigned_to_id = models.IntegerField(null=True, blank=True)
     assigned_to_name = models.CharField(max_length=255, null=True, blank=True)
@@ -123,13 +134,12 @@ class Lead(models.Model):
     )
 
     # =============================
-# SOURCE
-# =============================
+    # SOURCE
+    # =============================
 
     source = models.CharField(max_length=100)
     sub_source = models.CharField(max_length=100, blank=True)
 
-    # 🔥 NEW → Referral Department (Dropdown 1)
     referral_department = models.ForeignKey(
         "restapi.ReferralDepartment",
         on_delete=models.SET_NULL,
@@ -138,7 +148,6 @@ class Lead(models.Model):
         related_name="leads"
     )
 
-    # 🔥 EXISTING → Referral Source (Dropdown 2)
     referral_source = models.ForeignKey(
         "restapi.ReferralSource",
         on_delete=models.SET_NULL,

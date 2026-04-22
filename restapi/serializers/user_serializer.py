@@ -12,9 +12,13 @@ from restapi.utils.permissions import (
     has_permission,
     has_subcategory_permission,
     is_super_admin_role,
+    has_action_permission_for_labels,  # ✅ IMPORTANT
 )
 
 
+# =========================
+# DEFAULT ROLE
+# =========================
 def _resolve_default_role(request):
     user_role = Role.objects.filter(name__iexact="User").first()
     if user_role:
@@ -27,6 +31,9 @@ def _resolve_default_role(request):
     return Role.objects.filter(is_active=True).first() or Role.objects.first()
 
 
+# =========================
+# IMAGE VALIDATION
+# =========================
 def _validate_profile_photo(file_obj):
     if not file_obj:
         return
@@ -34,6 +41,7 @@ def _validate_profile_photo(file_obj):
     max_size = int(
         getattr(settings, "MAX_PROFILE_PHOTO_UPLOAD_BYTES", 20 * 1024 * 1024)
     )
+
     file_size = getattr(file_obj, "size", 0) or 0
     if file_size > max_size:
         raise serializers.ValidationError(
@@ -45,6 +53,9 @@ def _validate_profile_photo(file_obj):
         raise serializers.ValidationError({"photo": "Only image files are allowed"})
 
 
+# =========================
+# IMAGE URL BUILDER (SAFE)
+# =========================
 def _build_media_api_url(file_field):
     if not file_field:
         return None
@@ -60,6 +71,9 @@ def _build_media_api_url(file_field):
         return build_media_api_url(normalized_name)
 
 
+# =========================
+# SERIALIZER
+# =========================
 class UserSerializer(serializers.ModelSerializer):
 
     username = serializers.CharField(required=False)
@@ -85,27 +99,16 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            "id",
-            "username",
-            "email",
-            "password",
-            "confirm_password",
-            "first_name",
-            "last_name",
-            "gender",
-            "date_of_birth",
-            "date_of_joining",
-            "mobile_no",
-            "role",
-            "photo",
-            "remove_photo"
+            "id", "username", "email", "password", "confirm_password",
+            "first_name", "last_name", "gender",
+            "date_of_birth", "date_of_joining", "mobile_no",
+            "role", "photo", "remove_photo"
         ]
 
     # =========================
     # VALIDATION
     # =========================
     def validate(self, data):
-
         request = self.context.get("request")
 
         password = data.get("password")
@@ -129,6 +132,7 @@ class UserSerializer(serializers.ModelSerializer):
             if password != confirm_password:
                 raise serializers.ValidationError({"password": "Passwords do not match"})
 
+        # Email check
         if self.instance is None:
             if email and User.objects.filter(email=email).exists():
                 raise serializers.ValidationError({"email": "Email already exists"})
@@ -136,18 +140,17 @@ class UserSerializer(serializers.ModelSerializer):
             if email and User.objects.exclude(id=self.instance.id).filter(email=email).exists():
                 raise serializers.ValidationError({"email": "Email already exists"})
 
+        # Username check
         username = data.get("username")
         if username:
-            if self.instance:
-                if User.objects.exclude(id=self.instance.id).filter(username=username).exists():
-                    raise serializers.ValidationError({"username": "Username already exists"})
-            else:
-                if User.objects.filter(username=username).exists():
-                    raise serializers.ValidationError({"username": "Username already exists"})
+            qs = User.objects.exclude(id=self.instance.id) if self.instance else User.objects
+            if qs.filter(username=username).exists():
+                raise serializers.ValidationError({"username": "Username already exists"})
 
-        if "role" in data and data.get("role") is not None:
+        # Role assign restriction
+        if "role" in data and role is not None:
             if not request or not hasattr(request.user, "profile"):
-                raise serializers.ValidationError("Login required to assign role")
+                raise serializers.ValidationError("Login required")
 
             if not is_super_admin_role(request.user.profile.role):
                 raise serializers.ValidationError("Only Super Admin can assign roles")
@@ -155,7 +158,7 @@ class UserSerializer(serializers.ModelSerializer):
         return data
 
     # =========================
-    # CREATE USER
+    # CREATE
     # =========================
     def create(self, validated_data):
         validated_data.pop("remove_photo", False)
@@ -177,37 +180,28 @@ class UserSerializer(serializers.ModelSerializer):
             role = _resolve_default_role(request)
 
         if not role:
-            raise serializers.ValidationError("No role configured. Please create a role first")
+            raise serializers.ValidationError("No role configured")
 
         profile_data["role"] = role
-
-        if request and hasattr(request.user, "profile"):
-            profile_data["clinic"] = request.user.profile.clinic
-
-        if request and hasattr(request, "user"):
-            profile_data["created_by"] = request.user
+        profile_data["clinic"] = request.user.profile.clinic
+        profile_data["created_by"] = request.user
 
         password = validated_data.pop("password", None)
         validated_data.pop("confirm_password", None)
 
-        username = validated_data.pop("username", None)
-
         user = User.objects.create_user(
-            username=username or validated_data["email"],
+            username=validated_data.get("username") or validated_data["email"],
             email=validated_data["email"],
             password=password
         )
 
-        UserProfile.objects.update_or_create(
-            user=user,
-            defaults=profile_data
-        )
+        UserProfile.objects.update_or_create(user=user, defaults=profile_data)
 
         user.refresh_from_db()
         return user
 
     # =========================
-    # UPDATE USER
+    # UPDATE
     # =========================
     def update(self, instance, validated_data):
 
@@ -220,19 +214,14 @@ class UserSerializer(serializers.ModelSerializer):
         if "username" in validated_data:
             instance.username = validated_data["username"]
 
-        password = validated_data.get("password")
-        if password:
-            instance.set_password(password)
+        if validated_data.get("password"):
+            instance.set_password(validated_data["password"])
 
         instance.save()
 
         for field in [
-            "first_name",
-            "last_name",
-            "gender",
-            "date_of_birth",
-            "date_of_joining",
-            "mobile_no"
+            "first_name", "last_name", "gender",
+            "date_of_birth", "date_of_joining", "mobile_no"
         ]:
             if field in validated_data:
                 setattr(profile, field, validated_data[field])
@@ -240,6 +229,7 @@ class UserSerializer(serializers.ModelSerializer):
         if "role" in validated_data:
             profile.role = validated_data["role"]
 
+        # ✅ PHOTO LOGIC (SAFE + CORRECT)
         if remove_photo:
             if profile.photo:
                 profile.photo.delete(save=False)
@@ -254,7 +244,7 @@ class UserSerializer(serializers.ModelSerializer):
         return instance
 
     # =========================
-    # RESPONSE FORMAT
+    # RESPONSE
     # =========================
     def to_representation(self, instance):
 
@@ -267,21 +257,18 @@ class UserSerializer(serializers.ModelSerializer):
         try:
             if profile and profile.role:
                 permissions = get_user_permissions(instance) or {}
-        except Exception as e:
-            print("Permission error:", str(e))
+        except Exception:
             permissions = {}
 
         request = self.context.get("request")
-        photo_url = None
 
+        # ✅ FINAL IMAGE FIX (NO DISAPPEAR)
+        photo_url = None
         if profile and profile.photo:
             try:
                 file_path = profile.photo.path
                 if os.path.exists(file_path):
                     photo_url = _build_media_api_url(profile.photo)
-                else:
-                    profile.photo = None
-                    profile.save(update_fields=["photo"])
             except Exception:
                 pass
 
@@ -313,24 +300,42 @@ class UserSerializer(serializers.ModelSerializer):
             return data
 
         user = getattr(request, "user", None)
-        if not user or not hasattr(user, "profile") or not getattr(user, "profile", None):
+
+        if not user or not hasattr(user, "profile") or not user.profile:
             return data
 
-        if getattr(user, "id", None) == instance.id:
+        if user.id == instance.id:
             return data
 
         if is_super_admin_role(user.profile.role):
             return data
 
-        try:
-            can_view_users = (
-                has_permission(user, "user_management", "users", "view")
-                or has_subcategory_permission(user, "settings", "settings", "users", "view")
-                or has_subcategory_permission(user, "settings", "settings", "user", "view")
-            )
-        except Exception as e:
-            print("Permission check error:", str(e))
-            can_view_users = False
+        # ✅ FINAL PERMISSION FIX (ROBUST)
+        can_view_users = (
+    is_super_admin_role(user.profile.role)  # ✅ ALWAYS allow superadmin
+
+    or has_action_permission_for_labels(
+        user,
+        "view",
+        ["user", "users", "user rights"]
+    )
+
+    or has_subcategory_permission(
+        user,
+        "",          # ✅ IGNORE module
+        "settings",
+        "user",
+        "view"
+    )
+
+    or has_subcategory_permission(
+        user,
+        "",          # ✅ IGNORE module
+        "settings",
+        "users",
+        "view"
+    )
+)
 
         if not can_view_users:
             return {}
