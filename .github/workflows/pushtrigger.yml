@@ -83,6 +83,15 @@ jobs:
               -e ZAPIER_WEBHOOK_TWILIO_URL="${{ secrets.ZAPIER_WEBHOOK_TWILIO_URL }}" \
               -e STAGE_PROFILE_URL="${{ secrets.STAGE_PROFILE_URL }}" \
               -e STAGE_LOGIN_URL="${{ secrets.STAGE_LOGIN_URL }}" \
+              -e GOOGLE_REVIEW_URL="${{ secrets.GOOGLE_REVIEW_URL }}" \
+              -e GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}" \
+              -e GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}" \
+              -e GOOGLE_ADS_DEVELOPER_TOKEN="${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}" \
+              -e GOOGLE_ADS_LOGIN_CUSTOMER_ID="${{ secrets.GOOGLE_ADS_LOGIN_CUSTOMER_ID }}" \
+              -e GOOGLE_REDIRECT_URI="${{ secrets.GOOGLE_REDIRECT_URI }}" \
+              -e GOOGLE_ACCESS_TOKEN="${{ secrets.GOOGLE_ACCESS_TOKEN }}" \
+              -e GOOGLE_REFRESH_TOKEN="${{ secrets.GOOGLE_REFRESH_TOKEN }}" \
+              -e ZAPIER_WEBHOOK_SOCIAL_URL="${{ secrets.ZAPIER_WEBHOOK_SOCIAL_URL }}" \
               ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
 
             echo "Wait container boot"
