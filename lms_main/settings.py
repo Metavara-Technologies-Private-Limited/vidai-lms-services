@@ -305,3 +305,4 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "")
 
 STAGE_LOGIN_URL = os.getenv("STAGE_LOGIN_URL", "")
 STAGE_PROFILE_URL = os.getenv("STAGE_PROFILE_URL", "")
+STAGE_USER_URL = os.getenv("STAGE_USER_URL", "")
