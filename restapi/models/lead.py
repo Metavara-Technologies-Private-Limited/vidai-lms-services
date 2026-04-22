@@ -19,25 +19,6 @@ class LeadChoices:
         ("female", "Female"),
     )
 
-    LEAD_STATUS = (
-        ("new", "New"),
-        ("contacted", "Contacted"),
-        ("appointment", "Appointment"),
-        ("follow up", "Follow Up"),
-        ("negotiation", "Negotiation"),
-        ("proposal sent", "Proposal Sent"),
-        ("contract signed", "Contract Signed"),
-        ("converted", "Converted"),
-        ("cycle_conversion", "Cycle Conversion"),
-        ("lost", "Lost"),
-        ("lost lead", "Lost Lead"),
-    )
-
-    NEXT_ACTION_STATUS = (
-        ("pending", "Pending"),
-        ("completed", "Completed"),
-    )
-
     NEXT_ACTION_TYPE = (
         ("Follow Up", "Follow Up"),
         ("Call Patient", "Call Patient"),
@@ -65,7 +46,7 @@ class Lead(models.Model):
 
     department = models.ForeignKey(Department, on_delete=models.CASCADE)
 
-    # ✅ NEW → STAGE (IMPORTANT)
+    # ✅ SOURCE OF TRUTH
     stage = models.ForeignKey(
         "restapi.PipelineStage",
         on_delete=models.SET_NULL,
@@ -75,7 +56,7 @@ class Lead(models.Model):
     )
 
     # =============================
-    # EMPLOYEE DETAILS (IDs + NAMES)
+    # EMPLOYEE DETAILS
     # =============================
 
     assigned_to_id = models.IntegerField(null=True, blank=True)
@@ -157,18 +138,18 @@ class Lead(models.Model):
     )
 
     # =============================
-    # STATUS
+    # STATUS (DYNAMIC NOW)
     # =============================
 
+    # ✅ No choices → accepts pipeline values
     lead_status = models.CharField(
-        max_length=20,
-        choices=LeadChoices.LEAD_STATUS,
-        default="new"
+        max_length=100,
+        null=True,
+        blank=True
     )
 
     next_action_status = models.CharField(
-        max_length=20,
-        choices=LeadChoices.NEXT_ACTION_STATUS,
+        max_length=100,
         null=True,
         blank=True
     )
@@ -216,10 +197,16 @@ class Lead(models.Model):
         return f"{self.full_name} ({self.lead_status})"
 
     def save(self, *args, **kwargs):
-        if self.lead_status == "converted" and not self.converted_at:
+
+        # ✅ AUTO SYNC lead_status from stage
+        if self.stage and self.stage.stage_name:
+            self.lead_status = self.stage.stage_name
+
+        # ✅ FIXED CASE BUG
+        if self.lead_status == "Converted" and not self.converted_at:
             self.converted_at = timezone.now()
 
-        if self.lead_status != "converted":
+        if self.lead_status != "Converted":
             self.converted_at = None
 
         super().save(*args, **kwargs)
