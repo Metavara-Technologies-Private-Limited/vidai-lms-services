@@ -1,0 +1,30 @@
+[ERROR] 2026-04-21 19:46:37 restapi.exception_handler:30 — [ERROR][2026-04-21 14:16:37.513745][ReqID: 7451fe05dc44][IP: 127.0.0.1]
+Path: /api/clinics/
+Error: Token expired
+[ERROR] 2026-04-21 19:46:37 restapi.exception_handler:30 — [ERROR][2026-04-21 14:16:37.546560][ReqID: efd2f97858d0][IP: 127.0.0.1]
+Path: /api/clinics/
+Error: Token expired
+[ERROR] 2026-04-21 19:47:06 restapi.exception_handler:30 — [ERROR][2026-04-21 14:17:06.312824][ReqID: 2045655b2707][IP: 127.0.0.1]
+Path: /api/clinics/
+Error: Token expired
+[ERROR] 2026-04-21 19:47:06 restapi.exception_handler:30 — [ERROR][2026-04-21 14:17:06.396660][ReqID: 1c7951447482][IP: 127.0.0.1]
+Path: /api/clinics/
+Error: Token expired
+[ERROR] 2026-04-22 10:28:16 restapi.views.campaign_insights_views:88 — [InsightsTrigger] Error: Traceback (most recent call last):
+  File "C:\Users\pkrhk\OneDrive\Pictures\Documents\BE(Pallavi)\vidai-lms-services\restapi\views\campaign_insights_views.py", line 26, in post
+    clinic      = resolve_request_clinic(request, required=True)
+  File "C:\Users\pkrhk\OneDrive\Pictures\Documents\BE(Pallavi)\vidai-lms-services\restapi\utils\clinic_scope.py", line 82, in resolve_request_clinic
+    raise ValidationError({"clinic_id": "Clinic is required"})
+rest_framework.exceptions.ValidationError: {'clinic_id': ErrorDetail(string='Clinic is required', code='invalid')}
+
+[ERROR] 2026-04-22 10:28:16 django.request:253 — Internal Server Error: /api/campaign/insights/trigger/
+[ERROR] 2026-04-22 10:28:16 django.server:213 — "POST /api/campaign/insights/trigger/ HTTP/1.1" 500 83
+[ERROR] 2026-04-22 10:33:11 restapi.views.campaign_insights_views:88 — [InsightsTrigger] Error: Traceback (most recent call last):
+  File "C:\Users\pkrhk\OneDrive\Pictures\Documents\BE(Pallavi)\vidai-lms-services\restapi\views\campaign_insights_views.py", line 26, in post
+    clinic      = resolve_request_clinic(request, required=True)
+  File "C:\Users\pkrhk\OneDrive\Pictures\Documents\BE(Pallavi)\vidai-lms-services\restapi\utils\clinic_scope.py", line 82, in resolve_request_clinic
+    raise ValidationError({"clinic_id": "Clinic is required"})
+rest_framework.exceptions.ValidationError: {'clinic_id': ErrorDetail(string='Clinic is required', code='invalid')}
+
+[ERROR] 2026-04-22 10:33:11 django.request:253 — Internal Server Error: /api/campaign/insights/trigger/
+[ERROR] 2026-04-22 10:33:11 django.server:213 — "POST /api/campaign/insights/trigger/ HTTP/1.1" 500 83

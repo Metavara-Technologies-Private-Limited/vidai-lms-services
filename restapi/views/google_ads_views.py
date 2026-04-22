@@ -1,8 +1,6 @@
-# # restapi/views/google_ads_views.py
-
-
 import logging
 import traceback
+import requests
 
 from django.conf import settings
 
@@ -15,6 +13,7 @@ from restapi.models.social_account import SocialAccount
 from restapi.services.zapier_service import send_to_zapier_social
 
 logger = logging.getLogger(__name__)
+
 
 class GoogleAdsCampaignCreateAPIView(APIView):
     """
@@ -32,17 +31,11 @@ class GoogleAdsCampaignCreateAPIView(APIView):
             # 1. Validate required fields
             # ----------------------------------------------------------
             clinic_id   = data.get("clinic_id")
-            customer_id = data.get("customer_id")
+            customer_id = data.get("customer_id")  # try frontend first
 
             if not clinic_id:
                 return Response(
                     {"success": False, "error": "clinic_id is required"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            if not customer_id:
-                return Response(
-                    {"success": False, "error": "customer_id is required"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -61,14 +54,28 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 is_active=True,
             ).first()
 
+            # If customer_id not sent by frontend, pull from DB automatically
+            if not customer_id and google_account:
+                customer_id = google_account.customer_id
+
+            # Final check — nowhere to get customer_id from
+            if not customer_id:
+                return Response(
+                    {
+                        "success": False,
+                        "error": "Google Ads customer_id not found. Please reconnect your Google Ads account.",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # Attempt to get tokens from DB
             refresh_token = google_account.user_token if google_account else None
-            access_token = google_account.access_token if google_account else None
-            
+            access_token  = google_account.access_token if google_account else None
+
             # Fallback to settings.py (from .env) if DB is empty
             if not refresh_token:
                 refresh_token = getattr(settings, "GOOGLE_REFRESH_TOKEN", None)
-            
+
             if not access_token:
                 access_token = getattr(settings, "GOOGLE_ACCESS_TOKEN", None)
 
@@ -86,11 +93,15 @@ class GoogleAdsCampaignCreateAPIView(APIView):
             # 3. Build payload for Zapier
             # ----------------------------------------------------------
             campaign_name = data["campaign_name"]
-            # --- FIXED IMAGE LOGIC: Look into nested platform_data ---
+
+            # Look into nested platform_data first, then fall back to root level
             google_data = data.get("platform_data", {}).get("google_ads", {})
-            
-            # This line checks platform_data first, then falls back to root level
-            image_url = google_data.get("image_url") or data.get("image_url")
+            image_url   = (
+                google_data.get("image_url")
+                if isinstance(google_data, dict)
+                else None
+            ) or data.get("image_url")
+
             keywords_raw = data.get("keywords", [])
             keywords_str = (
                 ",".join(keywords_raw)
@@ -108,7 +119,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 "client_id":         settings.GOOGLE_CLIENT_ID,
                 "client_secret":     settings.GOOGLE_CLIENT_SECRET,
                 "refresh_token":     refresh_token,
-                "access_token":      access_token or "", # Helpful for 'Code by Zapier' steps
+                "access_token":      access_token or "",
                 "budget":            int(data.get("budget", 500)),
                 "bidding_strategy":  data.get("bidding_strategy", "MANUAL_CPC"),
                 "locations":         data.get("locations", []),
@@ -124,17 +135,36 @@ class GoogleAdsCampaignCreateAPIView(APIView):
             }
 
             logger.info(
-                "[GoogleAdsView] Sending to Zapier | clinic=%s | refresh_token_source=%s",
-                clinic_id, "DB" if google_account and google_account.user_token else "Settings"
+                "[GoogleAdsView] Sending to Zapier | clinic=%s | customer_id=%s | refresh_token_source=%s",
+                clinic_id,
+                customer_id,
+                "DB" if google_account and google_account.user_token else "Settings",
             )
 
-            # ----------------------------------------------------------
-            # 4. Send to Zapier
-            # ----------------------------------------------------------
-            response_code = send_to_zapier_social(zapier_payload)
-
-            # Inside your View's post method
             print(f"--- DEBUG: CURRENT CLIENT ID IS: {settings.GOOGLE_CLIENT_ID} ---")
+            print(f"--- DEBUG: CUSTOMER ID USED: {customer_id} ---")
+            print(f"--- DEBUG: ZAPIER PAYLOAD: {zapier_payload} ---")
+
+            # ----------------------------------------------------------
+            # 4. Send to Zapier — FIXED: use ZAPIER_WEBHOOK_GOOGLE_ADS_URL
+            # Previously send_to_zapier_social() was called here which uses
+            # ZAPIER_WEBHOOK_URL (general social webhook) — wrong Zap.
+            # Now we POST directly to the dedicated Google Ads webhook URL.
+            # ----------------------------------------------------------
+            webhook_url = settings.ZAPIER_WEBHOOK_GOOGLE_ADS_URL
+            try:
+                zapier_resp = requests.post(webhook_url, json=zapier_payload, timeout=10)
+                response_code = zapier_resp.status_code
+                logger.info(
+                    "[GoogleAdsView] Zapier response: %s | body: %s",
+                    response_code, zapier_resp.text
+                )
+            except requests.exceptions.RequestException as e:
+                logger.error("[GoogleAdsView] Zapier request failed: %s", str(e))
+                return Response(
+                    {"success": False, "error": "Failed to reach Zapier webhook"},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
 
             if response_code == 200:
                 return Response(

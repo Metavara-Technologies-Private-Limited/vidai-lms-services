@@ -13,6 +13,6 @@ class SocialAccountListAPIView(APIView):
 
         accounts = SocialAccount.objects.filter(
             clinic_id=clinic_id, is_active=True
-        ).values("platform", "page_name", "page_id")
+        ).values("platform", "page_name", "page_id", "customer_id")  # ← added customer_id
 
         return Response(list(accounts))
