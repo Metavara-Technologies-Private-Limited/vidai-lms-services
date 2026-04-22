@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'restapi',
 ]
 
+
 # ================================
 # ZAPIER WEBHOOKS
 # ================================
@@ -109,11 +110,11 @@ WSGI_APPLICATION = 'lms_main.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'PSB_db',
+        'NAME': 'stage5_db',
         'USER': 'postgres',
-        'PASSWORD': 'admin123',
-        'HOST': 'localhost',   # ✅ only IP
-        'PORT': '5432',            # ✅ PostgreSQL port
+        'PASSWORD': 'saimohan',
+        'HOST': 'host.docker.internal',  # 'host.docker.internal',   #host.docker.internal
+        'PORT': '5432',
     }
 }
 
@@ -150,6 +151,10 @@ STATIC_ROOT = BASE_DIR / 'static'
 # ================================
 MEDIA_URL  = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_API_URL = '/api/media/'
+MAX_PROFILE_PHOTO_UPLOAD_BYTES = 20 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
 
 
 # ================================
@@ -163,7 +168,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ================================
 CORS_ALLOW_ALL_ORIGINS = True
 
-
+# Respect reverse-proxy forwarded headers for correct scheme/host resolution
+# in production (e.g., nginx, Cloudflare, load balancers).
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
 # ================================
 # DRF
 # ================================
@@ -175,11 +183,11 @@ JWT_REFRESH_TOKEN_LIFETIME_DAYS = int(
 )
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'restapi.utils.jwt_authentication.JWTAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "restapi.utils.jwt_authentication.JWTAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
     ],
-    'EXCEPTION_HANDLER': 'restapi.exception_handler.custom_exception_handler'
+    "EXCEPTION_HANDLER": "restapi.exception_handler.custom_exception_handler",
 }
 
 
@@ -199,11 +207,6 @@ LOGGING = {
     },
 
     "handlers": {
-        "console": {
-            "level": "INFO",
-            "class": "logging.StreamHandler",
-            "formatter": "detailed",
-        },
         "api_file": {
             "level": "ERROR",
             "class": "logging.FileHandler",
@@ -214,9 +217,9 @@ LOGGING = {
 
     "loggers": {
         "restapi": {
-            "handlers": ["console", "api_file"],
-            "level": "INFO",
-            "propagate": False,
+            "handlers": ["api_file"],
+            "level": "ERROR",
+            "propagate": True,
         },
         "django": {
             "handlers": ["api_file"],
@@ -242,28 +245,82 @@ SWAGGER_SETTINGS = {
 }
 
 
-# LINKEDIN
-LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET", "")
+LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID")
+LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET")
+LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI")
+
+FACEBOOK_CLIENT_ID = os.getenv("FACEBOOK_CLIENT_ID")
+FACEBOOK_CONFIGURATION_ID = os.getenv("FACEBOOK_CONFIGURATION_ID")
+FACEBOOK_CLIENT_SECRET = os.getenv("FACEBOOK_CLIENT_SECRET")
+FACEBOOK_REDIRECT_URI = os.getenv("FACEBOOK_REDIRECT_URI")
+
+FRONTEND_URL = os.getenv("FRONTEND_URL")
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL")
 
 # TWILIO
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "")
+# ================================
+import os
+
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+TWILIO_BRIDGE_NUMBER = os.getenv("TWILIO_BRIDGE_NUMBER", "")
+
+TWILIO_SMS_VIA_ZAPIER = os.getenv("TWILIO_SMS_VIA_ZAPIER", "true").strip().lower() in ("1", "true", "yes", "on")
+TWILIO_CALL_VIA_ZAPIER = os.getenv("TWILIO_CALL_VIA_ZAPIER", "true").strip().lower() in ("1", "true", "yes", "on")
+
+TWILIO_SMS_STATUS_CALLBACK_URL = os.getenv("TWILIO_SMS_STATUS_CALLBACK_URL", "")
+TWILIO_CALL_STATUS_CALLBACK_URL = os.getenv("TWILIO_CALL_STATUS_CALLBACK_URL", "")
+
+ZAPIER_WEBHOOK_TWILIO_URL = os.getenv("ZAPIER_WEBHOOK_TWILIO_URL",)
+
+
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND")
+
+EMAIL_HOST = os.getenv("EMAIL_HOST")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").strip().lower() in (
+    "1", "true", "yes", "on"
+)
+
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL")
 
 # MAILCHIMP
-MAILCHIMP_API_KEY = os.getenv("MAILCHIMP_API_KEY", "")
+# ================================
+MAILCHIMP_API_KEY = os.getenv("MAILCHIMP_API_KEY")
+MAILCHIMP_SERVER = os.getenv("MAILCHIMP_SERVER")
+MAILCHIMP_DATA_CENTER = os.getenv("MAILCHIMP_DATA_CENTER")
+MAILCHIMP_EMAIL_LIST_ID = os.getenv("MAILCHIMP_EMAIL_LIST_ID")
+MAILCHIMP_AUDIENCE_ID = os.getenv("MAILCHIMP_AUDIENCE_ID")
+MAILCHIMP_SENDER_EMAIL = os.getenv("MAILCHIMP_SENDER_EMAIL")
 
-# FACEBOOK
-FB_ACCESS_TOKEN = os.getenv("FB_ACCESS_TOKEN", "")
-FB_AD_ACCOUNT_ID = os.getenv("FB_AD_ACCOUNT_ID", "")
-FACEBOOK_CLIENT_SECRET = os.getenv("FACEBOOK_CLIENT_SECRET", "")
+# FACEBOOK ADS (fb_business SDK)
+# ================================
+FB_ACCESS_TOKEN = os.getenv("FB_ACCESS_TOKEN")
+FB_AD_ACCOUNT_ID = os.getenv("FB_AD_ACCOUNT_ID")
 
-# GOOGLE
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_ADS_DEVELOPER_TOKEN = os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", "")
-GOOGLE_ACCESS_TOKEN = os.getenv("GOOGLE_ACCESS_TOKEN", "")
-GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN", "")
+ZAPIER_WEBHOOK_FB_INSIGHTS_URL = os.getenv("ZAPIER_WEBHOOK_FB_INSIGHTS_URL")
 
-# EMAIL
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+ZAPIER_WEBHOOK_SOCIAL_URL = os.getenv(
+    "ZAPIER_WEBHOOK_SOCIAL_URL",
+    "https://hooks.zapier.com/hooks/catch/25767405/u0czqiq/",
+)
+
+STAGE_LOGIN_URL = os.getenv("STAGE_LOGIN_URL")
+
+STAGE_PROFILE_URL = os.getenv("STAGE_PROFILE_URL")
+
+STAGE_USERS_URL = os.getenv(
+    "STAGE_USERS_URL",
+    "https://99999.preview-api.vidaisolutions.com/api/users/"
+)
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+
+GOOGLE_REVIEW_URL = os.getenv("GOOGLE_REVIEW_URL")
