@@ -300,7 +300,7 @@ EMAIL_PORT = os.getenv("EMAIL_PORT", "")
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "")
 
 
-
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL","")
 
 
 STAGE_LOGIN_URL = os.getenv("STAGE_LOGIN_URL", "")

@@ -1068,7 +1068,7 @@ class SocialMediaCampaignCreateAPIView(APIView):
                             "headline_2":         "Book Free Consultation",
                             "headline_3":         "Contact Us Today",
                             # ✅ FIX: use campaign_description instead of emoji content
-                            "description":        (campaign.campaign_description or campaign.campaign_name)[:90],
+                            "description": strip_tags(campaign.campaign_description or campaign.campaign_name)[:90],
                             "description_2":      "Expert care tailored for you. Call now.",
                             "campaign_objective": campaign.campaign_objective,
                             "start_date":         str(campaign.start_date),
