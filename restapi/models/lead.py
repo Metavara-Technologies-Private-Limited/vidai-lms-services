@@ -19,15 +19,10 @@ class LeadChoices:
         ("female", "Female"),
     )
 
-    NEXT_ACTION_TYPE = (
-        ("Follow Up", "Follow Up"),
-        ("Call Patient", "Call Patient"),
-        ("Book Appointment", "Book Appointment"),
-        ("Send Message", "Send Message"),
-        ("Send Email", "Send Email"),
-        ("Review Details", "Review Details"),
-        ("No Action", "No Action"),
-    )
+    # NEXT_ACTION_TYPE intentionally removed.
+    # next_action_type is now free text driven by pipeline stage rules
+    # (action_type enum or custom_label). Removing choices allows any
+    # value from the pipeline to be stored without validation errors.
 
 
 class Lead(models.Model):
@@ -138,25 +133,27 @@ class Lead(models.Model):
     )
 
     # =============================
-    # STATUS (DYNAMIC NOW)
+    # STATUS (DYNAMIC — PIPELINE DRIVEN)
     # =============================
 
-    # ✅ No choices → accepts pipeline values
+    # No choices → accepts any pipeline stage name
     lead_status = models.CharField(
         max_length=100,
         null=True,
         blank=True
     )
 
+    # No choices → accepts any pipeline stage name
     next_action_status = models.CharField(
         max_length=100,
         null=True,
         blank=True
     )
 
+    # No choices → accepts pipeline rule action_type or custom_label free text.
+    # max_length increased to 200 to accommodate longer custom labels.
     next_action_type = models.CharField(
-        max_length=50,
-        choices=LeadChoices.NEXT_ACTION_TYPE,
+        max_length=200,
         null=True,
         blank=True
     )
