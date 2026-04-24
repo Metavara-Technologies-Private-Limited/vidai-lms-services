@@ -95,6 +95,7 @@ jobs:
               -e TWILIO_BRIDGE_NUMBER="${{ secrets.TWILIO_BRIDGE_NUMBER }}" \
               -e TWILIO_SMS_STATUS_CALLBACK_URL="${{ secrets.TWILIO_SMS_STATUS_CALLBACK_URL }}" \
               -e TWILIO_CALL_STATUS_CALLBACK_URL="${{ secrets.TWILIO_CALL_STATUS_CALLBACK_URL }}" \
+              -e ZAPIER_WEBHOOK_INSIGHTS_URL="${{ secrets.ZAPIER_WEBHOOK_INSIGHTS_URL }}" \
               ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
 
             echo "Wait container boot"
