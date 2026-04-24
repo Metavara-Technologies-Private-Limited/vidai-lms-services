@@ -186,11 +186,26 @@ urlpatterns = [
     path("google/callback/", GoogleCallbackAPIView.as_view()),
 
     path("clinics/<int:clinic_id>/social-accounts/", SocialAccountListAPIView.as_view(), name="social-account-list"),
+     path("linkedin/login/", LinkedInLoginAPIView.as_view(), name="linkedin-login"),
+    path("linkedin/callback/", LinkedInCallbackAPIView.as_view(), name="linkedin-callback"),
+    path("linkedin/status/", LinkedInStatusAPIView.as_view(), name="linkedin-status"),
+    
+    # LinkedIn Ads & Analytics endpoints (add these)
+    path("linkedin/ad-accounts/", LinkedInAdsAccountsAPIView.as_view(), name="linkedin-ad-accounts"),
+    path("linkedin/campaigns/", LinkedInCampaignsAPIView.as_view(), name="linkedin-campaigns"),
+    path("linkedin/campaign-analytics/", LinkedInCampaignAnalyticsAPIView.as_view(), name="linkedin-campaign-analytics"),
+    path("linkedin/full-analytics/", LinkedInFullAnalyticsAPIView.as_view(), name="linkedin-full-analytics"),
+    path("linkedin/status/", LinkedInStatusAPIView.as_view()),
+    path("social/campaign/insights/", LinkedInCampaignInsightsAPIView.as_view(), name="linkedin-campaign-insights"),
+    path("social/campaign/status/", LinkedInCampaignStatusAPIView.as_view(), name="linkedin-campaign-status"),
+    path("social/campaign/update/", LinkedInCampaignUpdateAPIView.as_view(), name="linkedin-campaign-update"
+),
 
     # ============================
     # WEBHOOK
     # ============================
     path("webhooks/gohighlevel/lead/", GoHighLevelLeadWebhookAPIView.as_view(), name="ghl-webhook"),
+    path('webhooks/linkedin-zapier-callback/', LinkedInZapierCallbackAPIView.as_view(), name='linkedin-callback'),
 
     # ============================
     # FACEBOOK ADS

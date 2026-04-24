@@ -15,6 +15,8 @@ class SocialAccount(models.Model):
 
     # Facebook data
     access_token = models.TextField()
+    refresh_token = models.TextField(null=True, blank=True)   # ✅ ADD
+    expires_at = models.DateTimeField(null=True, blank=True)  # ✅ ADD
     page_id = models.CharField(max_length=100, null=True, blank=True)
     page_name = models.CharField(max_length=255, null=True, blank=True)
     user_token = models.TextField(blank=True, null=True)
@@ -23,6 +25,11 @@ class SocialAccount(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+    
+    
+    account_id = models.CharField(max_length=100, null=True, blank=True)
+    org_urn = models.CharField(max_length=255, null=True, blank=True)
+    campaign_group = models.CharField(max_length=255, null=True, blank=True)
 
     class Meta:
         unique_together = ("clinic", "platform")

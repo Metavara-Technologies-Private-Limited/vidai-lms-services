@@ -23,7 +23,7 @@ load_dotenv(dotenv_path=env_path)
 SECRET_KEY = 'django-insecure-b#--p%6fpdr-ub523h198vs!#-2%fvtv+at(_@tzr#kaazchp='
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']  # ✅ FIXED - allows Cloudflare tunnel + all hosts
+ALLOWED_HOSTS = ['*','winter-foundationary-shockingly.ngrok-free.dev']  # ✅ FIXED - allows Cloudflare tunnel + all hosts
 
 
 # ================================
@@ -54,7 +54,8 @@ INSTALLED_APPS = [
 
 # General webhook — lead events, campaign events, social media campaigns
 # (unchanged — keep as is)
-ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/u783kl8/"
+# ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/u783kl8/"
+# ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/uj6183k/"
 
 # ✅ SINGLE unified Mailchimp Zap URL.
 # Previously 2 separate Mailchimp Zaps:
@@ -193,36 +194,80 @@ REST_FRAMEWORK = {
 # ================================
 # LOGGING
 # ================================
+# LOGGING = {
+#     "version": 1,
+#     "disable_existing_loggers": False,
+
+#     "formatters": {
+#         "detailed": {
+#             "format": "[{levelname}] {asctime} {name}:{lineno} — {message}",
+#             "style": "{",
+#             "datefmt": "%Y-%m-%d %H:%M:%S",
+#         },
+#     },
+
+#     "handlers": {
+#         "api_file": {
+#             "level": "ERROR",
+#             "class": "logging.FileHandler",
+#             "filename": BASE_DIR / "restapi/log/api.log",
+#             "formatter": "detailed",
+#         },
+#     },
+
+#     # "loggers": {
+#     #     "restapi": {
+#     #         "handlers": ["api_file"],
+#     #         "level": "ERROR",
+#     #         "propagate": True,
+#     #     },
+#     #     "django": {
+#     #         "handlers": ["api_file"],
+#     #         "level": "ERROR",
+#     #         "propagate": True,
+#     #     },
+#     # },
+    
+#     "loggers": {
+#     "restapi": {
+#         "handlers": ["api_file"],
+#         "level": "DEBUG",  # <--- Change this from ERROR to DEBUG
+#         "propagate": True,
+#     },
+#     # Also add this to see logs in the terminal, not just the file
+#     "django": {
+#         "handlers": ["api_file"],
+#         "level": "INFO", 
+#         "propagate": True,
+#     },
+# }
+# }
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-
     "formatters": {
         "detailed": {
-            "format": "[{levelname}] {asctime} {name}:{lineno} — {message}",
+            "format": "[{levelname}] {asctime} {name} — {message}",
             "style": "{",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
         },
     },
-
     "handlers": {
+        "console": {
+            "class": "logging.StreamHandler", # This prints to your terminal
+            "formatter": "detailed",
+        },
         "api_file": {
-            "level": "ERROR",
+            "level": "DEBUG",
             "class": "logging.FileHandler",
             "filename": BASE_DIR / "restapi/log/api.log",
             "formatter": "detailed",
         },
     },
-
     "loggers": {
         "restapi": {
-            "handlers": ["api_file"],
-            "level": "ERROR",
-            "propagate": True,
-        },
-        "django": {
-            "handlers": ["api_file"],
-            "level": "ERROR",
+            "handlers": ["console", "api_file"], # Send to both!
+            "level": "DEBUG",
             "propagate": True,
         },
     },
@@ -243,10 +288,14 @@ SWAGGER_SETTINGS = {
     }
 }
 
-
+LINKEDIN_API_VERSION = "202509"
 LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID")
 LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET")
 LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI")
+LINKEDIN_ACCOUNT_ID = os.getenv("LINKEDIN_ACCOUNT_ID")
+LINKEDIN_ORG_URN = os.getenv("LINKEDIN_ORG_URN")
+# LINKEDIN_CAMPAIGN_GROUP = os.getenv("LINKEDIN_CAMPAIGN_GROUP")
+LINKEDIN_CAMPAIGN_GROUP_URN = os.getenv("LINKEDIN_CAMPAIGN_GROUP_URN")
 
 FACEBOOK_CLIENT_ID = os.getenv("FACEBOOK_CLIENT_ID")
 FACEBOOK_CONFIGURATION_ID = os.getenv("FACEBOOK_CONFIGURATION_ID")
@@ -301,7 +350,7 @@ ZAPIER_WEBHOOK_FB_INSIGHTS_URL = os.getenv("ZAPIER_WEBHOOK_FB_INSIGHTS_URL")
 
 ZAPIER_WEBHOOK_SOCIAL_URL = os.getenv(
     "ZAPIER_WEBHOOK_SOCIAL_URL",
-    "https://hooks.zapier.com/hooks/catch/25767405/u783kl8/",
+    "https://hooks.zapier.com/hooks/catch/25767405/uj6183k/",
 )
 
 STAGE_LOGIN_URL = os.getenv("STAGE_LOGIN_URL")
@@ -325,3 +374,7 @@ GOOGLE_ADS_LOGIN_CUSTOMER_ID = os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
 # Add these at the bottom of your Google Ads section
 GOOGLE_ACCESS_TOKEN = os.getenv("GOOGLE_ACCESS_TOKEN")
 GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN")
+
+
+# Security token for incoming Zapier webhooks
+ZAPIER_CALLBACK_TOKEN = os.getenv("ZAPIER_CALLBACK_TOKEN")

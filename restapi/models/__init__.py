@@ -3,6 +3,7 @@
 from .user_profile import UserProfile
 from .role import Role
 from .role_permission import RolePermission
+from .social_account import SocialAccount
 
 # Core LMS models
 from .lead import Lead
