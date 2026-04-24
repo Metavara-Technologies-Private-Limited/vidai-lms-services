@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 
+from restapi.models import Campaign
 from restapi.models.social_account import SocialAccount
 from restapi.services.zapier_service import send_to_zapier_social
 
@@ -27,11 +28,8 @@ class GoogleAdsCampaignCreateAPIView(APIView):
         try:
             data = request.data
 
-            # ----------------------------------------------------------
-            # 1. Validate required fields
-            # ----------------------------------------------------------
             clinic_id   = data.get("clinic_id")
-            customer_id = data.get("customer_id")  # try frontend first
+            customer_id = data.get("customer_id")
 
             if not clinic_id:
                 return Response(
@@ -45,20 +43,15 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ----------------------------------------------------------
-            # 2. Load Tokens (Database -> settings.py fallback)
-            # ----------------------------------------------------------
             google_account = SocialAccount.objects.filter(
                 clinic_id=clinic_id,
                 platform="google",
                 is_active=True,
             ).first()
 
-            # If customer_id not sent by frontend, pull from DB automatically
             if not customer_id and google_account:
                 customer_id = google_account.customer_id
 
-            # Final check — nowhere to get customer_id from
             if not customer_id:
                 return Response(
                     {
@@ -68,18 +61,15 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # Attempt to get tokens from DB
             refresh_token = google_account.user_token if google_account else None
             access_token  = google_account.access_token if google_account else None
 
-            # Fallback to settings.py (from .env) if DB is empty
             if not refresh_token:
                 refresh_token = getattr(settings, "GOOGLE_REFRESH_TOKEN", None)
 
             if not access_token:
                 access_token = getattr(settings, "GOOGLE_ACCESS_TOKEN", None)
 
-            # Strict check: If no refresh token exists in either place, stop here.
             if not refresh_token:
                 return Response(
                     {
@@ -89,12 +79,8 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ----------------------------------------------------------
-            # 3. Build payload for Zapier
-            # ----------------------------------------------------------
             campaign_name = data["campaign_name"]
 
-            # Look into nested platform_data first, then fall back to root level
             google_data = data.get("platform_data", {}).get("google_ads", {})
             image_url   = (
                 google_data.get("image_url")
@@ -141,16 +127,6 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 "DB" if google_account and google_account.user_token else "Settings",
             )
 
-            print(f"--- DEBUG: CURRENT CLIENT ID IS: {settings.GOOGLE_CLIENT_ID} ---")
-            print(f"--- DEBUG: CUSTOMER ID USED: {customer_id} ---")
-            print(f"--- DEBUG: ZAPIER PAYLOAD: {zapier_payload} ---")
-
-            # ----------------------------------------------------------
-            # 4. Send to Zapier — FIXED: use ZAPIER_WEBHOOK_GOOGLE_ADS_URL
-            # Previously send_to_zapier_social() was called here which uses
-            # ZAPIER_WEBHOOK_URL (general social webhook) — wrong Zap.
-            # Now we POST directly to the dedicated Google Ads webhook URL.
-            # ----------------------------------------------------------
             webhook_url = settings.ZAPIER_WEBHOOK_GOOGLE_ADS_URL
             try:
                 zapier_resp = requests.post(webhook_url, json=zapier_payload, timeout=10)
@@ -191,6 +167,220 @@ class GoogleAdsCampaignCreateAPIView(APIView):
 
         except Exception:
             logger.error("[GoogleAdsView] Unexpected error:\n%s", traceback.format_exc())
+            return Response(
+                {"success": False, "error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class GoogleAdsCampaignStatusAPIView(APIView):
+    """
+    POST /api/google-ads/status/
+    Pause or enable a Google Ads campaign directly via Google Ads REST API.
+    Called when user clicks pause/stop in the UI.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            campaign_id = request.data.get("campaign_id")
+            action      = request.data.get("action")  # "pause" or "enable"
+
+            if not campaign_id or action not in ["pause", "enable"]:
+                return Response(
+                    {"error": "campaign_id and action (pause/enable) are required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            campaign  = Campaign.objects.get(id=campaign_id)
+            clinic_id = campaign.clinic_id
+
+            google_account = SocialAccount.objects.filter(
+                clinic_id=clinic_id,
+                platform="google",
+                is_active=True,
+            ).first()
+
+            if not google_account:
+                return Response(
+                    {"error": "Google Ads not connected for this clinic"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            cust_id = str(google_account.customer_id or "").replace("-", "")
+            if not cust_id:
+                return Response(
+                    {"error": "Google Ads customer_id missing. Please reconnect."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            refresh_token = google_account.user_token
+            if not refresh_token:
+                refresh_token = getattr(settings, "GOOGLE_REFRESH_TOKEN", None)
+
+            if not refresh_token:
+                return Response(
+                    {"error": "Google refresh token missing. Please reconnect."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Step 1: Get fresh access token
+            auth_res = requests.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id":     settings.GOOGLE_CLIENT_ID,
+                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                    "refresh_token": refresh_token,
+                    "grant_type":    "refresh_token",
+                },
+                timeout=10,
+            )
+            auth_json = auth_res.json()
+
+            if "access_token" not in auth_json:
+                logger.error("[GoogleAdsStatus] Token refresh failed: %s", auth_json)
+                return Response(
+                    {"error": "Failed to refresh Google token"},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+
+            access_token = auth_json["access_token"]
+
+            # Step 2: Build headers
+            headers = {
+                "Authorization":   f"Bearer {access_token}",
+                "developer-token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
+                "Content-Type":    "application/json",
+            }
+
+            login_id = str(getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")).replace("-", "")
+            if login_id and login_id != cust_id:
+                headers["login-customer-id"] = login_id
+
+            # Step 3: Find campaign_resource_name from platform_data
+            platform_data          = campaign.platform_data or {}
+            google_data            = platform_data.get("google_ads", {})
+            campaign_resource_name = None
+
+            if isinstance(google_data, dict):
+                campaign_resource_name = google_data.get("campaign_resource_name")
+
+            # Step 4: If not stored, search by campaign name
+            if not campaign_resource_name:
+                safe_name = campaign.campaign_name.strip().replace("'", "\\'")
+                query = (
+                    f"SELECT campaign.id, campaign.name, campaign.resource_name "
+                    f"FROM campaign "
+                    f"WHERE campaign.name LIKE '%{safe_name}%' "
+                    f"AND campaign.status != 'REMOVED' "
+                    f"LIMIT 5"
+                )
+                logger.info(
+                    "[GoogleAdsStatus] Searching by name: %s | cust_id: %s",
+                    safe_name, cust_id,
+                )
+
+                search_resp = requests.post(
+                    f"https://googleads.googleapis.com/v17/customers/{cust_id}/googleAds:search",
+                    headers=headers,
+                    json={"query": query},
+                    timeout=10,
+                )
+                try:
+                    search_res = search_resp.json() if search_resp.text.strip() else {}
+                except Exception as e:
+                    logger.error("[GoogleAdsStatus] Failed to parse search response: %s", e)
+                    search_res = {}
+
+                results = search_res.get("results", [])
+                if results:
+                    campaign_resource_name = results[0].get("campaign", {}).get("resourceName")
+                    logger.info("[GoogleAdsStatus] Found resource_name: %s", campaign_resource_name)
+
+                    updated_platform_data = campaign.platform_data or {}
+                    if not isinstance(updated_platform_data.get("google_ads"), dict):
+                        updated_platform_data["google_ads"] = {}
+                    updated_platform_data["google_ads"]["campaign_resource_name"] = campaign_resource_name
+                    campaign.platform_data = updated_platform_data
+                    campaign.save(update_fields=["platform_data"])
+                else:
+                    logger.error(
+                        "[GoogleAdsStatus] No campaign found for name: %s | http_status: %s | response: %s",
+                        safe_name, search_resp.status_code, search_res,
+                    )
+
+            if not campaign_resource_name:
+                logger.info(
+                    "[GoogleAdsStatus] No Google Ads campaign found for '%s' — skipping",
+                    campaign.campaign_name,
+                )
+                return Response(
+                    {
+                        "success": True,
+                        "skipped": True,
+                        "message": "No Google Ads campaign found — skipped",
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            # Step 5: Mutate campaign status
+            new_status = "PAUSED" if action == "pause" else "ENABLED"
+
+            mutate_resp = requests.post(
+                f"https://googleads.googleapis.com/v17/customers/{cust_id}/campaigns:mutate",
+                headers=headers,
+                json={
+                    "operations": [
+                        {
+                            "update": {
+                                "resourceName": campaign_resource_name,
+                                "status":       new_status,
+                            },
+                            "updateMask": "status",
+                        }
+                    ]
+                },
+                timeout=10,
+            )
+            try:
+                mutate_res = mutate_resp.json() if mutate_resp.text.strip() else {}
+            except Exception as e:
+                logger.error("[GoogleAdsStatus] Failed to parse mutate response: %s", e)
+                mutate_res = {}
+
+            if "results" not in mutate_res:
+                logger.error("[GoogleAdsStatus] Mutate failed: %s", mutate_res)
+                return Response(
+                    {
+                        "error":   "Failed to update Google Ads campaign status",
+                        "details": mutate_res,
+                    },
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+
+            logger.info(
+                "[GoogleAdsStatus] Campaign %s set to %s",
+                campaign_resource_name, new_status,
+            )
+
+            return Response(
+                {
+                    "success":    True,
+                    "campaign_id": str(campaign_id),
+                    "action":     action,
+                    "new_status": new_status,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Campaign.DoesNotExist:
+            return Response(
+                {"error": "Campaign not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception:
+            logger.error("[GoogleAdsStatus] Unexpected error:\n%s", traceback.format_exc())
             return Response(
                 {"success": False, "error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
