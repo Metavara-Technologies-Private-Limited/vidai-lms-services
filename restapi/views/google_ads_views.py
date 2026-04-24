@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 
-from restapi.models import Campaign
+from restapi.models import Campaign, CampaignSocialMediaConfig
 from restapi.models.social_account import SocialAccount
 from restapi.services.zapier_service import send_to_zapier_social
 
