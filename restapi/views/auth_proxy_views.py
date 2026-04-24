@@ -190,14 +190,30 @@ class UsersProxyAPIView(APIView):
 
             resp = requests.get(
                 settings.STAGE_USERS_URL,
-                headers={
-                    "Authorization": auth_header,
-                },
+                headers={"Authorization": auth_header},
                 params=params,
                 timeout=10,
             )
 
-            return Response(resp.json(), status=resp.status_code)
+            # ✅ SAFE JSON HANDLING (THIS FIXES YOUR 500)
+            try:
+                data = resp.json() if resp.content else {}
+            except Exception:
+                data = {"raw": resp.text}
+
+            return Response(
+                {
+                    "success": resp.status_code == 200,
+                    "status_code": resp.status_code,
+                    "data": data,
+                    "debug": {
+                        "url": settings.STAGE_USERS_URL,
+                        "params": params,
+                        "auth": auth_header[:20] + "...",
+                    },
+                },
+                status=resp.status_code,
+            )
 
         except requests.exceptions.Timeout:
             return Response({"error": "Users service timeout"}, status=504)
