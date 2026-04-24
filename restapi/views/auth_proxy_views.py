@@ -177,6 +177,11 @@ class UsersProxyAPIView(APIView):
         try:
             token = request.headers.get("Authorization")
 
+            if not token:
+                return Response({"error": "Authorization token missing"}, status=401)
+
+            auth_header = token if token.startswith("Bearer ") else f"Bearer {token}"
+
             params = {
                 "limit": request.query_params.get("limit", 10),
                 "offset": request.query_params.get("offset", 0),
@@ -186,7 +191,7 @@ class UsersProxyAPIView(APIView):
             resp = requests.get(
                 settings.STAGE_USERS_URL,
                 headers={
-                    "Authorization": token,
+                    "Authorization": auth_header,
                 },
                 params=params,
                 timeout=10,
@@ -195,13 +200,7 @@ class UsersProxyAPIView(APIView):
             return Response(resp.json(), status=resp.status_code)
 
         except requests.exceptions.Timeout:
-            return Response(
-                {"error": "Users service timeout"},
-                status=504
-            )
+            return Response({"error": "Users service timeout"}, status=504)
 
         except Exception as e:
-            return Response(
-                {"error": "Users fetch failed", "details": str(e)},
-                status=500
-            )
+            return Response({"error": "Users fetch failed", "details": str(e)}, status=500)
