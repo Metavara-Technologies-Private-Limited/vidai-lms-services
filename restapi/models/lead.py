@@ -95,6 +95,15 @@ class Lead(models.Model):
     address = models.TextField(blank=True)
 
     # =============================
+    # CONTACT INFORMATION (contracts app)
+    # =============================
+
+    contact_full_name = models.CharField(max_length=255, null=True, blank=True)
+    contact_designation = models.CharField(max_length=255, null=True, blank=True)
+    contact_phone = models.CharField(max_length=20, null=True, blank=True)
+    contact_email = models.EmailField(null=True, blank=True)
+
+    # =============================
     # PARTNER DETAILS
     # =============================
 

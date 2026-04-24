@@ -119,6 +119,12 @@ class LeadSerializer(serializers.ModelSerializer):
 
     documents = MultiFileField(write_only=True, required=False)
 
+    # CONTACT INFORMATION (contracts app)
+    contact_full_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    contact_designation = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    contact_phone = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    contact_email = serializers.EmailField(required=False, allow_null=True)
+
     class Meta:
         model = Lead
         fields = [
@@ -141,6 +147,12 @@ class LeadSerializer(serializers.ModelSerializer):
             "language_preference",
             "location",
             "address",
+
+            # CONTACT INFORMATION (contracts app)
+            "contact_full_name",
+            "contact_designation",
+            "contact_phone",
+            "contact_email",
 
             "partner_inquiry",
             "partner_full_name",
