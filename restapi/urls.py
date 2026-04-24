@@ -8,8 +8,10 @@ from restapi.views.google_ads_views import (
 
 from restapi.views.social_auth_views import (
     GoogleAdsCampaignCallbackAPIView,
-    GoogleAdsInsightsAPIView,
+    # GoogleAdsInsightsAPIView,  # ← removed from here
 )
+
+from restapi.views.google_ads_views import GoogleAdsInsightsAPIView  # ← added here
 
 from restapi.views.campaign_insights_views import (
     CampaignInsightsTriggerAPIView,

@@ -385,3 +385,45 @@ class GoogleAdsCampaignStatusAPIView(APIView):
                 {"success": False, "error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+# =====================================================
+# Google Ads Insights API View (GET)
+# =====================================================
+class GoogleAdsInsightsAPIView(APIView):
+    """
+    Retrieve Google Ads insights for a campaign.
+    Endpoint: GET /api/google-ads/insights/?campaign_id=123&clinic_id=456
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        campaign_id = request.query_params.get('campaign_id')
+        clinic_id = request.query_params.get('clinic_id')
+        
+        if not campaign_id or not clinic_id:
+            return Response(
+                {"error": "campaign_id and clinic_id are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verify campaign exists and belongs to clinic
+        try:
+            campaign = Campaign.objects.get(id=campaign_id, clinic_id=clinic_id)
+        except Campaign.DoesNotExist:
+            return Response(
+                {"error": "Campaign not found or access denied"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get or create the social media config for Google Ads
+        config, created = CampaignSocialMediaConfig.objects.get_or_create(
+            campaign=campaign,
+            platform_name=CampaignSocialMediaConfig.GOOGLE_ADS,
+            defaults={"insights": {}}
+        )
+        
+        # Return the insights (empty dict if none stored yet)
+        return Response({
+            "insights": config.insights or {}
+        }, status=status.HTTP_200_OK)
