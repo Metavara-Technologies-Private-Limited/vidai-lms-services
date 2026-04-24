@@ -18,41 +18,45 @@ logger = logging.getLogger("restapi")
 # ============================================================
 
 def _format_phone(number: str, default_country_code: str = "+91") -> str:
-    """
-    Normalize a phone number to E.164-like format.
-    Examples:
-    - 9108583181 -> +919108583181
-    - +919108583181 -> +919108583181
-    - 00919108583181 -> +919108583181
-    """
+
     if not number:
         return ""
 
     raw = str(number).strip()
-    cleaned = "".join(ch for ch in raw if ch.isdigit() or ch == "+")
+    raw = raw.replace(" ", "").replace("-", "")
 
-    # Convert 00 prefix into + (common international format).
-    if cleaned.startswith("00"):
-        cleaned = "+" + cleaned[2:]
+    # preserve + if exists
+    if raw.startswith("+"):
+        digits = raw[1:]
+    else:
+        digits = "".join(ch for ch in raw if ch.isdigit())
 
-    if cleaned.startswith("+"):
-        digits_after_plus = "".join(ch for ch in cleaned[1:] if ch.isdigit())
-        return f"+{digits_after_plus}" if digits_after_plus else ""
-
-    digits = "".join(ch for ch in cleaned if ch.isdigit())
     if not digits:
         return ""
 
-    country_digits = default_country_code.lstrip("+") if default_country_code else ""
-    if len(digits) == 10 and country_digits:
-        return f"+{country_digits}{digits}"
+    # Handle prefixes
+    if digits.startswith("91") and len(digits) == 12:
+        digits = digits[2:]
+    elif digits.startswith("0") and len(digits) == 11:
+        digits = digits[1:]
 
-    # If caller already included country code but without +, just add +.
-    if country_digits and digits.startswith(country_digits):
-        return f"+{digits}"
+    if len(digits) != 10:
+        logger.error(f"Invalid phone length: {number}")
+        return ""
 
-    return f"+{digits}"
+    if digits[0] not in ["6", "7", "8", "9"]:
+        logger.error(f"Invalid start digit: {number}")
+        return ""
 
+    if digits in ["0000000000", "1111111111", "1234567890"]:
+        logger.error(f"Dummy phone number: {number}")
+        return ""
+
+    if len(set(digits)) == 1:
+        logger.error(f"All digits same: {number}")
+        return ""
+
+    return f"{default_country_code}{digits}"
 
 def _notify_zapier(event: str, payload: dict):
     """
@@ -115,6 +119,8 @@ def send_sms(lead_uuid, to_number, message_body):
     lead = Lead.objects.get(id=lead_uuid)
 
     formatted_to_number = _format_phone(to_number)
+    if not formatted_to_number:
+        raise Exception("Invalid phone number")
     lead_phone = _format_phone(lead.contact_no or formatted_to_number)
     sms_via_zapier = bool(getattr(settings, "TWILIO_SMS_VIA_ZAPIER", False))
 
@@ -222,6 +228,8 @@ def make_call(lead_uuid, to_number, agent_number=None):
     lead = Lead.objects.get(id=lead_uuid)
 
     formatted_to_number = _format_phone(to_number)
+    if not formatted_to_number:
+        raise Exception("Invalid phone number")
     formatted_agent_number = _format_phone(agent_number or getattr(settings, "TWILIO_BRIDGE_NUMBER", ""))
     lead_phone = _format_phone(lead.contact_no or formatted_to_number)
     call_via_zapier = bool(getattr(settings, "TWILIO_CALL_VIA_ZAPIER", False))
