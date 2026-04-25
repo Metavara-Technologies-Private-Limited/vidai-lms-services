@@ -268,14 +268,22 @@ TWILIO_CALL_STATUS_CALLBACK_URL = os.getenv("TWILIO_CALL_STATUS_CALLBACK_URL", "
 ZAPIER_WEBHOOK_TWILIO_URL = os.getenv("ZAPIER_WEBHOOK_TWILIO_URL")
 
 
-EMAIL_BACKEND = os.getenv("EMAIL_BACKEND")
+# ================================
+# EMAIL CONFIG (FIXED ✅)
+# ================================
 
-EMAIL_HOST = os.getenv("EMAIL_HOST")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT"))
-EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS") == "True"
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND") or "django.core.mail.backends.smtp.EmailBackend"
 
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+EMAIL_HOST = os.getenv("EMAIL_HOST") or "smtp.gmail.com"
+
+EMAIL_PORT = int(os.getenv("EMAIL_PORT") or 587)
+
+EMAIL_USE_TLS = (os.getenv("EMAIL_USE_TLS") or "True").lower() in ("true", "1", "yes")
+
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER") or ""
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD") or ""
+
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # ================================
 # MAILCHIMP

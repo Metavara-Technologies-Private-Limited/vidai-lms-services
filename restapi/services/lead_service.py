@@ -23,7 +23,7 @@ from restapi.models import (
 
 
 # =====================================================
-# HELPER: USER INFO (🔥 NEW)
+# HELPER: USER INFO
 # =====================================================
 def _get_user_info(request):
     if not request:
@@ -31,11 +31,9 @@ def _get_user_info(request):
 
     user = request.user
 
-    # If employee exists
     if hasattr(user, "employee") and user.employee:
         return user.employee.id, user.employee.emp_name
 
-    # fallback
     return user.id, str(user)
 
 
@@ -62,6 +60,10 @@ def create_lead(validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
+    # ===================== 🔥 NORMALIZE PHONE =====================
+    if validated_data.get("contact_no") in ["", None]:
+        validated_data["contact_no"] = None
+
     # ===================== CLINIC =====================
     clinic_id = request.headers.get("X-Clinic-Id") if request else None
 
@@ -72,7 +74,7 @@ def create_lead(validated_data, request=None):
 
     validated_data.pop("clinic_id", None)
 
-    # ===================== 🔥 CREATED BY FIX =====================
+    # ===================== CREATED BY =====================
     validated_data.pop("created_by_id", None)
     validated_data.pop("created_by_name", None)
 
@@ -127,9 +129,7 @@ def create_lead(validated_data, request=None):
         validated_data.pop("assigned_to_name", None)
     )
 
-    # =====================================================
-    # REFERRAL
-    # =====================================================
+    # ===================== REFERRAL =====================
     referral_department = None
     referral_source = None
 
@@ -138,7 +138,6 @@ def create_lead(validated_data, request=None):
 
     referral_source_data = request.data.get("referral_source") if request else None
 
-    # OBJECT FLOW
     if referral_source_data:
         first_name = referral_source_data.get("first_name", "").strip()
         last_name = referral_source_data.get("last_name", "").strip()
@@ -162,7 +161,6 @@ def create_lead(validated_data, request=None):
             created_by=request.user if request else None
         )
 
-    # ID FLOW
     else:
         if ref_source_id and not ref_dept_id:
             raise ValidationError({"referral_department_id": "Required"})
@@ -218,7 +216,12 @@ def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # ===================== 🔥 UPDATED BY FIX =====================
+    # ===================== 🔥 NORMALIZE PHONE =====================
+    if "contact_no" in validated_data:
+        if validated_data["contact_no"] in ["", None]:
+            validated_data["contact_no"] = None
+
+    # ===================== UPDATED BY =====================
     validated_data.pop("updated_by_id", None)
     validated_data.pop("updated_by_name", None)
 
@@ -254,10 +257,7 @@ def update_lead(instance, validated_data, request=None):
             assigned_to_name
         )
 
-    # ===================== UPDATE FIELDS =====================
-    # =====================================================
-    # 🔥 REFERRAL UPDATE (FIXED)
-    # =====================================================
+    # ===================== REFERRAL UPDATE =====================
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)
 
@@ -299,6 +299,7 @@ def update_lead(instance, validated_data, request=None):
                 clinic=instance.clinic
             ).first()
 
+    # ===================== UPDATE FIELDS =====================
     for field, value in validated_data.items():
         if hasattr(instance, field):
             setattr(instance, field, value)
@@ -312,7 +313,7 @@ def update_lead(instance, validated_data, request=None):
 
 
 # =====================================================
-# EMAIL HELPERS (UNCHANGED)
+# EMAIL HELPERS
 # =====================================================
 def _clean_email_body(text: str) -> str:
     if not text:

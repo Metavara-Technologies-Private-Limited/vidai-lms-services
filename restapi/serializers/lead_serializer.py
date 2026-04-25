@@ -106,6 +106,15 @@ class LeadSerializer(serializers.ModelSerializer):
     personal_id = serializers.IntegerField(required=False, allow_null=True)
     personal_name = serializers.CharField(required=False, allow_null=True)
 
+    # =============================
+    # 🔥 FIXED PHONE FIELD
+    # =============================
+    contact_no = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True
+    )
+
     # REFERRAL (OLD)
     referral_department_id = serializers.IntegerField(required=False, allow_null=True)
     referral_source_id = serializers.IntegerField(required=False, allow_null=True)
@@ -148,7 +157,7 @@ class LeadSerializer(serializers.ModelSerializer):
             "location",
             "address",
 
-            # CONTACT INFORMATION (contracts app)
+            # CONTACT INFORMATION
             "contact_full_name",
             "contact_designation",
             "contact_phone",
@@ -189,6 +198,14 @@ class LeadSerializer(serializers.ModelSerializer):
         read_only_fields = ("id",)
 
     # =====================================================
+    # 🔥 PHONE NORMALIZATION (IMPORTANT)
+    # =====================================================
+    def validate_contact_no(self, value):
+        if value in ["", None]:
+            return None
+        return value.strip()
+
+    # =====================================================
     # VALIDATION
     # =====================================================
     def validate(self, attrs):
@@ -217,12 +234,10 @@ class LeadSerializer(serializers.ModelSerializer):
 
         referral_source_data = request.data.get("referral_source") if request else None
 
-        # 🔥 OBJECT VALIDATION
         if referral_source_data:
             if not referral_source_data.get("first_name"):
                 raise ValidationError({"referral_source": "first_name required"})
 
-        # 🔥 OLD FLOW
         if ref_source_id and not ref_dept_id:
             raise ValidationError({
                 "referral_department_id": "Required when referral_source is provided"
@@ -261,18 +276,16 @@ class LeadSerializer(serializers.ModelSerializer):
             if not stage:
                 raise ValidationError({"stage_id": "Invalid stage"})
 
-            # clinic check
             if str(stage.pipeline.clinic_id) != str(clinic_id):
                 raise ValidationError({"stage_id": "Invalid clinic stage"})
 
-            # pipeline check
             if pipeline_id and str(stage.pipeline_id) != str(pipeline_id):
                 raise ValidationError({"stage_id": "Stage not in selected pipeline"})
 
         return attrs
 
     # =====================================================
-    # CREATE ✅ INSIDE CLASS
+    # CREATE
     # =====================================================
     def create(self, validated_data):
         request = self.context.get("request")
@@ -285,7 +298,7 @@ class LeadSerializer(serializers.ModelSerializer):
         return create_lead(validated_data, request=request)
 
     # =====================================================
-    # UPDATE ✅ INSIDE CLASS
+    # UPDATE
     # =====================================================
     def update(self, instance, validated_data):
         request = self.context.get("request")
