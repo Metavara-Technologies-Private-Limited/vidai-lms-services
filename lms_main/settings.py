@@ -233,11 +233,13 @@ SWAGGER_SETTINGS = {
     }
 }
 
-
+LINKEDIN_API_VERSION = "202509"
 LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID")
 LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET")
 LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI")
-
+LINKEDIN_ACCOUNT_ID = os.getenv("LINKEDIN_ACCOUNT_ID")
+LINKEDIN_ORG_URN = os.getenv("LINKEDIN_ORG_URN")
+LINKEDIN_CAMPAIGN_GROUP_URN = os.getenv("LINKEDIN_CAMPAIGN_GROUP_URN")
 FACEBOOK_CLIENT_ID = os.getenv("FACEBOOK_CLIENT_ID")
 FACEBOOK_CONFIGURATION_ID = os.getenv("FACEBOOK_CONFIGURATION_ID")
 FACEBOOK_CLIENT_SECRET = os.getenv("FACEBOOK_CLIENT_SECRET")
@@ -316,3 +318,28 @@ GOOGLE_ADS_LOGIN_CUSTOMER_ID = os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
 # Add these at the bottom of your Google Ads section
 GOOGLE_ACCESS_TOKEN = os.getenv("GOOGLE_ACCESS_TOKEN")
 GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN")
+
+# ================================
+# ZAPIER
+# ================================
+ZAPIER_WEBHOOK_URL = os.getenv(
+    "ZAPIER_WEBHOOK_URL",
+    "https://hooks.zapier.com/hooks/catch/25767405/uxrz9r3/"
+)
+
+ZAPIER_WEBHOOK_GOOGLE_ADS_URL = os.getenv(
+    "ZAPIER_WEBHOOK_GOOGLE_ADS_URL",
+    "https://hooks.zapier.com/hooks/catch/25767405/u783kl8/"
+)
+
+BACKEND_BASE_URL = os.getenv(
+    "BACKEND_BASE_URL",
+    "https://lms-vidaisolutions.metavaratechnologies.com"
+)
+
+ZAPIER_WEBHOOK_INSIGHTS_URL = os.getenv(
+    "ZAPIER_WEBHOOK_INSIGHTS_URL",
+    "https://hooks.zapier.com/hooks/catch/25767405/ujlyx3c/"
+)
+
+ZAPIER_CALLBACK_TOKEN = os.getenv("ZAPIER_CALLBACK_TOKEN")
