@@ -18,7 +18,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from drf_yasg.utils import swagger_auto_schema
 
-from restapi.models import Campaign, CampaignSocialMediaConfig
+from restapi.models import Campaign, CampaignSocialMediaConfig, Clinic
 from restapi.models.social_account import SocialAccount
 from restapi.services.campaign_social_post_service import _is_direct_image_url
 from restapi.serializers.campaign_serializer import SocialMediaCampaignSerializer
@@ -31,6 +31,7 @@ from restapi.services.campaign_social_post_service import (
 # from restapi.services.google_ads_service import create_google_ads_campaign
 from restapi.services.payload_builders import LinkedInPayloadBuilder
 from restapi.services.zapier_service import send_to_zapier_social
+from restapi.utils.clinic_scope import resolve_request_clinic
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +54,11 @@ class SocialMediaCampaignCreateAPIView(APIView):
     @transaction.atomic
     def post(self, request):
         try:
+            clinic = resolve_request_clinic(request, required=True)
             print("SOCIAL DATA:", request.data)
-            serializer = SocialMediaCampaignSerializer(data=request.data)
+            payload = request.data.copy()
+            payload["clinic"] = clinic.id
+            serializer = SocialMediaCampaignSerializer(data=payload)
             serializer.is_valid(raise_exception=True)
 
             data = serializer.validated_data
@@ -110,7 +114,6 @@ class SocialMediaCampaignCreateAPIView(APIView):
 
                 # Resolve image_url
                 # Priority: 1. Explicit image_url field  2. platform_data.facebook  3. campaign_content
-                # _raw_image_url = (request.data.get("image_url") or "").strip()
                 _raw_image_url = (request.data.get("image_url") or "").strip()
                 image_url_field = _raw_image_url if _raw_image_url else None
 
@@ -174,9 +177,7 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     )
                 )
 
-                # =====================================================
-                # FIX: Only store budget for SELECTED platforms
-                # =====================================================
+                # Only store budget for selected platforms
                 selected_platforms = data["select_ad_accounts"]
                 raw_budget_data = data.get("budget_data") or {}
                 filtered_budget = {
@@ -223,9 +224,7 @@ class SocialMediaCampaignCreateAPIView(APIView):
 
                 clinic_id = data["clinic"]
 
-                # =====================================================
                 # Defaults — must be set before platform blocks
-                # =====================================================
                 fb_post_id = None
                 google_result = {}
 
@@ -368,73 +367,139 @@ class SocialMediaCampaignCreateAPIView(APIView):
                 # =====================================================
                 if "google_ads" in channels:
 
+                    print("=" * 60)
+                    print("DEBUG: ENTERING GOOGLE ADS BLOCK")
+                    print("DEBUG: channels =", channels)
+                    print("=" * 60)
+
                     google_account = SocialAccount.objects.filter(
                         clinic_id=clinic_id,
                         platform="google",
                         is_active=True
                     ).first()
 
-                    if not google_account:
-                        return Response(
-                            {"error": "Google Ads not connected for this clinic. "
-                                      "Please connect via /api/auth/google/"},
-                            status=400
-                        )
+                    # --- Load tokens: DB first, then settings.py fallback ---
+                    refresh_token = google_account.user_token if google_account else None
+                    access_token  = google_account.access_token if google_account else None
+                    customer_id   = google_account.customer_id if google_account else None
 
-                    refresh_token = google_account.user_token
                     if not refresh_token:
-                        return Response(
-                            {"error": "Google refresh token missing. "
-                                      "Please reconnect your Google account."},
-                            status=400
+                        refresh_token = getattr(settings, "GOOGLE_REFRESH_TOKEN", None)
+
+                    if not access_token:
+                        access_token = getattr(settings, "GOOGLE_ACCESS_TOKEN", None)
+
+                    if not customer_id:
+                        customer_id = getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", None)
+
+                    if not refresh_token:
+                        logger.error(
+                            "[SocialCampaign] Google Ads skipped — refresh token missing for clinic %s",
+                            clinic_id
+                        )
+                        google_result = {"status": "skipped_no_token"}
+                    else:
+                        # ✅ FIX: Get clinic website for final_url
+                        clinic_obj = Clinic.objects.filter(id=clinic_id).first()
+                        clinic_website = (
+                            getattr(clinic_obj, "website", None)
+                            or getattr(clinic_obj, "clinic_url", None)
+                            or settings.BACKEND_BASE_URL
                         )
 
-                    google_campaign_data = campaign.platform_data.get("google_ads", {})
+                        # platform_data.google_ads can be a string or a dict
+                        raw_google_data = campaign.platform_data.get("google_ads", {})
 
-                    # --- IMAGE LOGIC ---
-                    # Check if the user provided an image_url explicitly in platform_data, 
-                    # otherwise fallback to checking if the campaign_content itself is an image URL.
-                    image_url = google_campaign_data.get("image_url")
-                    if not image_url and _is_direct_image_url(campaign.campaign_content):
-                        image_url = campaign.campaign_content
+                        if isinstance(raw_google_data, str):
+                            google_ads_description = raw_google_data
+                            google_campaign_data   = {}
+                        else:
+                            google_ads_description = ""
+                            google_campaign_data   = raw_google_data
 
-                    keywords_raw = google_campaign_data.get("keywords", [])
-                    keywords_str = (
-                        ",".join(keywords_raw)
-                        if isinstance(keywords_raw, list)
-                        else str(keywords_raw)
-                    )
+                        # Resolve image_url
+                        image_url = (
+                            google_campaign_data.get("image_url")
+                            or campaign.image_url
+                            or None
+                        )
 
-                    google_payload = {
-                        "event":             "google_ads_campaign_created",
-                        "campaign_name":     campaign.campaign_name,
-                        "image_url":         image_url,
-                        "customer_id":       str(google_campaign_data.get("customer_id", "")).replace("-", ""),
-                        "login_customer_id": getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", ""),
-                        "developer_token":   settings.GOOGLE_ADS_DEVELOPER_TOKEN,
-                        "client_id":         settings.GOOGLE_CLIENT_ID,
-                        "client_secret":     settings.GOOGLE_CLIENT_SECRET,
-                        "refresh_token":     refresh_token,
-                        "budget":            google_campaign_data.get("budget", 500),
-                        "bidding_strategy":  google_campaign_data.get("bidding_strategy", "MANUAL_CPC"),
-                        "locations":         google_campaign_data.get("locations", []),
-                        "keywords":          keywords_str,
-                        "cpc_bid":           google_campaign_data.get("cpc_bid", 20),
-                        "ad_group_name":     google_campaign_data.get("ad_group_name", f"{campaign.campaign_name} AdGroup"),
-                        "final_url":         google_campaign_data.get("final_url", "https://example.com"),
-                        "headline_1":        campaign.campaign_name[:30],
-                        "headline_2":        "Learn More",
-                        "headline_3":        "Contact Us Today",
-                        "description":       (campaign.campaign_content or "")[:90],
-                        "description_2":     "Call us now or visit our website.",
-                    }
+                        # Resolve budget
+                        budget = int(
+                            filtered_budget.get("google_ads")
+                            or google_campaign_data.get("budget", 500)
+                        )
 
-                    send_to_zapier_social(google_payload)
-                    google_result = {"status": "sent_to_zapier"}
+                        # Keywords
+                        keywords_raw = google_campaign_data.get("keywords", [])
+                        keywords_str = (
+                            ",".join(keywords_raw)
+                            if isinstance(keywords_raw, list)
+                            else str(keywords_raw)
+                        )
+
+                        google_payload = {
+                            "event":              "google_ads_campaign_created",
+                            "campaign_name":      campaign.campaign_name,
+                            "image_url":          image_url or "",
+                            "customer_id":        str(customer_id or "").replace("-", ""),
+                            "login_customer_id":  getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", ""),
+                            "developer_token":    settings.GOOGLE_ADS_DEVELOPER_TOKEN,
+                            "client_id":          settings.GOOGLE_CLIENT_ID,
+                            "client_secret":      settings.GOOGLE_CLIENT_SECRET,
+                            "refresh_token":      refresh_token,
+                            "access_token":       access_token or "",
+                            "budget":             budget,
+                            "bidding_strategy":   google_campaign_data.get("bidding_strategy", "MANUAL_CPC"),
+                            "locations":          google_campaign_data.get("locations", []),
+                            "keywords":           keywords_str,
+                            "cpc_bid":            int(google_campaign_data.get("cpc_bid", 20)),
+                            "ad_group_name":      google_campaign_data.get(
+                                                      "ad_group_name",
+                                                      f"{campaign.campaign_name} AdGroup"
+                                                  ),
+                            # ✅ FIX: use clinic website instead of hardcoded example.com
+                            "final_url":          clinic_website,
+                            # ✅ FIX: auto headlines from campaign data
+                            "headline_1":         campaign.campaign_name[:30],
+                            "headline_2":         "Book Free Consultation",
+                            "headline_3":         "Contact Us Today",
+                            # ✅ FIX: use campaign_description instead of emoji content
+                            "description": strip_tags(campaign.campaign_description or campaign.campaign_name)[:90],
+                            "description_2":      "Expert care tailored for you. Call now.",
+                            "campaign_objective": campaign.campaign_objective,
+                            "start_date":         str(campaign.start_date),
+                            "end_date":           str(campaign.end_date),
+                            # ✅ FIX: add campaign_id and callback_url for insights flow
+                            "campaign_id":        str(campaign.id),
+                            "callback_url":       f"{settings.BACKEND_BASE_URL}/api/campaign/insights/callback/",
+                        }
+
+                        print("=" * 60)
+                        print("GOOGLE ADS PAYLOAD SENDING TO ZAPIER:", google_payload)
+                        print("=" * 60)
+
+                        webhook_url = settings.ZAPIER_WEBHOOK_GOOGLE_ADS_URL
+                        try:
+                            zapier_resp = requests.post(
+                                webhook_url, json=google_payload, timeout=10
+                            )
+                            logger.info(
+                                "[SocialCampaign] Google Ads Zapier response: %s | body: %s",
+                                zapier_resp.status_code, zapier_resp.text
+                            )
+                            google_result = {
+                                "status":        "sent_to_zapier",
+                                "zapier_status": zapier_resp.status_code,
+                            }
+                        except requests.exceptions.RequestException as e:
+                            logger.error(
+                                "[SocialCampaign] Google Ads Zapier request failed: %s", str(e)
+                            )
+                            google_result = {"status": "zapier_failed", "error": str(e)}
 
                 # =====================================================
-                # APPEND RESULT — outside all platform if-blocks,
-                # still inside the "for mode in data['campaign_mode']" loop
+                # APPEND RESULT
                 # =====================================================
                 created_campaigns.append({
                     "campaign_id":          str(campaign.id),
@@ -447,7 +512,7 @@ class SocialMediaCampaignCreateAPIView(APIView):
                 })
 
             # =====================================================
-            # RETURN — outside the for loop, inside try
+            # RETURN
             # =====================================================
             return Response(
                 {

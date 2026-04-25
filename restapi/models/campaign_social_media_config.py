@@ -45,14 +45,16 @@ from django.db import models
 from .campaign import Campaign
 
 class CampaignSocialMediaConfig(models.Model):
+
     INSTAGRAM = "instagram"
     FACEBOOK = "facebook"
     LINKEDIN = "linkedin"
 
     PLATFORM_CHOICES = (
-        (INSTAGRAM, "Instagram"),
-        (FACEBOOK, "Facebook"),
-        (LINKEDIN, "LinkedIn"),
+        (INSTAGRAM,  "Instagram"),
+        (FACEBOOK,   "Facebook"),
+        (LINKEDIN,   "LinkedIn"),
+        (GOOGLE_ADS, "Google Ads"),  # ✅ ADDED
     )
 
     campaign = models.ForeignKey(
@@ -85,9 +87,3 @@ class CampaignSocialMediaConfig(models.Model):
     post_id = models.CharField(max_length=255, null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ('campaign', 'platform_name')
-
-    def __str__(self):
-        return f"{self.campaign.campaign_name} - {self.platform_name}"

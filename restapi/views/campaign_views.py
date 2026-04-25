@@ -29,6 +29,7 @@ from restapi.services.mailchimp_service import get_mailchimp_campaign_report
 from restapi.services.campaign_social_post_service import handle_zapier_callback
 from restapi.services.campaign_social_post_service import get_facebook_post_insights
 from restapi.models.social_account import SocialAccount
+from restapi.utils.clinic_scope import resolve_request_clinic
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,11 @@ class CampaignCreateAPIView(APIView):
     )
     def post(self, request):
         try:
-            serializer = CampaignSerializer(data=request.data)
+            clinic = resolve_request_clinic(request, required=True)
+            payload = request.data.copy()
+            payload["clinic"] = clinic.id
+
+            serializer = CampaignSerializer(data=payload, context={"request": request})
             serializer.is_valid(raise_exception=True)
 
             campaign = serializer.save()
@@ -121,11 +126,16 @@ class CampaignUpdateAPIView(APIView):
     )
     def put(self, request, campaign_id):
         try:
-            campaign = Campaign.objects.get(id=campaign_id)
+            clinic = resolve_request_clinic(request, required=True)
+            campaign = Campaign.objects.get(id=campaign_id, clinic=clinic)
+
+            payload = request.data.copy()
+            payload["clinic"] = clinic.id
 
             serializer = CampaignSerializer(
                 campaign,
-                data=request.data
+                data=payload,
+                context={"request": request},
             )
             serializer.is_valid(raise_exception=True)
 
@@ -192,7 +202,11 @@ class CampaignListAPIView(APIView):
         tags=["Campaigns"]
     )
     def get(self, request):
-        campaigns = Campaign.objects.all().order_by("-created_at")
+        clinic = resolve_request_clinic(request, required=True)
+        campaigns = Campaign.objects.filter(
+            clinic=clinic,
+            is_deleted=False,
+        ).order_by("-created_at")
 
         data = []
         for campaign in campaigns:
@@ -256,7 +270,13 @@ class CampaignGetAPIView(APIView):
         tags=["Campaigns"]
     )
     def get(self, request, campaign_id):
-        campaign = get_object_or_404(Campaign, id=campaign_id)
+        clinic = resolve_request_clinic(request, required=True)
+        campaign = get_object_or_404(
+            Campaign,
+            id=campaign_id,
+            clinic=clinic,
+            is_deleted=False,
+        )
 
         data = CampaignReadSerializer(campaign).data
         data["lead_generated"] = campaign.leads.count()
@@ -337,7 +357,8 @@ class CampaignGetAPIView(APIView):
 
 class FacebookDebugAPIView(APIView):
     def get(self, request, campaign_id):
-        campaign = get_object_or_404(Campaign, id=campaign_id)
+        clinic = resolve_request_clinic(request, required=True)
+        campaign = get_object_or_404(Campaign, id=campaign_id, clinic=clinic)
         social = SocialAccount.objects.filter(
             clinic=campaign.clinic, platform="facebook", is_active=True
         ).first()
@@ -433,7 +454,8 @@ class CampaignActivateAPIView(APIView):
     )
     def post(self, request, campaign_id):
         try:
-            campaign = Campaign.objects.get(id=campaign_id)
+            clinic = resolve_request_clinic(request, required=True)
+            campaign = Campaign.objects.get(id=campaign_id, clinic=clinic)
 
             campaign.is_active = True
             campaign.save(update_fields=["is_active"])
@@ -457,7 +479,8 @@ class CampaignInactivateAPIView(APIView):
     )
     def patch(self, request, campaign_id):
         try:
-            campaign = Campaign.objects.get(id=campaign_id)
+            clinic = resolve_request_clinic(request, required=True)
+            campaign = Campaign.objects.get(id=campaign_id, clinic=clinic)
 
             campaign.is_active = False
             campaign.save(update_fields=["is_active"])
@@ -481,7 +504,8 @@ class CampaignSoftDeleteAPIView(APIView):
     )
     def patch(self, request, campaign_id):
         try:
-            campaign = Campaign.objects.get(id=campaign_id)
+            clinic = resolve_request_clinic(request, required=True)
+            campaign = Campaign.objects.get(id=campaign_id, clinic=clinic)
 
             campaign.is_deleted = True
             campaign.is_active = False

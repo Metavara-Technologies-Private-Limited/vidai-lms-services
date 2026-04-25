@@ -16,14 +16,16 @@ from restapi.serializers.reports_serializer import (
     CallLogSerializer,
     CampaignMetricsSerializer,
 )
+from restapi.utils.clinic_scope import resolve_request_clinic
 
 
 # =====================================================
 # COMMON FILTER PARSER
 # =====================================================
 def get_filters(request):
+    clinic = resolve_request_clinic(request, required=True)
     return {
-        "clinic_id": request.GET.get("clinic_id"),
+        "clinic_id": clinic.id,
         "from_date": request.GET.get("from_date"),
         "to_date": request.GET.get("to_date"),
         "user_id": request.GET.get("user_id"),

@@ -19,34 +19,10 @@ class LeadChoices:
         ("female", "Female"),
     )
 
-    LEAD_STATUS = (
-        ("new", "New"),
-        ("contacted", "Contacted"),
-        ("appointment", "Appointment"),
-        ("follow up", "Follow Up"),
-        ("negotiation", "Negotiation"),
-        ("proposal sent", "Proposal Sent"),
-        ("contract signed", "Contract Signed"),
-        ("converted", "Converted"),
-        ("cycle_conversion", "Cycle Conversion"),
-        ("lost", "Lost"),
-        ("lost lead", "Lost Lead"),
-    )
-
-    NEXT_ACTION_STATUS = (
-        ("pending", "Pending"),
-        ("completed", "Completed"),
-    )
-
-    NEXT_ACTION_TYPE = (
-        ("Follow Up", "Follow Up"),
-        ("Call Patient", "Call Patient"),
-        ("Book Appointment", "Book Appointment"),
-        ("Send Message", "Send Message"),
-        ("Send Email", "Send Email"),
-        ("Review Details", "Review Details"),
-        ("No Action", "No Action"),
-    )
+    # NEXT_ACTION_TYPE intentionally removed.
+    # next_action_type is now free text driven by pipeline stage rules
+    # (action_type enum or custom_label). Removing choices allows any
+    # value from the pipeline to be stored without validation errors.
 
 
 class Lead(models.Model):
@@ -65,7 +41,18 @@ class Lead(models.Model):
 
     department = models.ForeignKey(Department, on_delete=models.CASCADE)
 
-    # ✅ ALL EMPLOYEE FKs REMOVED → REPLACED WITH IDs + NAMES
+    # ✅ SOURCE OF TRUTH
+    stage = models.ForeignKey(
+        "restapi.PipelineStage",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="leads"
+    )
+
+    # =============================
+    # EMPLOYEE DETAILS
+    # =============================
 
     assigned_to_id = models.IntegerField(null=True, blank=True)
     assigned_to_name = models.CharField(max_length=255, null=True, blank=True)
@@ -108,6 +95,15 @@ class Lead(models.Model):
     address = models.TextField(blank=True)
 
     # =============================
+    # CONTACT INFORMATION (contracts app)
+    # =============================
+
+    contact_full_name = models.CharField(max_length=255, null=True, blank=True)
+    contact_designation = models.CharField(max_length=255, null=True, blank=True)
+    contact_phone = models.CharField(max_length=20, null=True, blank=True)
+    contact_email = models.EmailField(null=True, blank=True)
+
+    # =============================
     # PARTNER DETAILS
     # =============================
 
@@ -129,33 +125,44 @@ class Lead(models.Model):
     source = models.CharField(max_length=100)
     sub_source = models.CharField(max_length=100, blank=True)
 
-    # 🔥 ADD THIS
-    referral_source = models.ForeignKey("restapi.ReferralSource", on_delete=models.SET_NULL,
-    null=True,
-    blank=True,
-    related_name="leads"
-)
-
-    # =============================
-    # STATUS
-    # =============================
-
-    lead_status = models.CharField(
-        max_length=20,
-        choices=LeadChoices.LEAD_STATUS,
-        default="new"
+    referral_department = models.ForeignKey(
+        "restapi.ReferralDepartment",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="leads"
     )
 
-    next_action_status = models.CharField(
-        max_length=20,
-        choices=LeadChoices.NEXT_ACTION_STATUS,
+    referral_source = models.ForeignKey(
+        "restapi.ReferralSource",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="leads"
+    )
+
+    # =============================
+    # STATUS (DYNAMIC — PIPELINE DRIVEN)
+    # =============================
+
+    # No choices → accepts any pipeline stage name
+    lead_status = models.CharField(
+        max_length=100,
         null=True,
         blank=True
     )
 
+    # No choices → accepts any pipeline stage name
+    next_action_status = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True
+    )
+
+    # No choices → accepts pipeline rule action_type or custom_label free text.
+    # max_length increased to 200 to accommodate longer custom labels.
     next_action_type = models.CharField(
-        max_length=50,
-        choices=LeadChoices.NEXT_ACTION_TYPE,
+        max_length=200,
         null=True,
         blank=True
     )
@@ -196,10 +203,16 @@ class Lead(models.Model):
         return f"{self.full_name} ({self.lead_status})"
 
     def save(self, *args, **kwargs):
-        if self.lead_status == "converted" and not self.converted_at:
+
+        # ✅ AUTO SYNC lead_status from stage
+        if self.stage and self.stage.stage_name:
+            self.lead_status = self.stage.stage_name
+
+        # ✅ FIXED CASE BUG
+        if self.lead_status == "Converted" and not self.converted_at:
             self.converted_at = timezone.now()
 
-        if self.lead_status != "converted":
+        if self.lead_status != "Converted":
             self.converted_at = None
 
         super().save(*args, **kwargs)

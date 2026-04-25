@@ -21,6 +21,9 @@ class SocialAccount(models.Model):
     page_name = models.CharField(max_length=255, null=True, blank=True)
     user_token = models.TextField(blank=True, null=True)
 
+    # Google Ads
+    customer_id = models.CharField(max_length=50, null=True, blank=True)  # ← added
+
     is_active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)

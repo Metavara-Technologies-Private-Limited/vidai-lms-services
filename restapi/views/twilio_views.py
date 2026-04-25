@@ -30,51 +30,7 @@ from restapi.services.twilio_service import (
 
 logger = logging.getLogger(__name__)
 
-# -------------------------------------------------------------------
-# MAKE CALL API
-# -------------------------------------------------------------------
-class MakeCallAPIView(APIView):
 
-    @swagger_auto_schema(
-        operation_description="Make outbound call using Twilio",
-        request_body=MakeCallSerializer,
-        responses={
-            200: "Call Initiated Successfully",
-            400: "Validation Error",
-            500: "Internal Server Error",
-        },
-        tags=["Twilio"],
-    )
-    @transaction.atomic
-    def post(self, request):
-        try:
-            serializer = MakeCallSerializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            validated_data = serializer.validated_data
-
-            call = make_call(
-                lead_uuid=validated_data["lead_uuid"],
-                to_number=validated_data["to"]
-            )
-
-            return Response(
-                {
-                    "message": "Call initiated successfully",
-                    "sid": call.sid,
-                    "status": call.status,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except ValidationError as e:
-            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
-
-        except Exception:
-            logger.error("Twilio Call Error:\n" + traceback.format_exc())
-            return Response(
-                {"error": "Internal Server Error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
 
 # SEND SMS API

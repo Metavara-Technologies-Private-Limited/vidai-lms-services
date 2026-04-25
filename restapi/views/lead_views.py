@@ -14,15 +14,71 @@ from drf_yasg.utils import swagger_auto_schema
 
 from django.shortcuts import get_object_or_404
 
-from restapi.models import Lead
+from restapi.models import Lead, Clinic, PipelineStage  # 🔥 UPDATED
 from restapi.serializers.lead_serializer import LeadSerializer, LeadReadSerializer
 from restapi.services.zapier_service import send_to_zapier
-from restapi.utils.permissions import has_action_permission_for_labels
+from restapi.utils.permissions import (
+    has_action_permission_for_labels,
+    normalize_role_name,
+)
 
-# Aliases used across the app for the Leads Hub permission category
 LEAD_LABELS = ["leads hub"]
 
 logger = logging.getLogger(__name__)
+
+
+# =====================================================
+# 🔥 HELPER: GET CLINIC FROM REQUEST
+# =====================================================
+def get_request_clinic(request):
+    clinic_id = request.headers.get("X-Clinic-Id") or request.query_params.get("clinic_id")
+
+    if not clinic_id:
+        raise ValidationError({"clinic": "Clinic is required"})
+
+    try:
+        return Clinic.objects.get(id=clinic_id)
+    except Clinic.DoesNotExist:
+        raise ValidationError({"clinic": "Invalid clinic"})
+
+
+def get_request_user_role(request):
+    role = getattr(getattr(request.user, "profile", None), "role", None)
+    return normalize_role_name(getattr(role, "name", ""))
+
+
+def get_request_employee(request):
+    return getattr(request.user, "employee", None)
+
+
+def is_restricted_lead_user(request):
+    return get_request_user_role(request) == "user"
+
+
+def apply_lead_visibility_scope(queryset, request):
+    if not is_restricted_lead_user(request):
+        return queryset
+
+    employee = get_request_employee(request)
+    if not employee:
+        return queryset.none()
+
+    return queryset.filter(created_by_id=employee.id)
+
+
+def get_scoped_lead_or_404(request, clinic, lead_id):
+    queryset = Lead.objects.select_related(
+        "clinic",
+        "department",
+        "campaign",
+        "referral_department",
+        "referral_source",
+        "stage",
+    ).filter(
+        id=lead_id,
+        clinic=clinic,
+    )
+    return get_object_or_404(apply_lead_visibility_scope(queryset, request))
 
 
 # -------------------------------------------------------------------
@@ -36,40 +92,41 @@ class LeadCreateAPIView(APIView):
     @swagger_auto_schema(
         operation_description="Create a new lead",
         request_body=LeadSerializer,
-        responses={
-            201: LeadReadSerializer,
-            400: "Validation Error",
-            500: "Internal Server Error",
-        },
+        responses={201: LeadReadSerializer, 400: "Validation Error", 500: "Internal Server Error"},
         tags=["Leads"],
     )
     def post(self, request):
-        print("STEP 1: LeadCreateAPIView HIT")
 
         if not has_action_permission_for_labels(request.user, "add", LEAD_LABELS):
-            return Response(
-                {"error": "You do not have permission to add leads."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            return Response({"error": "You do not have permission to add leads."}, status=403)
 
         try:
-            print("STEP 2: Incoming request data:")
-            print(request.data)
+            clinic = get_request_clinic(request)  # 🔥 FIX ADDED
 
-            serializer = LeadSerializer(
-                data=request.data,
-                context={"request": request},
-            )
+            # 🔥 OPTIONAL VALIDATION (extra safety)
+            stage_id = request.data.get("stage_id")
+            pipeline_id = request.data.get("pipeline_id")
 
-            print("STEP 3: Serializer initialized")
+            if stage_id:
+                stage = PipelineStage.objects.filter(
+                    id=stage_id,
+                    is_active=True,
+                    is_deleted=False
+                ).select_related("pipeline").first()
 
+                if not stage:
+                    raise ValidationError({"stage_id": "Invalid stage"})
+
+                if str(stage.pipeline.clinic_id) != str(clinic.id):
+                    raise ValidationError({"stage_id": "Stage does not belong to this clinic"})
+
+                if pipeline_id and str(stage.pipeline_id) != str(pipeline_id):
+                    raise ValidationError({"stage_id": "Stage does not belong to selected pipeline"})
+
+            serializer = LeadSerializer(data=request.data, context={"request": request})
             serializer.is_valid(raise_exception=True)
-            print("STEP 4: Serializer validated successfully")
 
             lead = serializer.save()
-            print(f"STEP 5: Lead saved successfully | ID = {lead.id}")
-
-            print("STEP 6: Sending data to Zapier")
 
             send_to_zapier({
                 "event": "lead_created",
@@ -81,45 +138,17 @@ class LeadCreateAPIView(APIView):
                 "email": lead.email,
                 "lead_status": lead.lead_status,
                 "assigned_to_id": lead.assigned_to_id,
-
-                # 🔥 ADDED (SAFE)
-                "referral_source_id": getattr(lead.referral_source, "id", None),
-                "referral_source_name": getattr(lead.referral_source, "name", None),
             })
 
-            print("STEP 7: Zapier call completed")
-
-            response_data = LeadReadSerializer(lead).data
-            print("STEP 8: Response prepared")
-
-            return Response(
-                response_data,
-                status=status.HTTP_201_CREATED,
-            )
+            return Response(LeadReadSerializer(lead).data, status=201)
 
         except ValidationError as ve:
-            print("VALIDATION ERROR OCCURRED")
-            print(ve.detail)
-
             logger.warning(f"Lead validation failed: {ve.detail}")
-
-            return Response(
-                {"error": ve.detail},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"error": ve.detail}, status=400)
 
         except Exception:
-            print("UNHANDLED EXCEPTION OCCURRED")
-            print(traceback.format_exc())
-
-            logger.error(
-                "Unhandled Lead Create Error:\n" + traceback.format_exc()
-            )
-
-            return Response(
-                {"error": "Internal Server Error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            logger.error("Unhandled Lead Create Error:\n" + traceback.format_exc())
+            return Response({"error": "Internal Server Error"}, status=500)
 
 
 # -------------------------------------------------------------------
@@ -127,42 +156,51 @@ class LeadCreateAPIView(APIView):
 # -------------------------------------------------------------------
 class LeadUpdateAPIView(APIView):
 
-    """
-    Update an existing Lead
-    """
     permission_classes = [IsAuthenticated]
-
-
-
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @swagger_auto_schema(
         operation_description="Update an existing lead",
         request_body=LeadSerializer,
-        responses={
-            200: LeadReadSerializer,
-            400: "Validation Error",
-            404: "Lead not found",
-            500: "Internal Server Error",
-        },
+        responses={200: LeadReadSerializer, 400: "Validation Error", 404: "Lead not found"},
         tags=["Leads"],
     )
     def put(self, request, lead_id):
+
         if not has_action_permission_for_labels(request.user, "edit", LEAD_LABELS):
-            return Response(
-                {"error": "You do not have permission to edit leads."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            return Response({"error": "You do not have permission to edit leads."}, status=403)
 
         try:
-            lead = Lead.objects.get(id=lead_id)
+            clinic = get_request_clinic(request)
+
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
+
+            # 🔥 SAME VALIDATION FOR UPDATE
+            stage_id = request.data.get("stage_id")
+            pipeline_id = request.data.get("pipeline_id")
+
+            if stage_id:
+                stage = PipelineStage.objects.filter(
+                    id=stage_id,
+                    is_active=True,
+                    is_deleted=False
+                ).select_related("pipeline").first()
+
+                if not stage:
+                    raise ValidationError({"stage_id": "Invalid stage"})
+
+                if str(stage.pipeline.clinic_id) != str(clinic.id):
+                    raise ValidationError({"stage_id": "Stage does not belong to this clinic"})
+
+                if pipeline_id and str(stage.pipeline_id) != str(pipeline_id):
+                    raise ValidationError({"stage_id": "Stage does not belong to selected pipeline"})
 
             serializer = LeadSerializer(
                 lead,
                 data=request.data,
-                context={"request": request}
+                context={"request": request},
+                partial=True  # 🔥 FIX
             )
-
             serializer.is_valid(raise_exception=True)
 
             updated_lead = serializer.save()
@@ -172,40 +210,16 @@ class LeadUpdateAPIView(APIView):
                 "lead_id": str(updated_lead.id),
                 "lead_status": updated_lead.lead_status,
                 "assigned_to_id": updated_lead.assigned_to_id,
-
-                # 🔥 ADDED (SAFE)
-                "referral_source_id": getattr(updated_lead.referral_source, "id", None),
-                "referral_source_name": getattr(updated_lead.referral_source, "name", None),
             })
 
-            return Response(
-                LeadReadSerializer(updated_lead).data,
-                status=status.HTTP_200_OK
-            )
-
-        except Lead.DoesNotExist:
-            logger.warning("Lead not found")
-            raise NotFound("Lead not found")
+            return Response(LeadReadSerializer(updated_lead).data, status=200)
 
         except ValidationError as ve:
-            logger.warning(
-                f"Lead update validation failed: {ve.detail}"
-            )
-            return Response(
-                {"error": ve.detail},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": ve.detail}, status=400)
 
         except Exception:
-            logger.error(
-                "Unhandled Lead Update Error:\n" +
-                traceback.format_exc()
-            )
-            return Response(
-                {"error": "Internal Server Error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
+            logger.error("Unhandled Lead Update Error:\n" + traceback.format_exc())
+            return Response({"error": "Internal Server Error"}, status=500)
 
 # -------------------------------------------------------------------
 # Lead List API View (GET)
@@ -219,32 +233,27 @@ class LeadListAPIView(APIView):
         tags=["Leads"]
     )
     def get(self, request):
+
         if not has_action_permission_for_labels(request.user, "view", LEAD_LABELS):
-            return Response(
-                {"error": "You do not have permission to view leads."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            return Response({"error": "No permission"}, status=403)
 
         try:
-            queryset = Lead.objects.filter(
-                is_deleted=False
-            ).order_by("-created_at")
+            clinic = get_request_clinic(request)
 
-            # 🔥 OPTIONAL OPTIMIZATION (SAFE)
-            queryset = queryset.select_related(
-                "clinic",
-                "department",
-                "campaign",
-                "referral_source",
-                "referral_source__external_clinic"
+            queryset = apply_lead_visibility_scope(
+                Lead.objects.filter(
+                    clinic=clinic,
+                    is_deleted=False
+                ).select_related(
+                    "referral_department",
+                    "referral_source",
+                    "stage",  # 🔥 ADDED
+                ).order_by("-created_at"),
+                request,
             )
 
-            clinic_id = request.query_params.get("clinic")
             lead_status = request.query_params.get("lead_status")
             assigned_to = request.query_params.get("assigned_to")
-
-            if clinic_id:
-                queryset = queryset.filter(clinic_id=clinic_id)
 
             if lead_status:
                 queryset = queryset.filter(lead_status=lead_status)
@@ -252,62 +261,46 @@ class LeadListAPIView(APIView):
             if assigned_to:
                 queryset = queryset.filter(assigned_to_id=assigned_to)
 
-            serializer = LeadReadSerializer(queryset, many=True)
+            serializer = LeadReadSerializer(queryset, many=True, context={"request": request})
+            return Response(serializer.data, status=200)
 
-            return Response(
-                serializer.data,
-                status=status.HTTP_200_OK
-            )
-
-        except ValidationError as validation_error:
-            logger.warning(f"Lead list validation failed: {validation_error.detail}")
-            return Response(
-                {"error": validation_error.detail},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        except ValidationError as ve:
+            return Response({"error": ve.detail}, status=400)
 
         except Exception:
             logger.error("Lead List Error:\n" + traceback.format_exc())
-            return Response(
-                {"error": "Internal Server Error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return Response({"error": "Internal Server Error"}, status=500)
 
 
 # -------------------------------------------------------------------
-# Lead Get API (GET)
+# Lead Get API (GET BY ID)
 # -------------------------------------------------------------------
 class LeadGetAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_description="Get lead by ID",
-        responses={200: LeadReadSerializer, 404: "Lead not found"},
+        responses={200: LeadReadSerializer},
         tags=["Leads"]
     )
     def get(self, request, lead_id):
+
         if not has_action_permission_for_labels(request.user, "view", LEAD_LABELS):
-            return Response(
-                {"error": "You do not have permission to view leads."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            return Response({"error": "No permission"}, status=403)
 
-        lead = get_object_or_404(
-            Lead.objects.select_related(
-                "clinic",
-                "department",
-                "campaign",
-                # 🔥 ADDED
-                "referral_source",
-                "referral_source__external_clinic",
-            ),
-            id=lead_id
-        )
+        try:
+            clinic = get_request_clinic(request)
 
-        return Response(
-            LeadReadSerializer(lead).data,
-            status=status.HTTP_200_OK
-        )
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
+
+            return Response(LeadReadSerializer(lead).data, status=200)
+
+        except ValidationError as ve:
+            return Response({"error": ve.detail}, status=400)
+
+        except Exception:
+            logger.error("Lead Get Error:\n" + traceback.format_exc())
+            return Response({"error": "Internal Server Error"}, status=500)
 
 
 # -------------------------------------------------------------------
@@ -316,29 +309,17 @@ class LeadGetAPIView(APIView):
 class LeadActivateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(
-        operation_description="Activate a lead",
-        tags=["Leads"]
-    )
     def post(self, request, lead_id):
-        if not has_action_permission_for_labels(request.user, "edit", LEAD_LABELS):
-            return Response(
-                {"error": "You do not have permission to modify leads."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         try:
-            lead = Lead.objects.get(id=lead_id)
+            clinic = get_request_clinic(request)
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
             lead.is_active = True
             lead.save(update_fields=["is_active"])
 
-            return Response(
-                {"message": "Lead activated successfully"},
-                status=status.HTTP_200_OK
-            )
+            return Response({"message": "Lead activated successfully"}, status=200)
 
-        except Lead.DoesNotExist:
+        except Exception:
             raise NotFound("Lead not found")
 
 
@@ -348,29 +329,17 @@ class LeadActivateAPIView(APIView):
 class LeadInactivateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(
-        operation_description="Inactivate a lead",
-        tags=["Leads"]
-    )
     def patch(self, request, lead_id):
-        if not has_action_permission_for_labels(request.user, "edit", LEAD_LABELS):
-            return Response(
-                {"error": "You do not have permission to modify leads."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         try:
-            lead = Lead.objects.get(id=lead_id)
+            clinic = get_request_clinic(request)
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
             lead.is_active = False
             lead.save(update_fields=["is_active"])
 
-            return Response(
-                {"message": "Lead inactivated successfully"},
-                status=status.HTTP_200_OK
-            )
+            return Response({"message": "Lead inactivated successfully"}, status=200)
 
-        except Lead.DoesNotExist:
+        except Exception:
             raise NotFound("Lead not found")
 
 
@@ -380,30 +349,18 @@ class LeadInactivateAPIView(APIView):
 class LeadSoftDeleteAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(
-        operation_description="Soft delete a lead",
-        tags=["Leads"]
-    )
     def patch(self, request, lead_id):
-        if not has_action_permission_for_labels(request.user, "edit", LEAD_LABELS):
-            return Response(
-                {"error": "You do not have permission to delete leads."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         try:
-            lead = Lead.objects.get(id=lead_id)
+            clinic = get_request_clinic(request)
+            lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
             lead.is_deleted = True
             lead.is_active = False
             lead.save(update_fields=["is_deleted", "is_active"])
 
-            return Response(
-                {"message": "Lead soft deleted successfully"},
-                status=status.HTTP_200_OK
-            )
+            return Response({"message": "Lead deleted"}, status=200)
 
-        except Lead.DoesNotExist:
+        except Exception:
             raise NotFound("Lead not found")
 
     def delete(self, request, lead_id):

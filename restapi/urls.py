@@ -1,28 +1,42 @@
 from django.urls import path
 
+from .views import *
+from restapi.views.google_ads_views import (
+    GoogleAdsCampaignCreateAPIView,
+    GoogleAdsCampaignStatusAPIView,    # ← added
+)
 
-from .views import *   
-from restapi.views.google_ads_views import GoogleAdsCampaignCreateAPIView
+from restapi.views.social_auth_views import (
+    GoogleAdsCampaignCallbackAPIView,
+    # GoogleAdsInsightsAPIView,  # ← removed from here
+)
 
+from restapi.views.google_ads_views import GoogleAdsInsightsAPIView  # ← added here
+
+from restapi.views.campaign_insights_views import (
+    CampaignInsightsTriggerAPIView,
+    CampaignInsightsCallbackAPIView,
+)
 
 urlpatterns = [
-    
+
     path("login/", LoginAPIView.as_view(), name="login"),
     path("auth/login/", LoginAPIView.as_view(), name="login-legacy"),
     path("token/refresh/", TokenRefreshAPIView.as_view(), name="token-refresh"),
-    
+
     path('roles/create/', RoleCreateAPIView.as_view()),
     path('roles/list/', RoleListAPIView.as_view()),
     path('roles/<int:pk>/', RoleDetailAPIView.as_view()),
     path('roles/update/<int:pk>/', RoleUpdateAPIView.as_view()),
-    path('roles/delete/<int:pk>/', RoleDeleteAPIView.as_view()),  
-    
+    path('roles/delete/<int:pk>/', RoleDeleteAPIView.as_view()),
+
     path("permissions/<int:role_id>/", RolePermissionListAPIView.as_view()),
     path("permissions/create/", RolePermissionCreateAPIView.as_view()),
     path("permissions/<int:pk>/update/", RolePermissionUpdateAPIView.as_view()),
 
     path("users/permissions/", UserPermissionAPIView.as_view()),
-
+    path("me/photo/", MyProfilePhotoAPIView.as_view(), name="my-profile-photo"),
+    path("media/<path:path>", MediaFileAPIView.as_view(), name="media-file"),
 
     path("users/", UserCreateAPIView.as_view()),
     path("users/create/", UserCreateAPIView.as_view()),
@@ -32,7 +46,7 @@ urlpatterns = [
     path("users/<int:pk>/partial-update/", UserPartialUpdateAPIView.as_view()),
     path("users/<int:pk>/status/", UserStatusUpdateAPIView.as_view()),
     path("users/<int:pk>/delete/", UserDeleteAPIView.as_view()),
-    
+
     # ============================
     # CLINIC
     # ============================
@@ -40,7 +54,6 @@ urlpatterns = [
     path("clinics/<int:clinic_id>/", ClinicUpdateAPIView.as_view(), name="clinic-update"),
     path("clinics/<int:clinic_id>/detail/", GetClinicView.as_view(), name="clinic-get"),
     path("clinics/search/", ClinicSearchAPIView.as_view(), name="clinic-search"),
-   
 
     # ============================
     # EMPLOYEE / USER
@@ -110,9 +123,17 @@ urlpatterns = [
     # ============================
     path("pipelines/create/", PipelineCreateAPIView.as_view(), name="pipeline-create"),
     path("pipelines/", PipelineListAPIView.as_view(), name="pipeline-list"),
+    path("pipelines/<uuid:pipeline_id>/stages/", PipelineStagesListAPIView.as_view(), name="pipeline-stages-list"),
     path("pipelines/<uuid:pipeline_id>/", PipelineDetailAPIView.as_view(), name="pipeline-detail"),
+    path("pipelines/<uuid:pipeline_id>/duplicate/", PipelineDuplicateAPIView.as_view(), name="pipeline-duplicate"),
+    path("pipelines/<uuid:pipeline_id>/archive/", PipelineArchiveAPIView.as_view(), name="pipeline-archive"),
+    path("pipelines/<uuid:pipeline_id>/delete/", PipelineDeleteAPIView.as_view(), name="pipeline-delete"),
     path("pipelines/stages/create/", PipelineStageCreateAPIView.as_view(), name="stage-create"),
+    path("pipelines/stages/<uuid:stage_id>/", StageDetailAPIView.as_view(), name="stage-detail"),
     path("pipelines/stages/<uuid:stage_id>/update/", PipelineStageUpdateAPIView.as_view(), name="stage-update"),
+    path("pipelines/stages/<uuid:stage_id>/duplicate/", StageDuplicateAPIView.as_view(), name="stage-duplicate"),
+    path("pipelines/stages/<uuid:stage_id>/archive/", StageArchiveAPIView.as_view(), name="stage-archive"),
+    path("pipelines/stages/<uuid:stage_id>/delete/", StageDeleteAPIView.as_view(), name="stage-delete"),
     path("pipelines/stages/<uuid:stage_id>/rules/", StageRuleSaveAPIView.as_view(), name="stage-rules"),
     path("pipelines/stages/<uuid:stage_id>/fields/", StageFieldSaveAPIView.as_view(), name="stage-fields"),
 
@@ -181,6 +202,7 @@ urlpatterns = [
     path("facebook/login/", FacebookLoginAPIView.as_view(), name="facebook-login"),
     path("facebook/callback/", FacebookCallbackAPIView.as_view(), name="facebook-callback"),
     path("facebook/status/", FacebookStatusAPIView.as_view(), name="facebook-status"),
+    path("facebook/disconnect/", FacebookDisconnectAPIView.as_view(), name="facebook-disconnect"),
 
     path("google/login/", GoogleLoginAPIView.as_view()),
     path("google/callback/", GoogleCallbackAPIView.as_view()),
@@ -214,7 +236,16 @@ urlpatterns = [
     path("fb/campaigns/create/", FBCampaignCreateAPIView.as_view(), name="fb-campaign-create"),
     path("fb/campaigns/<str:campaign_id>/insights/", FBCampaignInsightsAPIView.as_view(), name="fb-insights"),
 
-    path("google-ads/create/", GoogleAdsCampaignCreateAPIView.as_view()),
+    # ============================
+    # GOOGLE ADS
+    # ============================
+    path("google-ads/create/", GoogleAdsCampaignCreateAPIView.as_view(), name="google-ads-create"),
+    path("google-ads/status/", GoogleAdsCampaignStatusAPIView.as_view(), name="google-ads-status"),   # ← added
+    path("google-ads/callback/", GoogleAdsCampaignCallbackAPIView.as_view(), name="google-ads-callback"),
+    path("google-ads/insights/", GoogleAdsInsightsAPIView.as_view(), name="google-ads-insights"),
+
+    path("campaign/insights/trigger/",  CampaignInsightsTriggerAPIView.as_view()),
+    path("campaign/insights/callback/", CampaignInsightsCallbackAPIView.as_view()),
 
     # ============================
     # REPUTATION
@@ -222,14 +253,19 @@ urlpatterns = [
     path("reputation/requests/create/", ReviewRequestCreateAPIView.as_view(), name="review-create"),
     path("reputation/requests/", ReviewRequestListAPIView.as_view(), name="review-list"),
     path("reputation/requests/<uuid:request_id>/", ReviewRequestDetailAPIView.as_view(), name="review-detail"),
+    path(
+        "reputation/public/requests/<uuid:request_id>/",
+        ReviewRequestPublicDetailAPIView.as_view(),
+        name="review-public-detail",
+    ),
     path("reputation/requests/<uuid:request_id>/reviews/", ReviewListAPIView.as_view(), name="review-sub-list"),
     path("reputation/dashboard/", ReputationDashboardAPIView.as_view(), name="reputation-dashboard"),
     path("reputation/reviews/create/", ReviewCreateAPIView.as_view(), name="review-submit"),
 
-
     path("sources/", ReferralSourceListAPIView.as_view(), name="referral-sources"),
     path("dashboard/", ReferralDashboardAPIView.as_view(), name="referral-dashboard"),
-    
+    path("referral-departments/", ReferralDepartmentListAPIView.as_view(), name="referral-departments"),
+
     path("reports/calls/", CallReportView.as_view(), name="call-reports"),
     path("reports/campaigns/", CampaignReportView.as_view(), name="campaign-reports"),
 

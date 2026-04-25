@@ -20,6 +20,14 @@ def create_clinic(validated_data):
             is_active=department_data.get("is_active", True),
         )
 
+    # Auto-seed a default department if none were provided
+    if not departments_data:
+        Department.objects.create(
+            clinic=clinic,
+            name="General",
+            is_active=True,
+        )
+
     return clinic
 
 

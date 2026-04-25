@@ -8,6 +8,10 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
+from rest_framework.exceptions import AuthenticationFailed
+
+from restapi.serializers.user_serializer import UserSerializer
+from restapi.utils.jwt_authentication import JWTAuthentication
 
 
 class LoginProxyAPIView(APIView):
@@ -87,6 +91,26 @@ class ProfileProxyAPIView(APIView):
             )
 
         try:
+            try:
+                local_auth = JWTAuthentication().authenticate(request)
+            except AuthenticationFailed:
+                local_auth = None
+
+            if local_auth:
+                user, _ = local_auth
+                request.user = user
+                return Response(
+                    {
+                        "success": True,
+                        "status_code": 200,
+                        "data": UserSerializer(
+                            user,
+                            context={"request": request},
+                        ).data,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
             auth_header = token if token.startswith("Bearer ") else f"Bearer {token}"
 
             resp = requests.get(
@@ -153,6 +177,11 @@ class UsersProxyAPIView(APIView):
         try:
             token = request.headers.get("Authorization")
 
+            if not token:
+                return Response({"error": "Authorization token missing"}, status=401)
+
+            auth_header = token if token.startswith("Bearer ") else f"Bearer {token}"
+
             params = {
                 "limit": request.query_params.get("limit", 10),
                 "offset": request.query_params.get("offset", 0),
@@ -161,23 +190,33 @@ class UsersProxyAPIView(APIView):
 
             resp = requests.get(
                 settings.STAGE_USERS_URL,
-                headers={
-                    "Authorization": token,
-                },
+                headers={"Authorization": auth_header},
                 params=params,
                 timeout=10,
             )
 
-            return Response(resp.json(), status=resp.status_code)
+            # ✅ SAFE JSON HANDLING (THIS FIXES YOUR 500)
+            try:
+                data = resp.json() if resp.content else {}
+            except Exception:
+                data = {"raw": resp.text}
+
+            return Response(
+                {
+                    "success": resp.status_code == 200,
+                    "status_code": resp.status_code,
+                    "data": data,
+                    "debug": {
+                        "url": settings.STAGE_USERS_URL,
+                        "params": params,
+                        "auth": auth_header[:20] + "...",
+                    },
+                },
+                status=resp.status_code,
+            )
 
         except requests.exceptions.Timeout:
-            return Response(
-                {"error": "Users service timeout"},
-                status=504
-            )
+            return Response({"error": "Users service timeout"}, status=504)
 
         except Exception as e:
-            return Response(
-                {"error": "Users fetch failed", "details": str(e)},
-                status=500
-            )
+            return Response({"error": "Users fetch failed", "details": str(e)}, status=500)
