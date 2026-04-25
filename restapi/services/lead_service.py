@@ -57,11 +57,22 @@ def _resolve_assignee_name(assigned_to_id, assigned_to_name):
 # =====================================================
 def _validate_phone(value):
 
-    # EMPTY → NULL
-    if not value or str(value).strip() == "":
+    # =============================
+    # ✅ EMPTY → NULL (FIX ADDED)
+    # =============================
+    if value is None:
         return None
 
-    value = str(value).strip().replace(" ", "")
+    value = str(value).strip()
+
+    if value == "" or value.lower() in ["null", "none"]:
+        return None
+
+    # 🔥 FRONTEND BUG FIX (IMPORTANT)
+    if value in ["0", "00", "000", "0000000000"]:
+        return None
+
+    value = value.replace(" ", "")
 
     # 🌍 INTERNATIONAL
     if value.startswith("+"):
@@ -88,11 +99,12 @@ def _validate_phone(value):
         raise ValidationError({"contact_no": "Phone must be 10 digits"})
 
     invalid_numbers = {
-        "0000000000", "1111111111", "2222222222",
-        "3333333333", "4444444444", "5555555555",
-        "6666666666", "7777777777", "8888888888",
-        "9999999999", "1234567890", "0123456789"
-     
+        "1111111111", "2222222222",
+        "3333333333", "4444444444",
+        "5555555555", "6666666666",
+        "7777777777", "8888888888",
+        "9999999999", "1234567890",
+        "0123456789"
     }
 
     if value in invalid_numbers:

@@ -198,17 +198,21 @@ class LeadSerializer(serializers.ModelSerializer):
         read_only_fields = ("id",)
 
     # =====================================================
-    # PHONE VALIDATION (FINAL)
+    # 🔥 FINAL PHONE VALIDATION (CORRECT FIX)
     # =====================================================
     def validate_contact_no(self, value):
 
-        # ✅ EMPTY → NULL
+        # ✅ EMPTY → NULL (THIS FIXES YOUR ERROR)
         if value is None:
             return None
 
-        value = value.strip()
+        value = str(value).strip()
 
         if value == "":
+            return None
+
+        # 🔥 HANDLE FRONTEND BUG VALUES
+        if value in ["0", "00", "000", "0000000000"]:
             return None
 
         value = value.replace(" ", "")
@@ -238,11 +242,10 @@ class LeadSerializer(serializers.ModelSerializer):
             raise ValidationError("Phone must be 10 digits")
 
         invalid_numbers = {
-            "0000000000", "1111111111", "2222222222",
-            "3333333333", "4444444444", "5555555555",
-            "6666666666", "7777777777", "8888888888",
-            "9999999999", "1234567890", "0123456789"
-           
+            "1111111111", "2222222222", "3333333333",
+            "4444444444", "5555555555", "6666666666",
+            "7777777777", "8888888888", "9999999999",
+            "1234567890", "0123456789"
         }
 
         if value in invalid_numbers:
