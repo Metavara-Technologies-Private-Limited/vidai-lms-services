@@ -198,17 +198,22 @@ class LeadSerializer(serializers.ModelSerializer):
         read_only_fields = ("id",)
 
     # =====================================================
-    # ✅ PHONE VALIDATION (INDIA + INTERNATIONAL)
+    # PHONE VALIDATION (FINAL)
     # =====================================================
     def validate_contact_no(self, value):
 
-        # EMPTY → NULL
-        if not value or value.strip() == "":
+        # ✅ EMPTY → NULL
+        if value is None:
             return None
 
-        value = value.strip().replace(" ", "")
+        value = value.strip()
 
-        # 🌍 INTERNATIONAL (+123456...)
+        if value == "":
+            return None
+
+        value = value.replace(" ", "")
+
+        # 🌍 INTERNATIONAL
         if value.startswith("+"):
             digits = value[1:]
 
@@ -220,7 +225,7 @@ class LeadSerializer(serializers.ModelSerializer):
 
             return value
 
-        # 🇮🇳 INDIA FORMAT
+        # 🇮🇳 INDIA
         if value.startswith("+91"):
             value = value[3:]
         elif value.startswith("91") and len(value) == 12:
@@ -236,8 +241,8 @@ class LeadSerializer(serializers.ModelSerializer):
             "0000000000", "1111111111", "2222222222",
             "3333333333", "4444444444", "5555555555",
             "6666666666", "7777777777", "8888888888",
-            "9999999999", "1234567890", "0123456789",
-            "9876543210"
+            "9999999999", "1234567890", "0123456789"
+           
         }
 
         if value in invalid_numbers:
