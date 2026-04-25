@@ -100,6 +100,7 @@ jobs:
               -e LINKEDIN_ORG_URN="${{ secrets.LINKEDIN_ORG_URN }}" \
               -e LINKEDIN_CAMPAIGN_GROUP_URN="${{ secrets.LINKEDIN_CAMPAIGN_GROUP_URN }}" \
               -e LINKEDIN_REFRESH_TOKEN="${{ secrets.LINKEDIN_REFRESH_TOKEN }}" \
+              -e ZAPIER_WEBHOOK_LINKEDIN_URL="${{ secrets.ZAPIER_WEBHOOK_LINKEDIN_URL }}" \
               ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
 
             echo "Wait container boot"
