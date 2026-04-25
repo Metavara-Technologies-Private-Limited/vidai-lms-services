@@ -97,6 +97,10 @@ jobs:
               -e TWILIO_CALL_STATUS_CALLBACK_URL="${{ secrets.TWILIO_CALL_STATUS_CALLBACK_URL }}" \
               -e ZAPIER_WEBHOOK_INSIGHTS_URL="${{ secrets.ZAPIER_WEBHOOK_INSIGHTS_URL }}" \
               -e BACKEND_BASE_URL="${{ secrets.BACKEND_BASE_URL }}" \
+              -e LINKEDIN_ACCOUNT_ID="${{ secrets.LINKEDIN_ACCOUNT_ID }}" \
+              -e LINKEDIN_ORG_URN="${{ secrets.LINKEDIN_ORG_URN }}" \
+              -e LINKEDIN_CAMPAIGN_GROUP_URN="${{ secrets.LINKEDIN_CAMPAIGN_GROUP_URN }}" \
+              -e LINKEDIN_REFRESH_TOKEN="${{ secrets.LINKEDIN_REFRESH_TOKEN }}" \
               ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
 
             echo "Wait container boot"
