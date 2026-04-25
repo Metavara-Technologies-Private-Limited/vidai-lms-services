@@ -53,61 +53,6 @@ def _resolve_assignee_name(assigned_to_id, assigned_to_name):
 
 
 # =====================================================
-# 🌍 GLOBAL PHONE VALIDATION (FINAL VERSION)
-# =====================================================
-def validate_contact_no(self, value):
-
-    # ✅ Empty → NULL
-    if not value or value.strip() == "":
-        return None
-
-    value = value.strip().replace(" ", "")
-
-    # =============================
-    # 🌍 INTERNATIONAL FORMAT (+...)
-    # =============================
-    if value.startswith("+"):
-        digits = value[1:]
-
-        # must be digits after +
-        if not digits.isdigit():
-            raise ValidationError("Invalid international phone number")
-
-        # length check (E.164 standard)
-        if len(digits) < 7 or len(digits) > 15:
-            raise ValidationError("Invalid international phone number")
-
-        return value  # keep + format
-
-    # =============================
-    # 🇮🇳 INDIA FORMAT
-    # =============================
-    if value.startswith("+91"):
-        value = value[3:]
-    elif value.startswith("91") and len(value) == 12:
-        value = value[2:]
-
-    if not value.isdigit():
-        raise ValidationError("Phone must contain digits only")
-
-    if len(value) != 10:
-        raise ValidationError("Phone must be 10 digits")
-
-    # ❌ invalid indian patterns
-    invalid_numbers = {
-        "0000000000", "1111111111", "2222222222",
-        "3333333333", "4444444444", "5555555555",
-        "6666666666", "7777777777", "8888888888",
-        "9999999999", "1234567890", "0123456789",
-        "9876543210"
-    }
-
-    if value in invalid_numbers:
-        raise ValidationError("Invalid phone number")
-
-    return value
-
-# =====================================================
 # CREATE LEAD
 # =====================================================
 @transaction.atomic
@@ -115,10 +60,7 @@ def create_lead(validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # ✅ PHONE FIX
-    validated_data["contact_no"] = _normalize_phone(
-        validated_data.get("contact_no")
-    )
+    # 🔥 DO NOT TOUCH contact_no HERE (serializer already validated)
 
     # ===================== CLINIC =====================
     clinic_id = request.headers.get("X-Clinic-Id") if request else None
@@ -245,16 +187,12 @@ def create_lead(validated_data, request=None):
         department=department,
         campaign=campaign,
         stage=stage,
-
         assigned_to_id=assigned_to_id,
         assigned_to_name=assigned_to_name,
-
         created_by_id=created_by_id,
         created_by_name=created_by_name,
-
         referral_department=referral_department,
         referral_source=referral_source,
-
         **validated_data
     )
 
@@ -272,11 +210,7 @@ def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # ✅ PHONE FIX
-    if "contact_no" in validated_data:
-        validated_data["contact_no"] = _normalize_phone(
-            validated_data.get("contact_no")
-        )
+    # 🔥 DO NOT TOUCH contact_no HERE
 
     # ===================== UPDATED BY =====================
     validated_data.pop("updated_by_id", None)
@@ -286,7 +220,6 @@ def update_lead(instance, validated_data, request=None):
 
     instance.updated_by_id = updated_by_id
     instance.updated_by_name = updated_by_name
-
     # ===================== STAGE =====================
     stage_id = validated_data.pop("stage_id", None)
 
@@ -369,7 +302,7 @@ def update_lead(instance, validated_data, request=None):
 
 
 # =====================================================
-# EMAIL HELPERS (UNCHANGED)
+# EMAIL HELPERS
 # =====================================================
 def _clean_email_body(text: str) -> str:
     if not text:
