@@ -53,43 +53,57 @@ def _resolve_assignee_name(assigned_to_id, assigned_to_name):
 
 
 # =====================================================
-# 🔥 HELPER: PHONE NORMALIZATION (BULLETPROOF)
+# 🌍 GLOBAL PHONE VALIDATION (FINAL VERSION)
 # =====================================================
-def _normalize_phone(value):
+def validate_contact_no(self, value):
 
-    if not value:
+    # ✅ Empty → NULL
+    if not value or value.strip() == "":
         return None
 
-    value = str(value).strip().replace(" ", "")
+    value = value.strip().replace(" ", "")
 
-    # 🔥 common garbage values → NULL
-    if value in ["", "0", "00", "000", "0000000000"]:
-        return None
+    # =============================
+    # 🌍 INTERNATIONAL FORMAT (+...)
+    # =============================
+    if value.startswith("+"):
+        digits = value[1:]
 
-    # Handle +91 / 91
+        # must be digits after +
+        if not digits.isdigit():
+            raise ValidationError("Invalid international phone number")
+
+        # length check (E.164 standard)
+        if len(digits) < 7 or len(digits) > 15:
+            raise ValidationError("Invalid international phone number")
+
+        return value  # keep + format
+
+    # =============================
+    # 🇮🇳 INDIA FORMAT
+    # =============================
     if value.startswith("+91"):
         value = value[3:]
     elif value.startswith("91") and len(value) == 12:
         value = value[2:]
 
-    # Must be digits
     if not value.isdigit():
-        return None
+        raise ValidationError("Phone must contain digits only")
 
-    # Must be 10 digits
     if len(value) != 10:
-        return None
+        raise ValidationError("Phone must be 10 digits")
 
-    # ❌ invalid patterns → NULL
+    # ❌ invalid indian patterns
     invalid_numbers = {
         "0000000000", "1111111111", "2222222222",
         "3333333333", "4444444444", "5555555555",
         "6666666666", "7777777777", "8888888888",
-        "9999999999", "1234567890", "0123456789"
+        "9999999999", "1234567890", "0123456789",
+        "9876543210"
     }
 
     if value in invalid_numbers:
-        return None
+        raise ValidationError("Invalid phone number")
 
     return value
 

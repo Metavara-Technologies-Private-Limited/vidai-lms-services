@@ -198,40 +198,62 @@ class LeadSerializer(serializers.ModelSerializer):
         read_only_fields = ("id",)
 
 
-    # =====================================================
-    # 🔥 FINAL PHONE LOGIC (NO ERRORS EVER)
-    # =====================================================
-    def validate_contact_no(self, value):
+# =====================================================
+# 🌍 GLOBAL PHONE VALIDATION (FINAL VERSION)
+# =====================================================
+def validate_contact_no(self, value):
 
-        if not value or value.strip() == "":
-            return None
+    # ✅ Empty → NULL
+    if not value or value.strip() == "":
+        return None
 
-        value = value.strip().replace(" ", "")
+    value = value.strip().replace(" ", "")
 
-        # Handle +91 / 91
-        if value.startswith("+91"):
-            value = value[3:]
-        elif value.startswith("91") and len(value) == 12:
-            value = value[2:]
+    # =============================
+    # 🌍 INTERNATIONAL FORMAT (+...)
+    # =============================
+    if value.startswith("+"):
+        digits = value[1:]
 
-        # ❌ invalid → NULL (NO ERROR)
-        if not value.isdigit():
-            return None
+        # must be digits after +
+        if not digits.isdigit():
+            raise ValidationError("Invalid international phone number")
 
-        if len(value) != 10:
-            return None
+        # length check (E.164 standard)
+        if len(digits) < 7 or len(digits) > 15:
+            raise ValidationError("Invalid international phone number")
 
-        invalid_numbers = {
-            "0000000000", "1111111111", "2222222222",
-            "3333333333", "4444444444", "5555555555",
-            "6666666666", "7777777777", "8888888888",
-            "9999999999", "1234567890", "0123456789"
-        }
+        return value  # keep + format
 
-        if value in invalid_numbers:
-            return None
+    # =============================
+    # 🇮🇳 INDIA FORMAT
+    # =============================
+    if value.startswith("+91"):
+        value = value[3:]
+    elif value.startswith("91") and len(value) == 12:
+        value = value[2:]
 
-        return value
+    if not value.isdigit():
+        raise ValidationError("Phone must contain digits only")
+
+    if len(value) != 10:
+        raise ValidationError("Phone must be 10 digits")
+
+    # ❌ invalid indian patterns
+    invalid_numbers = {
+        "0000000000", "1111111111", "2222222222",
+        "3333333333", "4444444444", "5555555555",
+        "6666666666", "7777777777", "8888888888",
+        "9999999999", "1234567890", "0123456789",
+        "9876543210"
+    }
+
+    if value in invalid_numbers:
+        raise ValidationError("Invalid phone number")
+
+    return value
+
+
 
     # =====================================================
     # VALIDATION
