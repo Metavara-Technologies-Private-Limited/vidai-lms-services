@@ -53,22 +53,24 @@ def _resolve_assignee_name(assigned_to_id, assigned_to_name):
 
 
 # =====================================================
-# 🔥 HELPER: PHONE NORMALIZATION (FINAL FIX)
+# 🔥 HELPER: PHONE NORMALIZATION (BULLETPROOF)
 # =====================================================
 def _normalize_phone(value):
+
     if not value:
         return None
 
     value = str(value).strip().replace(" ", "")
+
+    # 🔥 common garbage values → NULL
+    if value in ["", "0", "00", "000", "0000000000"]:
+        return None
 
     # Handle +91 / 91
     if value.startswith("+91"):
         value = value[3:]
     elif value.startswith("91") and len(value) == 12:
         value = value[2:]
-
-    if value == "":
-        return None
 
     # Must be digits
     if not value.isdigit():
@@ -78,7 +80,7 @@ def _normalize_phone(value):
     if len(value) != 10:
         return None
 
-    # ❌ Invalid patterns → convert to NULL
+    # ❌ invalid patterns → NULL
     invalid_numbers = {
         "0000000000", "1111111111", "2222222222",
         "3333333333", "4444444444", "5555555555",
@@ -90,7 +92,6 @@ def _normalize_phone(value):
         return None
 
     return value
-
 
 # =====================================================
 # CREATE LEAD
