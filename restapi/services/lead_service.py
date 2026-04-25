@@ -53,7 +53,7 @@ def _resolve_assignee_name(assigned_to_id, assigned_to_name):
 
 
 # =====================================================
-# HELPER: PHONE NORMALIZATION (ONLY CLEANING)
+# 🔥 HELPER: PHONE NORMALIZATION (FINAL FIX)
 # =====================================================
 def _normalize_phone(value):
     if not value:
@@ -61,12 +61,32 @@ def _normalize_phone(value):
 
     value = str(value).strip().replace(" ", "")
 
+    # Handle +91 / 91
     if value.startswith("+91"):
         value = value[3:]
     elif value.startswith("91") and len(value) == 12:
         value = value[2:]
 
     if value == "":
+        return None
+
+    # Must be digits
+    if not value.isdigit():
+        return None
+
+    # Must be 10 digits
+    if len(value) != 10:
+        return None
+
+    # ❌ Invalid patterns → convert to NULL
+    invalid_numbers = {
+        "0000000000", "1111111111", "2222222222",
+        "3333333333", "4444444444", "5555555555",
+        "6666666666", "7777777777", "8888888888",
+        "9999999999", "1234567890", "0123456789"
+    }
+
+    if value in invalid_numbers:
         return None
 
     return value
@@ -80,7 +100,7 @@ def create_lead(validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # ✅ PHONE NORMALIZATION ONLY
+    # ✅ PHONE FIX
     validated_data["contact_no"] = _normalize_phone(
         validated_data.get("contact_no")
     )
@@ -237,7 +257,7 @@ def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # ✅ PHONE NORMALIZATION ONLY
+    # ✅ PHONE FIX
     if "contact_no" in validated_data:
         validated_data["contact_no"] = _normalize_phone(
             validated_data.get("contact_no")
@@ -334,7 +354,7 @@ def update_lead(instance, validated_data, request=None):
 
 
 # =====================================================
-# EMAIL HELPERS
+# EMAIL HELPERS (UNCHANGED)
 # =====================================================
 def _clean_email_body(text: str) -> str:
     if not text:

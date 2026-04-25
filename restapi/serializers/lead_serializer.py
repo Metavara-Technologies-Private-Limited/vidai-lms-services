@@ -200,30 +200,41 @@ class LeadSerializer(serializers.ModelSerializer):
     # =====================================================
     # PHONE VALIDATION (FINAL CLEAN VERSION)
     # =====================================================
+   # =====================================================
+    # 🔥 FINAL PHONE VALIDATION (BEST VERSION)
+    # =====================================================
     def validate_contact_no(self, value):
+
+        # empty → NULL
         if not value or value.strip() == "":
             return None
 
         value = value.strip().replace(" ", "")
 
-        # Handle +91 and 91
+        # 🔥 treat these as NULL (no error)
+        if value in ["0", "0000000000"]:
+            return None
+
+        # Handle +91 / 91
         if value.startswith("+91"):
             value = value[3:]
         elif value.startswith("91") and len(value) == 12:
             value = value[2:]
 
+        # Must be digits
         if not value.isdigit():
-            raise ValidationError("Phone number must contain only digits")
+            raise ValidationError("Phone must contain digits only")
 
+        # Must be 10 digits
         if len(value) != 10:
-            raise ValidationError("Phone number must be 10 digits")
+            raise ValidationError("Phone must be 10 digits")
 
+        # Invalid patterns → ERROR
         invalid_numbers = {
-            "0000000000", "1111111111", "2222222222",
-            "3333333333", "4444444444", "5555555555",
-            "6666666666", "7777777777", "8888888888",
-            "9999999999", "1234567890", "0123456789",
-            "9876543210"
+            "1111111111", "2222222222", "3333333333",
+            "4444444444", "5555555555", "6666666666",
+            "7777777777", "8888888888", "9999999999",
+            "1234567890", "0123456789"
         }
 
         if value in invalid_numbers:
