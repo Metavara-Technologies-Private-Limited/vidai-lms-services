@@ -53,6 +53,26 @@ def _resolve_assignee_name(assigned_to_id, assigned_to_name):
 
 
 # =====================================================
+# HELPER: PHONE NORMALIZATION (ONLY CLEANING)
+# =====================================================
+def _normalize_phone(value):
+    if not value:
+        return None
+
+    value = str(value).strip().replace(" ", "")
+
+    if value.startswith("+91"):
+        value = value[3:]
+    elif value.startswith("91") and len(value) == 12:
+        value = value[2:]
+
+    if value == "":
+        return None
+
+    return value
+
+
+# =====================================================
 # CREATE LEAD
 # =====================================================
 @transaction.atomic
@@ -60,9 +80,10 @@ def create_lead(validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # ===================== 🔥 NORMALIZE PHONE =====================
-    if validated_data.get("contact_no") in ["", None]:
-        validated_data["contact_no"] = None
+    # ✅ PHONE NORMALIZATION ONLY
+    validated_data["contact_no"] = _normalize_phone(
+        validated_data.get("contact_no")
+    )
 
     # ===================== CLINIC =====================
     clinic_id = request.headers.get("X-Clinic-Id") if request else None
@@ -216,10 +237,11 @@ def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # ===================== 🔥 NORMALIZE PHONE =====================
+    # ✅ PHONE NORMALIZATION ONLY
     if "contact_no" in validated_data:
-        if validated_data["contact_no"] in ["", None]:
-            validated_data["contact_no"] = None
+        validated_data["contact_no"] = _normalize_phone(
+            validated_data.get("contact_no")
+        )
 
     # ===================== UPDATED BY =====================
     validated_data.pop("updated_by_id", None)
@@ -256,7 +278,6 @@ def update_lead(instance, validated_data, request=None):
             assigned_to_id,
             assigned_to_name
         )
-
     # ===================== REFERRAL UPDATE =====================
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)

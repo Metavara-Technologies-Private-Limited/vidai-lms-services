@@ -198,12 +198,38 @@ class LeadSerializer(serializers.ModelSerializer):
         read_only_fields = ("id",)
 
     # =====================================================
-    # 🔥 PHONE NORMALIZATION (IMPORTANT)
+    # PHONE VALIDATION (FINAL CLEAN VERSION)
     # =====================================================
     def validate_contact_no(self, value):
-        if value in ["", None]:
+        if not value or value.strip() == "":
             return None
-        return value.strip()
+
+        value = value.strip().replace(" ", "")
+
+        # Handle +91 and 91
+        if value.startswith("+91"):
+            value = value[3:]
+        elif value.startswith("91") and len(value) == 12:
+            value = value[2:]
+
+        if not value.isdigit():
+            raise ValidationError("Phone number must contain only digits")
+
+        if len(value) != 10:
+            raise ValidationError("Phone number must be 10 digits")
+
+        invalid_numbers = {
+            "0000000000", "1111111111", "2222222222",
+            "3333333333", "4444444444", "5555555555",
+            "6666666666", "7777777777", "8888888888",
+            "9999999999", "1234567890", "0123456789",
+            "9876543210"
+        }
+
+        if value in invalid_numbers:
+            raise ValidationError("Invalid phone number")
+
+        return value
 
     # =====================================================
     # VALIDATION
