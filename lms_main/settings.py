@@ -23,7 +23,7 @@ load_dotenv(dotenv_path=env_path)
 SECRET_KEY = 'django-insecure-b#--p%6fpdr-ub523h198vs!#-2%fvtv+at(_@tzr#kaazchp='
 DEBUG = True
 
-ALLOWED_HOSTS = ['*','winter-foundationary-shockingly.ngrok-free.dev']  # ✅ FIXED - allows Cloudflare tunnel + all hosts
+ALLOWED_HOSTS = ['*', 'winter-foundationary-shockingly.ngrok-free.dev']
 
 
 # ================================
@@ -51,26 +51,9 @@ INSTALLED_APPS = [
 # ================================
 # ZAPIER WEBHOOKS
 # ================================
-
-# General webhook — lead events, campaign events, social media campaigns
-# (unchanged — keep as is)
-# ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/u783kl8/"
-# ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/uj6183k/"
-
-# ✅ SINGLE unified Mailchimp Zap URL.
-# Previously 2 separate Mailchimp Zaps:
-#   OLD Zap 1 — ZAPIER_WEBHOOK_EMAIL_URL              → ucb1mwo → event: email_campaign_created
-#   OLD Zap 2 — ZAPIER_WEBHOOK_MAILCHIMP_INSIGHTS_URL → uxi208v → event: mailchimp_insights_requested
-#
-# NOW merged into 1 Zap that handles both events using "Paths by Zapier":
-#   Path A: event = "email_campaign_created"        → Send email campaign actions
-#   Path B: event = "mailchimp_insights_requested"  → Log/notify insights actions
-#
-# ⚠️ After creating the new merged Zap in Zapier,
-#    replace the URL below with the new webhook URL.
 ZAPIER_WEBHOOK_MAILCHIMP_URL = os.getenv(
     "ZAPIER_WEBHOOK_MAILCHIMP_URL",
-    "https://hooks.zapier.com/hooks/catch/25767405/uxkfmnd/"  # ← Replace with new merged Zap URL
+    "https://hooks.zapier.com/hooks/catch/25767405/uxkfmnd/"
 )
 
 MIDDLEWARE = [
@@ -112,16 +95,11 @@ WSGI_APPLICATION = 'lms_main.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        # 'NAME': 'stage5_db',
-        # 'USER': 'postgres',
-        # 'PASSWORD': 'saimohan',
-        # 'HOST': 'localhost',  # 'host.docker.internal',   #host.docker.internal
-        # 'PORT': '5432',
-        'NAME': os.getenv("DB_NAME"),
-        'USER': os.getenv("DB_USER"),
-        'PASSWORD': os.getenv("DB_PASSWORD"),
-        'HOST': os.getenv("DB_HOST"),
-        'PORT': os.getenv("DB_PORT"),
+        'NAME': 'stage5_db',
+        'USER': 'postgres',
+        'PASSWORD': 'saimohan',
+        'HOST': '72.62.227.137',
+        'PORT': '5432',
     }
 }
 
@@ -187,62 +165,12 @@ REST_FRAMEWORK = {
         "restapi.utils.jwt_authentication.JWTAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
-    # "EXCEPTION_HANDLER": "restapi.exception_handler.custom_exception_handler",
 }
 
 
 # ================================
 # LOGGING
 # ================================
-# LOGGING = {
-#     "version": 1,
-#     "disable_existing_loggers": False,
-
-#     "formatters": {
-#         "detailed": {
-#             "format": "[{levelname}] {asctime} {name}:{lineno} — {message}",
-#             "style": "{",
-#             "datefmt": "%Y-%m-%d %H:%M:%S",
-#         },
-#     },
-
-#     "handlers": {
-#         "api_file": {
-#             "level": "ERROR",
-#             "class": "logging.FileHandler",
-#             "filename": BASE_DIR / "restapi/log/api.log",
-#             "formatter": "detailed",
-#         },
-#     },
-
-#     # "loggers": {
-#     #     "restapi": {
-#     #         "handlers": ["api_file"],
-#     #         "level": "ERROR",
-#     #         "propagate": True,
-#     #     },
-#     #     "django": {
-#     #         "handlers": ["api_file"],
-#     #         "level": "ERROR",
-#     #         "propagate": True,
-#     #     },
-#     # },
-    
-#     "loggers": {
-#     "restapi": {
-#         "handlers": ["api_file"],
-#         "level": "DEBUG",  # <--- Change this from ERROR to DEBUG
-#         "propagate": True,
-#     },
-#     # Also add this to see logs in the terminal, not just the file
-#     "django": {
-#         "handlers": ["api_file"],
-#         "level": "INFO", 
-#         "propagate": True,
-#     },
-# }
-# }
-
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -254,7 +182,7 @@ LOGGING = {
     },
     "handlers": {
         "console": {
-            "class": "logging.StreamHandler", # This prints to your terminal
+            "class": "logging.StreamHandler",
             "formatter": "detailed",
         },
         "api_file": {
@@ -266,7 +194,7 @@ LOGGING = {
     },
     "loggers": {
         "restapi": {
-            "handlers": ["console", "api_file"], # Send to both!
+            "handlers": ["console", "api_file"],
             "level": "DEBUG",
             "propagate": True,
         },
@@ -294,7 +222,6 @@ LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET")
 LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI")
 LINKEDIN_ACCOUNT_ID = os.getenv("LINKEDIN_ACCOUNT_ID")
 LINKEDIN_ORG_URN = os.getenv("LINKEDIN_ORG_URN")
-# LINKEDIN_CAMPAIGN_GROUP = os.getenv("LINKEDIN_CAMPAIGN_GROUP")
 LINKEDIN_CAMPAIGN_GROUP_URN = os.getenv("LINKEDIN_CAMPAIGN_GROUP_URN")
 
 FACEBOOK_CLIENT_ID = os.getenv("FACEBOOK_CLIENT_ID")
@@ -305,10 +232,9 @@ FACEBOOK_REDIRECT_URI = os.getenv("FACEBOOK_REDIRECT_URI")
 FRONTEND_URL = os.getenv("FRONTEND_URL")
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL")
 
+# ================================
 # TWILIO
 # ================================
-import os
-
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
@@ -320,18 +246,19 @@ TWILIO_CALL_VIA_ZAPIER = os.getenv("TWILIO_CALL_VIA_ZAPIER", "true").strip().low
 TWILIO_SMS_STATUS_CALLBACK_URL = os.getenv("TWILIO_SMS_STATUS_CALLBACK_URL", "")
 TWILIO_CALL_STATUS_CALLBACK_URL = os.getenv("TWILIO_CALL_STATUS_CALLBACK_URL", "")
 
-ZAPIER_WEBHOOK_TWILIO_URL = os.getenv("ZAPIER_WEBHOOK_TWILIO_URL",)
+ZAPIER_WEBHOOK_TWILIO_URL = os.getenv("ZAPIER_WEBHOOK_TWILIO_URL")
 
-
+# ================================
+# EMAIL
+# ================================
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND")
-
 EMAIL_HOST = os.getenv("EMAIL_HOST")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT"))
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS") == "True"
-
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 
+# ================================
 # MAILCHIMP
 # ================================
 MAILCHIMP_API_KEY = os.getenv("MAILCHIMP_API_KEY")
@@ -341,7 +268,8 @@ MAILCHIMP_EMAIL_LIST_ID = os.getenv("MAILCHIMP_EMAIL_LIST_ID")
 MAILCHIMP_AUDIENCE_ID = os.getenv("MAILCHIMP_AUDIENCE_ID")
 MAILCHIMP_SENDER_EMAIL = os.getenv("MAILCHIMP_SENDER_EMAIL")
 
-# FACEBOOK ADS (fb_business SDK)
+# ================================
+# FACEBOOK ADS
 # ================================
 FB_ACCESS_TOKEN = os.getenv("FB_ACCESS_TOKEN")
 FB_AD_ACCOUNT_ID = os.getenv("FB_AD_ACCOUNT_ID")
@@ -354,27 +282,46 @@ ZAPIER_WEBHOOK_SOCIAL_URL = os.getenv(
 )
 
 STAGE_LOGIN_URL = os.getenv("STAGE_LOGIN_URL")
-
 STAGE_PROFILE_URL = os.getenv("STAGE_PROFILE_URL")
-
 STAGE_USERS_URL = os.getenv(
     "STAGE_USERS_URL",
     "https://99999.preview-api.vidaisolutions.com/api/users/"
 )
 
-# --- Google OAuth ---
-GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET  = os.getenv("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REDIRECT_URI   = os.getenv("GOOGLE_REDIRECT_URI", "")
+# ================================
+# GOOGLE
+# ================================
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "")
 
-# --- Google Ads ---
-GOOGLE_ADS_DEVELOPER_TOKEN   = os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN")
+GOOGLE_ADS_DEVELOPER_TOKEN = os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN")
 GOOGLE_ADS_LOGIN_CUSTOMER_ID = os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
 
-# Add these at the bottom of your Google Ads section
 GOOGLE_ACCESS_TOKEN = os.getenv("GOOGLE_ACCESS_TOKEN")
 GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN")
 
+# ================================
+# ZAPIER
+# ================================
+ZAPIER_WEBHOOK_URL = os.getenv(
+    "ZAPIER_WEBHOOK_URL",
+    "https://hooks.zapier.com/hooks/catch/25767405/uxrz9r3/"
+)
 
-# Security token for incoming Zapier webhooks
+ZAPIER_WEBHOOK_GOOGLE_ADS_URL = os.getenv(
+    "ZAPIER_WEBHOOK_GOOGLE_ADS_URL",
+    "https://hooks.zapier.com/hooks/catch/25767405/u783kl8/"
+)
+
+BACKEND_BASE_URL = os.getenv(
+    "BACKEND_BASE_URL",
+    "https://lms-vidaisolutions.metavaratechnologies.com"
+)
+
+ZAPIER_WEBHOOK_INSIGHTS_URL = os.getenv(
+    "ZAPIER_WEBHOOK_INSIGHTS_URL",
+    "https://hooks.zapier.com/hooks/catch/25767405/ujlyx3c/"
+)
+
 ZAPIER_CALLBACK_TOKEN = os.getenv("ZAPIER_CALLBACK_TOKEN")

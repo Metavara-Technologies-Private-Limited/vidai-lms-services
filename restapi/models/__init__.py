@@ -7,6 +7,7 @@ from .social_account import SocialAccount
 
 # Core LMS models
 from .lead import Lead
+from .referral_source import ReferralSource  # ✅ ADDED — fixes Lead FK registration error
 from .campaign import Campaign
 
 # Campaign configs
