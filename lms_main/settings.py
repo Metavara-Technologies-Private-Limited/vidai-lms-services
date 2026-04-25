@@ -22,7 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-b#--p%6fpdr-ub523h198vs!#-2%fvtv+at(_@tzr#kaazchp='
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']  # ✅ FIXED - allows Cloudflare tunnel + all hosts
+ALLOWED_HOSTS = ['*', 'winter-foundationary-shockingly.ngrok-free.dev']
 
 
 # ================================
@@ -52,7 +52,7 @@ INSTALLED_APPS = [
 
 # General webhook — lead events, campaign events, social media campaigns
 # (unchanged — keep as is)
-ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/uxrz9r3/"
+ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/u783kl8/"
 
 # ✅ SINGLE unified Mailchimp Zap URL.
 # Previously 2 separate Mailchimp Zaps:
@@ -67,7 +67,7 @@ ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/uxrz9r3/"
 #    replace the URL below with the new webhook URL.
 ZAPIER_WEBHOOK_MAILCHIMP_URL = os.getenv(
     "ZAPIER_WEBHOOK_MAILCHIMP_URL",
-    "https://hooks.zapier.com/hooks/catch/25767405/uxkfmnd/"  # ← Replace with new merged Zap URL
+    "https://hooks.zapier.com/hooks/catch/25767405/uxkfmnd/"
 )
 
 MIDDLEWARE = [
@@ -109,12 +109,16 @@ WSGI_APPLICATION = 'lms_main.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'stage5_db',
-        'USER': 'postgres',
-        'PASSWORD': 'saimohan',
-        'HOST': 'host.docker.internal',  #host.docker.internal 
-        'PORT': '5432',
-
+        # 'NAME': 'stage5_db',
+        # 'USER': 'postgres',
+        # 'PASSWORD': 'saimohan',
+        # 'HOST': 'localhost',  # 'host.docker.internal',   #host.docker.internal
+        # 'PORT': '5432',
+        'NAME': os.getenv("DB_NAME"),
+        'USER': os.getenv("DB_USER"),
+        'PASSWORD': os.getenv("DB_PASSWORD"),
+        'HOST': os.getenv("DB_HOST"),
+        'PORT': os.getenv("DB_PORT"),
     }
 }
 
@@ -180,7 +184,7 @@ REST_FRAMEWORK = {
         'restapi.utils.jwt_authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
-    'EXCEPTION_HANDLER': 'restapi.exception_handler.custom_exception_handler'
+    # "EXCEPTION_HANDLER": "restapi.exception_handler.custom_exception_handler",
 }
 
 
@@ -190,34 +194,25 @@ REST_FRAMEWORK = {
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-
     "formatters": {
         "detailed": {
-            "format": "[{levelname}] {asctime} {name}:{lineno} — {message}",
+            "format": "[{levelname}] {asctime} {name} — {message}",
             "style": "{",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
         },
     },
-
     "handlers": {
-        "console": {
-            "level": "INFO",
-            "class": "logging.StreamHandler",
-            "formatter": "detailed",
-        },
         "api_file": {
-            "level": "ERROR",
+            "level": "DEBUG",
             "class": "logging.FileHandler",
             "filename": BASE_DIR / "restapi/log/api.log",
             "formatter": "detailed",
         },
     },
-
     "loggers": {
         "restapi": {
-            "handlers": ["console", "api_file"],
-            "level": "INFO",
-            "propagate": False,
+            "handlers": ["api_file"],
+            "level": "ERROR",
+            "propagate": True,
         },
         "django": {
             "handlers": ["api_file"],
@@ -242,24 +237,48 @@ SWAGGER_SETTINGS = {
     }
 }
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "")
-FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "")
 
-# LINKEDIN
-LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET", "")
-LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID", "")
-LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI", "")
+LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID")
+LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET")
+LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI")
 
+FACEBOOK_CLIENT_ID = os.getenv("FACEBOOK_CLIENT_ID")
+FACEBOOK_CONFIGURATION_ID = os.getenv("FACEBOOK_CONFIGURATION_ID")
+FACEBOOK_CLIENT_SECRET = os.getenv("FACEBOOK_CLIENT_SECRET")
+FACEBOOK_REDIRECT_URI = os.getenv("FACEBOOK_REDIRECT_URI")
+
+FRONTEND_URL = os.getenv("FRONTEND_URL")
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL")
+
+# ================================
 # TWILIO
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "")
+# ================================
+import os
+
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+TWILIO_BRIDGE_NUMBER = os.getenv("TWILIO_BRIDGE_NUMBER", "")
+
+TWILIO_SMS_VIA_ZAPIER = os.getenv("TWILIO_SMS_VIA_ZAPIER", "true").strip().lower() in ("1", "true", "yes", "on")
+TWILIO_CALL_VIA_ZAPIER = os.getenv("TWILIO_CALL_VIA_ZAPIER", "true").strip().lower() in ("1", "true", "yes", "on")
+
 TWILIO_SMS_STATUS_CALLBACK_URL = os.getenv("TWILIO_SMS_STATUS_CALLBACK_URL", "")
 TWILIO_CALL_STATUS_CALLBACK_URL = os.getenv("TWILIO_CALL_STATUS_CALLBACK_URL", "")
 
-ZAPIER_WEBHOOK_TWILIO_URL = os.getenv("ZAPIER_WEBHOOK_TWILIO_URL",)
+ZAPIER_WEBHOOK_TWILIO_URL = os.getenv("ZAPIER_WEBHOOK_TWILIO_URL")
 
 
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND")
+
+EMAIL_HOST = os.getenv("EMAIL_HOST")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT"))
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS") == "True"
+
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+
+# ================================
 # MAILCHIMP
 MAILCHIMP_API_KEY = os.getenv("MAILCHIMP_API_KEY", "")
 MAILCHIMP_SERVER = os.getenv("MAILCHIMP_SERVER", "")  # Default to 'us6' if not set
@@ -268,41 +287,36 @@ MAILCHIMP_EMAIL_LIST_ID = os.getenv("MAILCHIMP_EMAIL_LIST_ID", "")
 MAILCHIMP_AUDIENCE_ID = os.getenv("MAILCHIMP_AUDIENCE_ID", "")
 MAILCHIMP_SENDER_EMAIL = os.getenv("MAILCHIMP_SENDER_EMAIL", "")
 
-# FACEBOOK
-FB_ACCESS_TOKEN = os.getenv("FB_ACCESS_TOKEN", "")
-FB_CLIENT_ID = os.getenv("FB_CLIENT_ID", "")
-FACEBOOK_CLIENT_SECRET = os.getenv("FACEBOOK_CLIENT_SECRET", "")
-FACEBOOK_REDIRECT_URI = os.getenv("FACEBOOK_REDIRECT_URI", "")
-FB_AD_ACCOUNT_ID = os.getenv("FB_AD_ACCOUNT_ID", "")
+# FACEBOOK ADS (fb_business SDK)
+# ================================
+FB_ACCESS_TOKEN = os.getenv("FB_ACCESS_TOKEN")
+FB_AD_ACCOUNT_ID = os.getenv("FB_AD_ACCOUNT_ID")
 
-ZAPIER_WEBHOOK_FB_INSIGHTS_URL = os.getenv("ZAPIER_WEBHOOK_FB_INSIGHTS_URL",)
+ZAPIER_WEBHOOK_FB_INSIGHTS_URL = os.getenv("ZAPIER_WEBHOOK_FB_INSIGHTS_URL")
 
+ZAPIER_WEBHOOK_SOCIAL_URL = os.getenv(
+    "ZAPIER_WEBHOOK_SOCIAL_URL",
+    "https://hooks.zapier.com/hooks/catch/25767405/u783kl8/",
+)
 
-# GOOGLE
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_ADS_DEVELOPER_TOKEN = os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", "")
-GOOGLE_ACCESS_TOKEN = os.getenv("GOOGLE_ACCESS_TOKEN", "")
-GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN", "")
-GOOGLE_ADS_LOGIN_COSTEMER_ID = os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "")
+STAGE_LOGIN_URL = os.getenv("STAGE_LOGIN_URL")
 
-ZAPIER_WEBHOOK_GOOGLE_ADS_URL = os.getenv("ZAPIER_WEBHOOK_GOOGLE_ADS_URL", "")
-ZAPIER_WEBHOOK_INSIGHTS_URL = os.getenv( "ZAPIER_WEBHOOK_INSIGHTS_URL",)
+STAGE_PROFILE_URL = os.getenv("STAGE_PROFILE_URL")
 
-# EMAIL
-EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
-EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "")
-EMAIL_HOST = os.getenv("EMAIL_HOST", "")
-EMAIL_PORT = os.getenv("EMAIL_PORT", "")
-EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "")
+STAGE_USERS_URL = os.getenv(
+    "STAGE_USERS_URL",
+    "https://99999.preview-api.vidaisolutions.com/api/users/"
+)
 
+# --- Google OAuth ---
+GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET  = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI   = os.getenv("GOOGLE_REDIRECT_URI", "")
 
-BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL","")
+# --- Google Ads ---
+GOOGLE_ADS_DEVELOPER_TOKEN   = os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN")
+GOOGLE_ADS_LOGIN_CUSTOMER_ID = os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
 
-
-STAGE_LOGIN_URL = os.getenv("STAGE_LOGIN_URL", "")
-STAGE_PROFILE_URL = os.getenv("STAGE_PROFILE_URL", "")
-STAGE_USER_URL = os.getenv("STAGE_USER_URL", "")
+# Add these at the bottom of your Google Ads section
+GOOGLE_ACCESS_TOKEN = os.getenv("GOOGLE_ACCESS_TOKEN")
+GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN")

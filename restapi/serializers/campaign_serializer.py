@@ -50,47 +50,167 @@ class CampaignEmailSerializer(serializers.ModelSerializer):
         ]
 
 
+# # =====================================================
+# # Campaign READ Serializer
+# # =====================================================
+# class CampaignReadSerializer(serializers.ModelSerializer):
+#     social_media = CampaignSocialMediaSerializer(
+#         source="social_configs",
+#         many=True
+#     )
+#     email = CampaignEmailSerializer(
+#         source="email_configs",
+#         many=True
+#     )
+
+#     class Meta:
+#         model = Campaign
+#         fields = "__all__"
+
+#     def to_representation(self, instance):
+#         data = super().to_representation(instance)
+
+#         request = self.context.get("request")
+#         if not request:
+#             return data
+
+#         user = request.user
+
+#         if user.profile.role.name.lower() == "super admin":
+#             return data
+
+#         if not has_permission(user, "campaign", "campaigns", "view"):
+#             return {}
+
+#         allowed_fields = [
+#             "id",
+#             "campaign_name",
+#             "status",
+#             "start_date",
+#             "end_date"
+#         ]
+
+#         return {k: v for k, v in data.items() if k in allowed_fields}
+
+
 # =====================================================
 # Campaign READ Serializer
 # =====================================================
 class CampaignReadSerializer(serializers.ModelSerializer):
+
     social_media = CampaignSocialMediaSerializer(
         source="social_configs",
-        many=True
+        many=True,
+        read_only=True
     )
+
     email = CampaignEmailSerializer(
         source="email_configs",
-        many=True
+        many=True,
+        read_only=True
     )
 
     class Meta:
         model = Campaign
-        fields = "__all__"
+        fields = [
+            # ----------------------------
+            # Core Campaign
+            # ----------------------------
+            "id",
+            "clinic",
+            "campaign_name",
+            "campaign_description",
+            "campaign_objective",
+            "target_audience",
+
+            "start_date",
+            "end_date",
+            "selected_start",
+            "selected_end",
+            "enter_time",
+
+            "campaign_mode",
+            "campaign_content",
+            "status",
+
+            "is_active",
+            "is_deleted",
+
+            "created_at",
+            "modified_at",
+
+            # ----------------------------
+            # Platform Config
+            # ----------------------------
+            "platform_data",
+            "budget_data",
+
+            "social_media",
+            "email",
+
+            # ----------------------------
+            # LinkedIn Campaign Metadata
+            # ----------------------------
+            "linkedin_campaign_urn",
+            "linkedin_external_campaign_id",
+
+            "linkedin_creative_urn",
+            "linkedin_creative_id",
+
+            "linkedin_account_id",
+            "linkedin_post_urn",
+
+            "linkedin_campaign_group_urn",
+            "linkedin_ads_manager_url",
+
+            # ----------------------------
+            # Cached Insights
+            # ----------------------------
+            "last_synced_metrics",
+            "last_metrics_synced_at",
+        ]
+
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
 
         request = self.context.get("request")
+
         if not request:
             return data
 
         user = request.user
 
+        # Super admin gets full response
         if user.profile.role.name.lower() == "super admin":
             return data
 
-        if not has_permission(user, "campaign", "campaigns", "view"):
+        if not has_permission(
+            user,
+            "campaign",
+            "campaigns",
+            "view"
+        ):
             return {}
 
+        # Limited response for regular users
         allowed_fields = [
             "id",
             "campaign_name",
             "status",
             "start_date",
-            "end_date"
+            "end_date",
+            "last_synced_metrics",
+            "last_metrics_synced_at",
         ]
 
-        return {k: v for k, v in data.items() if k in allowed_fields}
+        return {
+            k: v
+            for k, v in data.items()
+            if k in allowed_fields
+        }
+
+
 
 # =====================================================
 # Social Media Campaign Serializer

@@ -7,6 +7,10 @@ import logging
 import requests
 import secrets
 import traceback
+from django.utils import timezone
+from rest_framework.permissions import IsAuthenticated
+from datetime import datetime, timedelta
+import urllib.parse
 
 from django.conf import settings
 from django.shortcuts import redirect
@@ -19,22 +23,41 @@ from rest_framework.exceptions import ValidationError
 
 from restapi.models import Clinic, Campaign
 from restapi.models.social_account import SocialAccount
-from restapi.utils.clinic_scope import resolve_request_clinic
-
-logger = logging.getLogger(__name__)
 
 
 # =====================================================
 # SOCIAL AUTH - LINKEDIN
 # =====================================================
+
 class LinkedInLoginAPIView(APIView):
     def get(self, request):
+        # Get clinic ID from query params if needed
+        clinic_id = request.GET.get('clinic_id')
+        
+        # Store clinic_id in session to use in callback
+        if clinic_id:
+            request.session['linkedin_clinic_id'] = clinic_id
+        
+        # Define scopes as a list and join properly
+        scopes = [
+            "openid",
+            "profile", 
+            "email",
+            "r_ads",
+            "r_ads_reporting",
+            "rw_ads",
+            "r_organization_social"
+        ]
+        
+        # Join with %20 for URL encoding
+        scope_param = "%20".join(scopes)
+        
         auth_url = (
             "https://www.linkedin.com/oauth/v2/authorization"
             "?response_type=code"
             f"&client_id={settings.LINKEDIN_CLIENT_ID}"
             f"&redirect_uri={settings.LINKEDIN_REDIRECT_URI}"
-            "&scope=openid%20profile%20email"
+            f"&scope={scope_param}"
             "&prompt=login"
         )
         return redirect(auth_url)
@@ -43,7 +66,28 @@ class LinkedInLoginAPIView(APIView):
 class LinkedInCallbackAPIView(APIView):
     def get(self, request):
         code = request.GET.get("code")
+        error = request.GET.get("error")
+
+        print("=" * 60)
+        print("LINKEDIN CALLBACK RECEIVED")
+        print(f"Code: {code[:50] if code else 'None'}...")
+        print(f"Error: {error}")
+        print("=" * 60)
+
+        # --------------------------------------------------
+        # HANDLE ERROR FROM LINKEDIN
+        # --------------------------------------------------
+        if error:
+            print(f"LinkedIn OAuth error: {error}")
+            return HttpResponseRedirect(
+                f"{settings.FRONTEND_URL}?linkedin=error&error={error}"
+            )
+
+        # --------------------------------------------------
+        # EXCHANGE CODE FOR ACCESS TOKEN
+        # --------------------------------------------------
         token_url = "https://www.linkedin.com/oauth/v2/accessToken"
+
         data = {
             "grant_type": "authorization_code",
             "code": code,
@@ -51,11 +95,16 @@ class LinkedInCallbackAPIView(APIView):
             "client_id": settings.LINKEDIN_CLIENT_ID,
             "client_secret": settings.LINKEDIN_CLIENT_SECRET,
         }
+
+        print("Exchanging code for token...")
+
         response = requests.post(token_url, data=data)
         token_data = response.json()
+
         access_token = token_data.get("access_token")
         if access_token:
             clinic = Clinic.objects.first()
+
             SocialAccount.objects.update_or_create(
                 clinic=clinic,
                 platform="linkedin",
@@ -68,8 +117,50 @@ class LinkedInCallbackAPIView(APIView):
 
 
 class LinkedInStatusAPIView(APIView):
+    """
+    Returns LinkedIn connection + expiry status
+    """
+
     def get(self, request):
-        return Response({"connected": bool(request.session.get("linkedin_token"))})
+        clinic = Clinic.objects.first()
+
+        social_account = SocialAccount.objects.filter(
+            clinic=clinic,
+            platform="linkedin"
+        ).first()
+
+        # ------------------------------------------
+        # NOT CONNECTED
+        # ------------------------------------------
+        if not social_account or not social_account.access_token:
+            return Response({
+                "connected": False,
+                "expired": False,
+                "expires_at": None
+            })
+
+        # ------------------------------------------
+        # CHECK EXPIRY
+        # ------------------------------------------
+        expired = False
+
+        if social_account.expires_at:
+            expired = social_account.expires_at < timezone.now()
+
+        # ------------------------------------------
+        # RESPONSE
+        # ------------------------------------------
+        return Response({
+            "connected": social_account.is_active,
+            "expired": expired,
+            "expires_at": social_account.expires_at
+        })
+
+# class LinkedInStatusAPIView(APIView):
+#     def get(self, request):
+#         return Response({"connected": bool(request.session.get("linkedin_token"))})
+
+
 
 
 # =====================================================

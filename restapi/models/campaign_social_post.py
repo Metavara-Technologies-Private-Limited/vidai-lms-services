@@ -1,3 +1,5 @@
+# restapi\models\campaign_social_post.py
+
 import uuid
 from django.db import models
 from django.utils import timezone
@@ -76,6 +78,19 @@ class CampaignSocialPost(models.Model):
         null=True,
         blank=True,
         help_text="When Zapier callback updated the status"
+    )
+    
+    creative_id = models.CharField(
+        max_length=255, 
+        null=True, 
+        blank=True, 
+        help_text="LinkedIn Creative URN"
+    )
+    ads_manager_url = models.URLField(
+        max_length=500, 
+        null=True, 
+        blank=True, 
+        help_text="Direct link to the ad in LinkedIn Campaign Manager"
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

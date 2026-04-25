@@ -1,3 +1,5 @@
+# restapi\models\campaign.py
+
 import uuid
 from django.db import models
 
@@ -9,6 +11,90 @@ class Campaign(models.Model):
         "Clinic",
         on_delete=models.CASCADE,
         related_name="campaigns"
+    )
+
+    
+    # ---------------------------------------
+    # LINKEDIN PROVIDER IDS / ACK STORAGE
+    # ---------------------------------------
+
+    linkedin_campaign_urn = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="urn:li:sponsoredCampaign:xxx"
+    )
+    
+    linkedin_live_status = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True
+    )
+
+    linkedin_external_campaign_id = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Numeric LinkedIn campaign id"
+    )
+
+    linkedin_creative_urn = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="urn:li:sponsoredCreative:xxx"
+    )
+
+    linkedin_creative_id = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text="Numeric LinkedIn creative id"
+    )
+
+    linkedin_account_id = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text="LinkedIn ad account id"
+    )
+
+    linkedin_post_urn = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Sponsored post URN"
+    )
+
+    linkedin_campaign_group_urn = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True
+    )
+
+    linkedin_ads_manager_url = models.URLField(
+        max_length=1000,
+        null=True,
+        blank=True
+    )
+
+    last_synced_metrics = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Cached metrics from insights sync"
+    )
+    
+    last_metrics_synced_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    linkedin_raw_response = models.JSONField(
+        # null=True,
+        blank=True,
+        default=dict,
+        help_text="Raw LinkedIn API create callback payload"
     )
 
     campaign_name = models.CharField(max_length=255)
@@ -37,6 +123,9 @@ class Campaign(models.Model):
     campaign_mode = models.IntegerField(choices=CAMPAIGN_MODE_CHOICES)
 
     campaign_content = models.TextField(blank=True)
+
+    # post_id used for generic social posting
+    # linkedin_post_urn used specifically for sponsored ads
 
     # ----------------------------
     # ✅ SOCIAL MEDIA POST ID

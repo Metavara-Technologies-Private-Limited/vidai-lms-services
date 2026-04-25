@@ -1,5 +1,7 @@
+# vidai-lms-services\restapi\services\campaign_social_post_service.py
+
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
+
 
 from restapi.models import Campaign, CampaignSocialPost
 import requests
@@ -9,6 +11,13 @@ import logging
 from django.conf import settings
 from django.utils import timezone
 from django.core.mail import send_mail
+from datetime import datetime
+
+from django.shortcuts import get_object_or_404
+from django.core.exceptions import ValidationError
+from restapi.models import Campaign, CampaignSocialPost
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,38 +33,191 @@ def create_pending_social_post(campaign, platform):
     )
 
 
+
 def handle_zapier_callback(validated_data):
     """
-    Updates CampaignSocialPost based on Zapier response.
+    Handles Zapier callback after campaign/post creation.
+    Persists LinkedIn provider ACK IDs needed for insights.
     """
 
-    campaign = get_object_or_404(
-        Campaign,
-        id=validated_data["campaign_id"]
+    raw_id = (
+        validated_data.get("internal_campaign_uuid")
+        or validated_data.get("campaign_id")
     )
 
-    social_post = CampaignSocialPost.objects.filter(
-        campaign=campaign,
-        platform_name=validated_data["platform"]
-    ).order_by("-created_at").first()
+    platform = (
+        validated_data.get("platform", "")
+        .lower()
+        .strip()
+    )
 
-    if not social_post:
-        # fallback: create one if not found
-        social_post = CampaignSocialPost.objects.create(
+    status_str = (
+        validated_data.get("status", "")
+        .upper()
+        .strip()
+    )
+
+    try:
+
+        # ------------------------------------
+        # Resolve Campaign
+        # ------------------------------------
+        try:
+            campaign = Campaign.objects.get(id=raw_id)
+
+        except (Campaign.DoesNotExist, ValidationError):
+
+            # fallback for legacy post callbacks
+            campaign = get_object_or_404(
+                Campaign,
+                post_id=raw_id
+            )
+
+
+        # ------------------------------------
+        # Social Post Tracking Record
+        # ------------------------------------
+        social_post = CampaignSocialPost.objects.filter(
             campaign=campaign,
-            platform_name=validated_data["platform"]
-        )
+            platform_name=platform
+        ).order_by("-created_at").first()
 
-    if validated_data["status"] == CampaignSocialPost.POSTED:
-        social_post.mark_posted(
-            post_id=validated_data.get("post_id")
-        )
-    else:
-        social_post.mark_failed(
-            error_message=validated_data.get("error_message")
-        )
 
-    return social_post
+        if not social_post:
+            social_post = CampaignSocialPost.objects.create(
+                campaign=campaign,
+                platform_name=platform
+            )
+
+
+        # ------------------------------------
+        # SUCCESS CALLBACK
+        # ------------------------------------
+        if status_str in ["POSTED", "SUCCESS"]:
+
+            post_urn = (
+                validated_data.get("post_urn")
+                or validated_data.get("post_id")
+            )
+
+            campaign_urn = validated_data.get(
+                "campaign_urn"
+            )
+
+            creative_urn = validated_data.get(
+                "creative_urn"
+            )
+
+            account_id = validated_data.get(
+                "account_id"
+            )
+
+            campaign_group_urn = validated_data.get(
+                "campaign_group_urn"
+            )
+
+            ads_manager_url = validated_data.get(
+                "ads_manager_url"
+            )
+
+
+            # ------------------------------------
+            # LINKEDIN ACK PERSISTENCE
+            # ------------------------------------
+            if platform == "linkedin":
+
+                if campaign_urn:
+                    campaign.linkedin_campaign_urn = campaign_urn
+                    campaign.linkedin_external_campaign_id = (
+                        campaign_urn.split(":")[-1]
+                    )
+
+                if creative_urn:
+                    campaign.linkedin_creative_urn = creative_urn
+                    campaign.linkedin_creative_id = (
+                        creative_urn.split(":")[-1]
+                    )
+
+                if account_id:
+                    campaign.linkedin_account_id = account_id
+
+                if post_urn:
+                    campaign.linkedin_post_urn = post_urn
+
+                if campaign_group_urn:
+                    campaign.linkedin_campaign_group_urn = (
+                        campaign_group_urn
+                    )
+
+                if ads_manager_url:
+                    campaign.linkedin_ads_manager_url = (
+                        ads_manager_url
+                    )
+
+                # store full provider callback
+                campaign.linkedin_raw_response = validated_data
+
+                campaign.status = Campaign.Status.SCHEDULED
+
+                campaign.save(
+                    update_fields=[
+                        "linkedin_campaign_urn",
+                        "linkedin_external_campaign_id",
+                        "linkedin_creative_urn",
+                        "linkedin_creative_id",
+                        "linkedin_account_id",
+                        "linkedin_post_urn",
+                        "linkedin_campaign_group_urn",
+                        "linkedin_ads_manager_url",
+                        "linkedin_raw_response",
+                        "status",
+                    ]
+                )
+
+                print(
+                    f"✅ LinkedIn campaign IDs saved for "
+                    f"{campaign.campaign_name}"
+                )
+
+
+            # ------------------------------------
+            # SOCIAL POST TRACKING
+            # ------------------------------------
+            social_post.creative_id = creative_urn
+            social_post.ads_manager_url = ads_manager_url
+
+            social_post.mark_posted(
+                post_id=post_urn
+            )
+
+
+        # ------------------------------------
+        # FAILED CALLBACK
+        # ------------------------------------
+        else:
+
+            error_msg = (
+                validated_data.get("msg")
+                or validated_data.get("error_message")
+                or "Unknown provider error"
+            )
+
+            social_post.mark_failed(
+                error_message=str(error_msg)
+            )
+
+            campaign.status = Campaign.Status.FAILED
+            campaign.save(update_fields=["status"])
+
+
+        return social_post
+
+
+    except Exception as e:
+        logger.error(
+            f"Zapier Callback Error: {str(e)}"
+        )
+        raise e
 
 
 
@@ -99,6 +261,7 @@ def get_facebook_post_insights(post_id, page_token):
     print("FB INSIGHTS RESULT:", result)
     print("=" * 60)
     return result
+
 
 
 def list_available_metrics(post_id, page_token):
@@ -155,7 +318,7 @@ def _is_direct_image_url(url: str) -> bool:
         "images.unsplash.com", "images.pexels.com", "i.imgur.com",
         "res.cloudinary.com", "cdn.pixabay.com", "media.istockphoto.com",
         "images.squarespace-cdn.com", "cdn.shopify.com",
-        "storage.googleapis.com", "s3.amazonaws.com",
+        "storage.googleapis.com", "s3.amazonaws.com","picsum.photos", 
     )
     try:
         import urllib.parse
@@ -372,7 +535,185 @@ def post_to_linkedin(access_token, author_urn, message, image_url=None):
         return response.json()
     except Exception:
         return {}
+    
+    
+def get_linkedin_ad_details(access_token, ad_creative_id):
+    # Use the rest/adCreatives endpoint
+    url = f"https://api.linkedin.com/rest/adCreatives/{ad_creative_id}"
+    
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "X-Restli-Protocol-Version": "2.0.0",
+        # "LinkedIn-Version": "202509", # Must match your other calls
+        "LinkedIn-Version": settings.LINKEDIN_API_VERSION
+    }
 
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Error: {response.status_code} - {response.text}")
+    except Exception as e:
+        print(f"Request failed: {e}")
+    return None    
+    
+    
+def get_linkedin_post_analytics(post_urn, access_token):
+    """
+    Fetches engagement (likes, comments, shares, clicks) for a specific Post URN.
+    API: organizationalEntityShareStatistics
+    """
+    # Note: For LinkedIn, the 'author' is usually the organization URN 
+    # extract the organization URN from the author field if possible
+    # For now, we query specifically by the Share URN
+    url = "https://api.linkedin.com/v2/organizationalEntityShareStatistics"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "X-Restli-Protocol-Version": "2.0.0",
+    }
+    params = {
+        "q": "organizationalEntity",
+        "organizationalEntity": settings.LINKEDIN_ORGANIZATION_URN, # e.g. 'urn:li:organization:12345'
+        "shares": [post_urn]
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+        print(f"LinkedIn Post Analytics Status: {response.status_code}")
+        
+        if response.status_code == 200:
+            elements = response.json().get("elements", [])
+            if elements:
+                stats = elements[0].get("totalShareStatistics", {})
+                return {
+                    "impressions": stats.get("impressionCount", 0),
+                    "clicks": stats.get("clickCount", 0),
+                    "likes": stats.get("likeCount", 0),
+                    "comments": stats.get("commentCount", 0),
+                    "shares": stats.get("shareCount", 0),
+                }
+    except Exception as e:
+        print(f"LinkedIn Post Analytics Error: {e}")
+    return None
+
+
+def get_linkedin_ads_analytics(access_token, account_id, pivot="CAMPAIGN", urn_list=None):
+    """
+    Fetches LinkedIn ad analytics using the REST API (202502+).
+    Requires a 3-legged OAuth token with r_ads_reporting scope.
+    """
+    # Use the REST endpoint, NOT v2/adAnalyticsV2
+    url = "https://api.linkedin.com/rest/adAnalytics"
+
+    headers = {
+        "Authorization": f"Bearer {access_token.strip()}",
+        "X-Restli-Protocol-Version": "2.0.0",
+        # "LinkedIn-Version": "202509",          # ← REQUIRED for REST endpoint
+       "LinkedIn-Version": settings.LINKEDIN_API_VERSION
+    }
+
+    # Normalize account URN
+    if account_id and not str(account_id).startswith("urn:li:sponsoredAccount:"):
+        account_urn = f"urn:li:sponsoredAccount:{account_id}"  # ← sponsoredAccount, not adAccount
+    else:
+        account_urn = str(account_id).strip()
+
+    params = {
+        "q": "analytics",
+        "pivot": pivot,
+        "dateRange.start.day": 1,
+        "dateRange.start.month": 1,
+        "dateRange.start.year": 2024,
+        "timeGranularity": "ALL",
+        "fields": "impressions,clicks,costInLocalCurrency,externalWebsiteConversions,leads",
+        "accounts[0]": account_urn,            # ← indexed array format for REST
+    }
+
+    # Add campaign filter with indexed array format
+    if pivot == "CAMPAIGN" and urn_list:
+        for i, urn in enumerate(urn_list):
+            params[f"campaigns[{i}]"] = urn
+    elif pivot == "CAMPAIGN_GROUP" and urn_list:
+        for i, urn in enumerate(urn_list):
+            params[f"campaignGroups[{i}]"] = urn
+
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=15)
+        print(f"DEBUG: LinkedIn Query URL: {response.url}")
+        print(f"DEBUG: LinkedIn Response Status: {response.status_code}")
+
+        if response.status_code == 200:
+            return response.json().get("elements", [])
+        else:
+            print(f"LinkedIn API Error {response.status_code}: {response.text}")
+            return None
+
+    except Exception as e:
+        print(f"LinkedIn Ads Analytics Exception: {e}")
+        return None
+
+def sync_linkedin_analytics_for_campaign(campaign):
+    from restapi.models import CampaignSocialMediaConfig
+    
+    # 1. Get the config for THIS campaign using updated field logic
+    config = CampaignSocialMediaConfig.objects.filter(
+        campaign=campaign, 
+        platform_name='linkedin'
+    ).first()
+    
+    # ✅ FIX: Use 'access_token' instead of 'linkedin_access_token'
+    if not config or not config.access_token:
+        return {"error": "No LinkedIn configuration or token found"}
+    
+    access_token = config.access_token
+    # ✅ FIX: Use 'platform_account_id' instead of 'li_ads_account_id'
+    account_id = config.platform_account_id 
+    
+    results = {"post_metrics": None, "ad_metrics": None}
+
+    # 2. Fetch Ad-level data (Sponsored)
+    if campaign.li_campaign_urn:
+        camp_urn = campaign.li_campaign_urn
+        if not camp_urn.startswith("urn:li:"):
+             camp_urn = f"urn:li:sponsoredCampaign:{camp_urn}"
+            
+        results["ad_metrics"] = get_linkedin_ads_analytics(
+            access_token, 
+            account_id, 
+            pivot="CAMPAIGN", 
+            urn_list=[camp_urn]
+        )
+
+        # 3. Update the campaign's budget_data JSON field
+        if results["ad_metrics"] and len(results["ad_metrics"]) > 0:
+            metrics = results["ad_metrics"][0] 
+            
+            impressions = metrics.get("impressions", 0)
+            clicks = metrics.get("clicks", 0)
+            spend = float(metrics.get("costInLocalCurrency", 0.0))
+            
+            ctr = (clicks / impressions * 100) if impressions > 0 else 0
+            cpc = (spend / clicks) if clicks > 0 else 0
+
+            if campaign.budget_data is None:
+                campaign.budget_data = {}
+
+            campaign.budget_data.update({
+                "impressions": impressions,
+                "clicks": clicks,
+                "spend": spend,
+                "ctr": round(ctr, 2),
+                "cpc": round(cpc, 2),
+                "last_synced_at": datetime.now().isoformat()
+            })
+            
+            campaign.save(update_fields=['budget_data'])
+            print(f"Successfully synced metrics for {campaign.campaign_name}")
+        else:
+            print(f"No metrics found for URN: {campaign.li_campaign_urn}")
+
+    return results
 
 # =====================================================
 # MAIL NOTIFICATION HELPERS

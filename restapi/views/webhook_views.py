@@ -1,6 +1,8 @@
+# vidai-lms-services\restapi\views\webhook_views.py
 # =====================================================
 # Imports (ONLY REQUIRED)
 # =====================================================
+from django.utils import timezone
 import logging
 import traceback
 
@@ -9,8 +11,12 @@ from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 
 from restapi.models import Lead, Clinic
+from restapi.models.campaign import Campaign
+from restapi.serializers.campaign_social_post_serializer import CampaignSocialPostCallbackSerializer
+from restapi.services.campaign_social_post_service import handle_zapier_callback
 from restapi.services.zapier_service import send_to_zapier
 
 from drf_yasg.utils import swagger_auto_schema
@@ -23,6 +29,365 @@ from restapi.serializers.mailchimp_serializer import MailchimpWebhookSerializer
 from restapi.services.mailchimp_service import create_mailchimp_event
 
 logger = logging.getLogger(__name__)
+
+
+# -------------------------------------------------------------------
+# LINKEDIN ZAPIER CALLBACK — Updates campaign with LinkedIn URNs
+# POST /api/webhooks/linkedin-zapier-callback/
+# -------------------------------------------------------------------
+class LinkedInZapierCallbackAPIView(APIView):
+    permission_classes = []
+
+    @swagger_auto_schema(
+        operation_description="Zapier callback to update LinkedIn post URNs",
+        request_body=CampaignSocialPostCallbackSerializer,
+        responses={200: "Success", 400: "Validation Error"},
+        tags=["Webhooks"],
+    )
+
+    def post(self, request):
+
+        payload = request.data
+        
+
+        try:
+            
+            # ----------------------------------------
+            # LINKEDIN STATUS CALLBACK
+            # ----------------------------------------
+            if payload.get("action") == "STATUS_SYNC":
+
+                campaign = Campaign.objects.get(
+                    id=payload.get(
+                        "internal_campaign_uuid"
+                    )
+                )
+
+                # provider status from LinkedIn
+                campaign.linkedin_live_status = payload.get(
+                    "linkedin_status"
+                )
+
+                campaign.modified_at = timezone.now()
+
+                campaign.save(
+                    update_fields=[
+                        "linkedin_live_status",
+                        "modified_at"
+                    ]
+                )
+
+                return Response(
+                    {
+                        "status":"provider_status_saved",
+                        "linkedin_status":
+                            campaign.linkedin_live_status
+                    }
+                )
+                
+                
+            # ----------------------------------------
+            # LINKEDIN UPDATE CALLBACK
+            # ----------------------------------------
+            if payload.get("action") == "UPDATE_SYNC":
+
+                campaign = Campaign.objects.get(
+                    id=payload.get(
+                        "internal_campaign_uuid"
+                    )
+                )
+
+                new_status = payload.get(
+                    "linkedin_status"
+                )
+
+                campaign.linkedin_live_status = new_status
+
+
+                if new_status == "ACTIVE":
+                    campaign.status = Campaign.Status.LIVE
+
+                elif new_status == "PAUSED":
+                    campaign.status = Campaign.Status.PAUSED
+
+
+                campaign.modified_at = timezone.now()
+
+                campaign.save(
+                    update_fields=[
+                        "linkedin_live_status",
+                        "status",
+                        "modified_at"
+                    ]
+                )
+
+                return Response({
+                    "status":"update_synced",
+                    "linkedin_status":new_status,
+                    "campaign_id":str(campaign.id)
+                })
+            
+            # # ----------------------------------------
+            # # INSIGHTS METRICS CALLBACK
+            # # ----------------------------------------
+            # if payload.get("action") == "INSIGHTS_SYNC":
+
+            #     campaign = Campaign.objects.get(
+            #         id=payload.get("internal_campaign_uuid")
+            #     )
+
+            #     campaign.last_synced_metrics = {
+            #         "campaign_metrics":
+            #             payload.get("metrics", {}),
+
+            #         "ads":
+            #             payload.get("ads", [])
+            #     }
+
+            #     campaign.last_metrics_synced_at = (
+            #         timezone.now()
+            #     )
+                
+            #     campaign.modified_at = timezone.now()
+
+            #     campaign.save(
+            #         update_fields=[
+            #             "last_synced_metrics",
+            #             "last_metrics_synced_at",
+            #             "modified_at"
+            #         ]
+            #     )
+
+            #     return Response(
+            #         {
+            #         "status":"metrics_saved",
+            #         "campaign_id":str(campaign.id)
+            #         }
+            #     )
+            
+            # campaign = Campaign.objects.get(
+            #     id=payload.get("internal_campaign_uuid")
+            # )
+
+            # campaign_urn = payload.get("campaign_urn")
+            # creative_urn = payload.get("creative_urn")
+
+            # campaign.linkedin_campaign_urn = campaign_urn
+
+            # if campaign_urn:
+            #     campaign.linkedin_external_campaign_id = (
+            #         campaign_urn.split(":")[-1]
+            #     )
+
+            # campaign.linkedin_creative_urn = creative_urn
+
+            # if creative_urn:
+            #     campaign.linkedin_creative_id = (
+            #         creative_urn.split(":")[-1]
+            #     )
+
+            # campaign.linkedin_account_id = payload.get("account_id")
+            # campaign.linkedin_post_urn = payload.get("post_urn")
+            # campaign.linkedin_campaign_group_urn = payload.get(
+            #     "campaign_group_urn"
+            # )
+
+            # campaign.linkedin_ads_manager_url = payload.get(
+            #     "ads_manager_url"
+            # )
+
+            # campaign.linkedin_raw_response = payload
+
+            # campaign.status = Campaign.Status.SCHEDULED
+            # campaign.modified_at = timezone.now()
+
+            # campaign.save()
+
+            # return Response({
+            #     "status":"success",
+            #     "campaign_id":str(campaign.id)
+            # })
+            
+            
+            # ----------------------------------------
+            # INSIGHTS METRICS CALLBACK
+            # ----------------------------------------
+            if payload.get("action") == "INSIGHTS_SYNC":
+
+                campaign = Campaign.objects.get(
+                    id=payload.get(
+                        "internal_campaign_uuid"
+                    )
+                )
+
+                campaign.last_synced_metrics = {
+                    "campaign_metrics":
+                        payload.get(
+                            "metrics",
+                            {}
+                        ),
+
+                    "ads":
+                        payload.get(
+                            "ads",
+                            []
+                        )
+                }
+
+                campaign.last_metrics_synced_at = (
+                    timezone.now()
+                )
+
+                campaign.modified_at = (
+                    timezone.now()
+                )
+
+                campaign.save(
+                    update_fields=[
+                        "last_synced_metrics",
+                        "last_metrics_synced_at",
+                        "modified_at"
+                    ]
+                )
+
+                return Response(
+                    {
+                      "status":"metrics_saved",
+                      "campaign_id":
+                         str(campaign.id)
+                    }
+                )
+
+
+            # ----------------------------------------
+            # LINKEDIN CREATE CALLBACK
+            # ----------------------------------------
+            campaign = Campaign.objects.get(
+                id=payload.get(
+                    "internal_campaign_uuid"
+                )
+            )
+
+            campaign_urn = payload.get(
+                "campaign_urn"
+            )
+
+            creative_urn = payload.get(
+                "creative_urn"
+            )
+
+
+            # Never overwrite valid values with None
+            if campaign_urn:
+                campaign.linkedin_campaign_urn = (
+                    campaign_urn
+                )
+
+                campaign.linkedin_external_campaign_id = (
+                    campaign_urn.split(":")[-1]
+                )
+
+
+            if creative_urn:
+                campaign.linkedin_creative_urn = (
+                    creative_urn
+                )
+
+                campaign.linkedin_creative_id = (
+                    creative_urn.split(":")[-1]
+                )
+
+
+            account_id = payload.get(
+                "account_id"
+            )
+
+            if account_id:
+                campaign.linkedin_account_id = (
+                    account_id
+                )
+
+
+            post_urn = payload.get(
+                "post_urn"
+            )
+
+            if post_urn:
+                campaign.linkedin_post_urn = (
+                    post_urn
+                )
+
+
+            campaign_group_urn = payload.get(
+                "campaign_group_urn"
+            )
+
+            if campaign_group_urn:
+                campaign.linkedin_campaign_group_urn = (
+                    campaign_group_urn
+                )
+
+
+            ads_manager_url = payload.get(
+                "ads_manager_url"
+            )
+
+            if ads_manager_url:
+                campaign.linkedin_ads_manager_url = (
+                    ads_manager_url
+                )
+
+
+            campaign.linkedin_raw_response = (
+                payload
+            )
+
+
+            campaign.status = (
+                Campaign.Status.SCHEDULED
+            )
+
+            campaign.modified_at = (
+                timezone.now()
+            )
+
+
+            campaign.save(
+                update_fields=[
+                    "linkedin_campaign_urn",
+                    "linkedin_external_campaign_id",
+                    "linkedin_creative_urn",
+                    "linkedin_creative_id",
+                    "linkedin_account_id",
+                    "linkedin_post_urn",
+                    "linkedin_campaign_group_urn",
+                    "linkedin_ads_manager_url",
+                    "linkedin_raw_response",
+                    "status",
+                    "modified_at"
+                ]
+            )
+
+
+            return Response(
+                {
+                    "status":"success",
+                    "campaign_id":
+                        str(campaign.id)
+                }
+            )
+
+        except Exception as e:
+            import traceback
+            print(traceback.format_exc())
+
+            return Response(
+                {
+                "error": str(e),
+                "payload": request.data
+                },
+                status=400
+            )
 
 
 # =====================================================
