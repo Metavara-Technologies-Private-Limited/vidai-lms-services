@@ -272,37 +272,27 @@ class LeadSerializer(serializers.ModelSerializer):
         return attrs
 
     # =====================================================
-    # CREATE
+    # CREATE ✅ INSIDE CLASS
     # =====================================================
     def create(self, validated_data):
         request = self.context.get("request")
 
-        # remove pipeline_id (not stored in lead)
         validated_data.pop("pipeline_id", None)
 
-        if request and hasattr(request.user, "employee"):
-            validated_data["created_by_id"] = request.user.employee.id
-            validated_data["created_by_name"] = request.user.employee.emp_name
-
-        # 🔥 personal name auto
         if validated_data.get("full_name"):
             validated_data["personal_name"] = validated_data["full_name"]
 
         return create_lead(validated_data, request=request)
 
     # =====================================================
-    # UPDATE
+    # UPDATE ✅ INSIDE CLASS
     # =====================================================
     def update(self, instance, validated_data):
         request = self.context.get("request")
 
         validated_data.pop("pipeline_id", None)
 
-        if request and hasattr(request.user, "employee"):
-            validated_data["updated_by_id"] = request.user.employee.id
-            validated_data["updated_by_name"] = request.user.employee.emp_name
-
         if validated_data.get("full_name"):
             validated_data["personal_name"] = validated_data["full_name"]
 
-        return update_lead(instance, validated_data)
+        return update_lead(instance, validated_data, request=request)

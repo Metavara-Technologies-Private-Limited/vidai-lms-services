@@ -1,3 +1,6 @@
+# =====================================================
+# Imports
+# =====================================================
 from django.core.mail import send_mail
 from django.utils import timezone
 from django.utils.html import strip_tags
@@ -20,7 +23,24 @@ from restapi.models import (
 
 
 # =====================================================
-# HELPER
+# HELPER: USER INFO (🔥 NEW)
+# =====================================================
+def _get_user_info(request):
+    if not request:
+        return None, "System"
+
+    user = request.user
+
+    # If employee exists
+    if hasattr(user, "employee") and user.employee:
+        return user.employee.id, user.employee.emp_name
+
+    # fallback
+    return user.id, str(user)
+
+
+# =====================================================
+# HELPER: ASSIGNEE NAME
 # =====================================================
 def _resolve_assignee_name(assigned_to_id, assigned_to_name):
     if isinstance(assigned_to_name, str) and assigned_to_name.strip():
@@ -52,6 +72,12 @@ def create_lead(validated_data, request=None):
 
     validated_data.pop("clinic_id", None)
 
+    # ===================== 🔥 CREATED BY FIX =====================
+    validated_data.pop("created_by_id", None)
+    validated_data.pop("created_by_name", None)
+
+    created_by_id, created_by_name = _get_user_info(request)
+
     # ===================== STAGE =====================
     stage_id = validated_data.pop("stage_id", None)
     stage = None
@@ -61,7 +87,7 @@ def create_lead(validated_data, request=None):
             id=stage_id,
             is_active=True,
             is_deleted=False,
-            pipeline__clinic=clinic   # 🔥 safety check
+            pipeline__clinic=clinic
         ).select_related("pipeline").first()
 
         if not stage:
@@ -101,17 +127,8 @@ def create_lead(validated_data, request=None):
         validated_data.pop("assigned_to_name", None)
     )
 
-    # ===================== CREATED BY =====================
-    created_by_id = validated_data.pop("created_by_id", None)
-    created_by_name = validated_data.pop("created_by_name", None)
-
-    if request and hasattr(request.user, "employee"):
-        employee = request.user.employee
-        created_by_id = created_by_id or employee.id
-        created_by_name = created_by_name or employee.emp_name
-
     # =====================================================
-    # 🔥 REFERRAL (OBJECT + ID SUPPORT)
+    # REFERRAL
     # =====================================================
     referral_department = None
     referral_source = None
@@ -121,7 +138,7 @@ def create_lead(validated_data, request=None):
 
     referral_source_data = request.data.get("referral_source") if request else None
 
-    # 🔥 OBJECT FLOW
+    # OBJECT FLOW
     if referral_source_data:
         first_name = referral_source_data.get("first_name", "").strip()
         last_name = referral_source_data.get("last_name", "").strip()
@@ -145,7 +162,7 @@ def create_lead(validated_data, request=None):
             created_by=request.user if request else None
         )
 
-    # 🔹 ID FLOW
+    # ID FLOW
     else:
         if ref_source_id and not ref_dept_id:
             raise ValidationError({"referral_department_id": "Required"})
@@ -201,6 +218,15 @@ def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
+    # ===================== 🔥 UPDATED BY FIX =====================
+    validated_data.pop("updated_by_id", None)
+    validated_data.pop("updated_by_name", None)
+
+    updated_by_id, updated_by_name = _get_user_info(request)
+
+    instance.updated_by_id = updated_by_id
+    instance.updated_by_name = updated_by_name
+
     # ===================== STAGE =====================
     stage_id = validated_data.pop("stage_id", None)
 
@@ -228,6 +254,7 @@ def update_lead(instance, validated_data, request=None):
             assigned_to_name
         )
 
+    # ===================== UPDATE FIELDS =====================
     # =====================================================
     # 🔥 REFERRAL UPDATE (FIXED)
     # =====================================================
@@ -272,7 +299,6 @@ def update_lead(instance, validated_data, request=None):
                 clinic=instance.clinic
             ).first()
 
-    # ===================== UPDATE =====================
     for field, value in validated_data.items():
         if hasattr(instance, field):
             setattr(instance, field, value)
@@ -286,7 +312,7 @@ def update_lead(instance, validated_data, request=None):
 
 
 # =====================================================
-# CLEAN EMAIL BODY
+# EMAIL HELPERS (UNCHANGED)
 # =====================================================
 def _clean_email_body(text: str) -> str:
     if not text:
@@ -309,9 +335,6 @@ def _clean_email_body(text: str) -> str:
     return plain.strip()
 
 
-# =====================================================
-# SEND EMAIL
-# =====================================================
 @transaction.atomic
 def send_lead_email(email_id):
 
