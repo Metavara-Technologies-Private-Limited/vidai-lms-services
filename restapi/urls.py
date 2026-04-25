@@ -213,10 +213,10 @@ urlpatterns = [
     path("linkedin/status/", LinkedInStatusAPIView.as_view(), name="linkedin-status"),
     
     # LinkedIn Ads & Analytics endpoints (add these)
-    path("linkedin/ad-accounts/", LinkedInAdsAccountsAPIView.as_view(), name="linkedin-ad-accounts"),
-    path("linkedin/campaigns/", LinkedInCampaignsAPIView.as_view(), name="linkedin-campaigns"),
-    path("linkedin/campaign-analytics/", LinkedInCampaignAnalyticsAPIView.as_view(), name="linkedin-campaign-analytics"),
-    path("linkedin/full-analytics/", LinkedInFullAnalyticsAPIView.as_view(), name="linkedin-full-analytics"),
+    #path("linkedin/ad-accounts/", LinkedInAdsAccountsAPIView.as_view(), name="linkedin-ad-accounts"),
+    #path("linkedin/campaigns/", LinkedInCampaignsAPIView.as_view(), name="linkedin-campaigns"),
+    #path("linkedin/campaign-analytics/", LinkedInCampaignAnalyticsAPIView.as_view(), name="linkedin-campaign-analytics"),
+    #path("linkedin/full-analytics/", LinkedInFullAnalyticsAPIView.as_view(), name="linkedin-full-analytics"),
     path("linkedin/status/", LinkedInStatusAPIView.as_view()),
     path("social/campaign/insights/", LinkedInCampaignInsightsAPIView.as_view(), name="linkedin-campaign-insights"),
     path("social/campaign/status/", LinkedInCampaignStatusAPIView.as_view(), name="linkedin-campaign-status"),
