@@ -1,18 +1,20 @@
 from django.db import models
+
 from .campaign import Campaign
+
 
 class CampaignSocialMediaConfig(models.Model):
 
-    INSTAGRAM = "instagram"
-    FACEBOOK = "facebook"
-    LINKEDIN = "linkedin"
-    GOOGLE_ADS = "google_ads"   # ✅ FIX ADDED
+    INSTAGRAM  = "instagram"
+    FACEBOOK   = "facebook"
+    LINKEDIN   = "linkedin"
+    GOOGLE_ADS = "google_ads"  # ✅ ADDED
 
     PLATFORM_CHOICES = (
         (INSTAGRAM,  "Instagram"),
         (FACEBOOK,   "Facebook"),
         (LINKEDIN,   "LinkedIn"),
-        (GOOGLE_ADS, "Google Ads"),  # ✅ now works
+        (GOOGLE_ADS, "Google Ads"),  # ✅ ADDED
     )
 
     campaign = models.ForeignKey(
@@ -21,26 +23,26 @@ class CampaignSocialMediaConfig(models.Model):
         related_name="social_configs"
     )
 
+    # ✅ POST ID (Correct Place)
+    post_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Stores social media post ID"
+    )
+
     platform_name = models.CharField(
         max_length=50,
         choices=PLATFORM_CHOICES
     )
 
-    access_token = models.TextField(
-        null=True, 
-        blank=True, 
-        help_text="OAuth2 token for API calls (LinkedIn, FB, etc.)"
-    )
-    
-    platform_account_id = models.CharField(
-        max_length=255, 
-        null=True, 
-        blank=True,
-        help_text="Platform specific ID (e.g., LinkedIn Ad Account ID or FB Page ID)"
-    )
-
-    post_id = models.CharField(max_length=255, null=True, blank=True)
-
     is_active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # ✅ INSIGHTS
+    insights = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Stores campaign insights fetched from social media platforms"
+    )
