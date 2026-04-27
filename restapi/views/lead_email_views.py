@@ -1,5 +1,5 @@
 # =====================================================
-# Imports (ONLY REQUIRED)
+# Imports
 # =====================================================
 import logging
 import traceback
@@ -23,10 +23,9 @@ from restapi.services.lead_email_service import send_lead_email
 logger = logging.getLogger(__name__)
 
 
-
-# -------------------------------------------------------------------
-# Lead Email API View (POST)
-# -------------------------------------------------------------------
+# =====================================================
+# Lead Email API View (CREATE + OPTIONAL SEND)
+# =====================================================
 class LeadEmailAPIView(APIView):
 
     @swagger_auto_schema(
@@ -44,20 +43,24 @@ class LeadEmailAPIView(APIView):
                 schema=LeadEmailSerializer
             ),
             400: "Bad Request"
-        }
+        },
+        tags=["Lead Email"]
     )
     @transaction.atomic
     def post(self, request):
 
-        serializer = LeadEmailSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer = LeadEmailSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
 
-        send_now = request.data.get("send_now", False)
+            # ✅ Get validated send_now
+            send_now = serializer.validated_data.get("send_now", False)
 
-        email_obj = serializer.save()
+            # ✅ Create email (clinic auto-handled in model)
+            email_obj = serializer.save()
 
-        if send_now:
-            try:
+            # ✅ Send immediately if requested
+            if send_now:
                 email_obj = send_lead_email(email_obj.id)
 
                 return Response(
@@ -70,49 +73,76 @@ class LeadEmailAPIView(APIView):
                     status=status.HTTP_201_CREATED
                 )
 
-            except Exception as e:
-                return Response(
-                    {
-                        "message": "Email created but sending failed",
-                        "error": str(e)
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            # ✅ Default response (draft)
+            return Response(
+                {
+                    "message": "Email saved as draft",
+                    "status": email_obj.status,
+                    "data": LeadEmailSerializer(email_obj).data
+                },
+                status=status.HTTP_201_CREATED
+            )
 
-        return Response(
-            {
-                "message": "Email saved as draft",
-                "status": email_obj.status,
-                "data": LeadEmailSerializer(email_obj).data
-            },
-            status=status.HTTP_201_CREATED
-        )
+        except Exception as e:
+            logger.error("Lead Email Create Error:\n" + traceback.format_exc())
+
+            return Response(
+                {
+                    "error": "Email creation failed",
+                    "details": str(e)
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
+# =====================================================
+# Lead Email List API View
+# =====================================================
 class LeadMailListAPIView(APIView):
 
     @swagger_auto_schema(
-        operation_description="Retrieve Lead Mail list (optional filter by lead_uuid)",
+        operation_summary="Get Lead Emails",
+        operation_description="""
+        Retrieve list of emails.
+
+        Optional Filters:
+        - lead_uuid
+        - clinic_id
+        """,
         manual_parameters=[
             openapi.Parameter(
                 "lead_uuid",
                 openapi.IN_QUERY,
-                description="Filter by Lead UUID (optional)",
+                description="Filter by Lead UUID",
                 type=openapi.TYPE_STRING,
                 required=False,
-            )
+            ),
+            openapi.Parameter(
+                "clinic_id",
+                openapi.IN_QUERY,
+                description="Filter by Clinic ID",
+                type=openapi.TYPE_STRING,
+                required=False,
+            ),
         ],
         responses={200: LeadMailListSerializer(many=True)},
-        tags=["Lead Mail"],
+        tags=["Lead Email"]
     )
     def get(self, request):
+
         try:
             lead_uuid = request.query_params.get("lead_uuid")
+            clinic_id = request.query_params.get("clinic_id")
 
             queryset = LeadEmail.objects.all().order_by("-created_at")
 
+            # ✅ Filter by lead
             if lead_uuid:
                 queryset = queryset.filter(lead__id=lead_uuid)
+
+            # ✅ Filter by clinic
+            if clinic_id:
+                queryset = queryset.filter(clinic__id=clinic_id)
 
             serializer = LeadMailListSerializer(queryset, many=True)
 
@@ -120,6 +150,7 @@ class LeadMailListAPIView(APIView):
 
         except Exception:
             logger.error("Lead Mail Fetch Error:\n" + traceback.format_exc())
+
             return Response(
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

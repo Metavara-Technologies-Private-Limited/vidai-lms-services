@@ -31,10 +31,9 @@ from restapi.services.twilio_service import (
 logger = logging.getLogger(__name__)
 
 
-
-
+# =====================================================
 # SEND SMS API
-# -------------------------------------------------------------------
+# =====================================================
 class SendSMSAPIView(APIView):
 
     @swagger_auto_schema(
@@ -97,9 +96,9 @@ class SendSMSAPIView(APIView):
             )
 
 
-# -------------------------------------------------------------------
+# =====================================================
 # MAKE CALL API
-# -------------------------------------------------------------------
+# =====================================================
 class MakeCallAPIView(APIView):
 
     @swagger_auto_schema(
@@ -161,8 +160,10 @@ class MakeCallAPIView(APIView):
             )
 
 
+# =====================================================
+# SMS CALLBACK
+# =====================================================
 class TwilioSMSStatusCallbackAPIView(APIView):
-    """Receives Twilio SMS status callbacks and forwards updates to Zapier."""
 
     authentication_classes = []
     permission_classes = []
@@ -226,8 +227,10 @@ class TwilioSMSStatusCallbackAPIView(APIView):
             return Response({"error": "Internal Server Error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# =====================================================
+# CALL CALLBACK
+# =====================================================
 class TwilioCallStatusCallbackAPIView(APIView):
-    """Receives Twilio call status callbacks and forwards updates to Zapier."""
 
     authentication_classes = []
     permission_classes = []
@@ -289,17 +292,16 @@ class TwilioCallStatusCallbackAPIView(APIView):
             return Response({"error": "Internal Server Error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# =====================================================
+# SMS LIST (WITH clinic_id)
+# =====================================================
 class TwilioMessageListAPIView(APIView):
 
     @swagger_auto_schema(
         operation_description="Retrieve SMS list",
         manual_parameters=[
-            openapi.Parameter(
-                "lead_uuid",
-                openapi.IN_QUERY,
-                description="Filter by Lead UUID",
-                type=openapi.TYPE_STRING,
-            )
+            openapi.Parameter("lead_uuid", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("clinic_id", openapi.IN_QUERY, type=openapi.TYPE_INTEGER),
         ],
         responses={200: TwilioMessageListSerializer(many=True)},
         tags=["Twilio"],
@@ -307,11 +309,15 @@ class TwilioMessageListAPIView(APIView):
     def get(self, request):
         try:
             lead_uuid = request.query_params.get("lead_uuid")
+            clinic_id = request.query_params.get("clinic_id")
 
             queryset = TwilioMessage.objects.all()
 
             if lead_uuid:
                 queryset = queryset.filter(lead__id=lead_uuid)
+
+            if clinic_id:
+                queryset = queryset.filter(clinic__id=clinic_id)
 
             serializer = TwilioMessageListSerializer(queryset, many=True)
 
@@ -319,23 +325,19 @@ class TwilioMessageListAPIView(APIView):
 
         except Exception:
             logger.error("Twilio SMS Fetch Error:\n" + traceback.format_exc())
-            return Response(
-                {"error": "Internal Server Error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return Response({"error": "Internal Server Error"}, status=500)
 
 
+# =====================================================
+# CALL LIST (WITH clinic_id)
+# =====================================================
 class TwilioCallListAPIView(APIView):
 
     @swagger_auto_schema(
         operation_description="Retrieve Call list",
         manual_parameters=[
-            openapi.Parameter(
-                "lead_uuid",
-                openapi.IN_QUERY,
-                description="Filter by Lead UUID",
-                type=openapi.TYPE_STRING,
-            )
+            openapi.Parameter("lead_uuid", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("clinic_id", openapi.IN_QUERY, type=openapi.TYPE_INTEGER),
         ],
         responses={200: TwilioCallListSerializer(many=True)},
         tags=["Twilio"],
@@ -343,11 +345,15 @@ class TwilioCallListAPIView(APIView):
     def get(self, request):
         try:
             lead_uuid = request.query_params.get("lead_uuid")
+            clinic_id = request.query_params.get("clinic_id")
 
             queryset = TwilioCall.objects.all()
 
             if lead_uuid:
                 queryset = queryset.filter(lead__id=lead_uuid)
+
+            if clinic_id:
+                queryset = queryset.filter(clinic__id=clinic_id)
 
             serializer = TwilioCallListSerializer(queryset, many=True)
 
@@ -355,7 +361,4 @@ class TwilioCallListAPIView(APIView):
 
         except Exception:
             logger.error("Twilio Call Fetch Error:\n" + traceback.format_exc())
-            return Response(
-                {"error": "Internal Server Error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return Response({"error": "Internal Server Error"}, status=500)
