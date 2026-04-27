@@ -13,8 +13,7 @@ from restapi.services.referral_service import (
 )
 from restapi.serializers.referral_serializer import ReferralSourceSerializer
 from restapi.utils.clinic_scope import resolve_request_clinic
-from restapi.models import ReferralDepartment
-
+from restapi.models import Lead, ReferralDepartment
 
 # ==========================================
 # 🔹 Referral Source List API
@@ -82,15 +81,28 @@ class ReferralDashboardAPIView(APIView):
     )
     def get(self, request):
         try:
-            # 🔥 CLINIC ISOLATION
             clinic = resolve_request_clinic(request, required=True)
 
-            data = get_dashboard_counts(clinic)
+            counts = {}
+
+            departments = ReferralDepartment.objects.filter(
+                clinic=clinic,
+                is_active=True
+            )
+
+            for dept in departments:
+                count = Lead.objects.filter(
+                    clinic=clinic,
+                    referral_department=dept,
+                    is_deleted=False
+                ).values("referral_source_id").distinct().count()
+
+                counts[dept.name] = count
 
             return Response({
                 "success": True,
                 "message": "Dashboard fetched successfully",
-                "data": data
+                "data": counts
             }, status=status.HTTP_200_OK)
 
         except Exception as e:

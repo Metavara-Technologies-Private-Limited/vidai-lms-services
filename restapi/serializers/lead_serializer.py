@@ -63,6 +63,8 @@ class LeadReadSerializer(serializers.ModelSerializer):
     referral_source_id = serializers.IntegerField(source="referral_source.id", read_only=True)
     referral_source_name = serializers.CharField(source="referral_source.name", read_only=True)
 
+    referral_source_email = serializers.CharField(source="referral_source.email", read_only=True)   # ✅ NEW
+    referral_source_phone = serializers.CharField(source="referral_source.phone", read_only=True)   # ✅ NEW
     # STAGE
     stage_id = serializers.UUIDField(source="stage.id", read_only=True)
     stage_name = serializers.CharField(source="stage.stage_name", read_only=True)

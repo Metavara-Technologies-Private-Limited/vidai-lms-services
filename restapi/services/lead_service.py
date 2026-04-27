@@ -198,7 +198,7 @@ def create_lead(validated_data, request=None):
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)
 
-    referral_source_data = request.data.get("referral_source") if request else None
+    referral_source_data = validated_data.pop("referral_source", None)
 
     if referral_source_data:
         first_name = referral_source_data.get("first_name", "").strip()
@@ -208,20 +208,33 @@ def create_lead(validated_data, request=None):
 
         full_name = f"{first_name} {last_name}".strip()
 
-        if role:
+        # Resolve referral department (priority: FE id > role mapping)
+        if ref_dept_id:
+            referral_department = ReferralDepartment.objects.filter(
+                id=ref_dept_id,
+                clinic=clinic,
+                is_active=True
+            ).first()
+        elif role:
             referral_department = ReferralDepartment.objects.filter(
                 name__iexact=role.strip(),
                 clinic=clinic,
                 is_active=True
             ).first()
 
-        referral_source = ReferralSource.objects.create(
-            name=full_name,
+        referral_source = ReferralSource.objects.filter(
             email=email,
-            clinic=clinic,
-            referral_department=referral_department,
-            created_by=request.user if request else None
-        )
+            clinic=clinic
+        ).first()
+
+        if not referral_source:
+            referral_source = ReferralSource.objects.create(
+                name=full_name,
+                email=email,
+                clinic=clinic,
+                referral_department=referral_department,
+                created_by=request.user if request else None
+            )
 
     else:
         if ref_source_id and not ref_dept_id:
@@ -246,6 +259,10 @@ def create_lead(validated_data, request=None):
                 raise ValidationError("Referral mismatch")
 
     # ===================== CREATE =====================
+    # FINAL SAFETY CLEAN (ADD HERE)
+    validated_data.pop("referral_department_id", None)
+    validated_data.pop("referral_source_id", None)
+
     lead = Lead.objects.create(
         clinic=clinic,
         department=department,
@@ -317,7 +334,7 @@ def update_lead(instance, validated_data, request=None):
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)
 
-    referral_source_data = request.data.get("referral_source") if request else None
+    referral_source_data = validated_data.pop("referral_source", None)
 
     if referral_source_data:
         full_name = f"{referral_source_data.get('first_name','')} {referral_source_data.get('last_name','')}".strip()
