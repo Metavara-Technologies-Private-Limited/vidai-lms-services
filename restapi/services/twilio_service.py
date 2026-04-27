@@ -25,30 +25,16 @@ def _format_phone(number: str, default_country_code: str = "+91") -> str:
     raw = str(number).strip()
     raw = raw.replace(" ", "").replace("-", "")
 
-    # -----------------------------
-    # CASE 1: International number
-    # -----------------------------
+    # preserve + if exists
     if raw.startswith("+"):
         digits = raw[1:]
-
-        if not digits.isdigit():
-            logger.error(f"Invalid international number: {number}")
-            return ""
-
-        if not (7 <= len(digits) <= 15):
-            logger.error(f"Invalid international length: {number}")
-            return ""
-
-        return raw
-
-    # -----------------------------
-    # CASE 2: Indian number
-    # -----------------------------
-    digits = "".join(ch for ch in raw if ch.isdigit())
+    else:
+        digits = "".join(ch for ch in raw if ch.isdigit())
 
     if not digits:
         return ""
 
+    # Handle prefixes
     if digits.startswith("91") and len(digits) == 12:
         digits = digits[2:]
     elif digits.startswith("0") and len(digits) == 11:
@@ -74,11 +60,6 @@ def _format_phone(number: str, default_country_code: str = "+91") -> str:
 
 
 def _notify_zapier(event: str, payload: dict):
-    """
-    Fire a POST to the Zapier webhook so Zapier can
-    trigger follow-up automations (email / SMS / sheets etc.)
-    Safe — never raises; logs on failure.
-    """
     url = getattr(settings, "ZAPIER_WEBHOOK_TWILIO_URL", None)
     if not url:
         logger.warning("ZAPIER_WEBHOOK_TWILIO_URL not set — skipping Zapier notify.")
@@ -99,7 +80,6 @@ def _notify_zapier(event: str, payload: dict):
             )
     except Exception as e:
         logger.error(f"Zapier notify failed [{event}]: {e}")
-
 
 
 def notify_zapier_event(event: str, payload: dict):
@@ -127,14 +107,13 @@ def _build_call_twiml(agent_number: str = "") -> str:
 def send_sms(lead_uuid, to_number, message_body):
 
     lead = Lead.objects.get(id=lead_uuid)
+    clinic = getattr(lead, "clinic", None)  # ✅ ADDED
 
     formatted_to_number = _format_phone(to_number)
     if not formatted_to_number:
         raise Exception("Invalid phone number")
 
     lead_phone = _format_phone(lead.contact_no or formatted_to_number)
-    clinic = getattr(lead, "clinic", None)
-
     sms_via_zapier = bool(getattr(settings, "TWILIO_SMS_VIA_ZAPIER", False))
 
     if sms_via_zapier:
@@ -152,7 +131,6 @@ def send_sms(lead_uuid, to_number, message_body):
             "sid": zap_sid,
             "status": zap_status,
         })
-
         logger.info(
             "SMS dispatched via Zapier: lead_uuid=%s sid=%s from=%s to=%s status=%s",
             lead_uuid,
@@ -171,7 +149,11 @@ def send_sms(lead_uuid, to_number, message_body):
             body=message_body,
             status=zap_status,
             direction="outbound",
-            raw_payload={"sid": zap_sid, "status": zap_status, "source": "zapier"},
+            raw_payload={
+                "sid": zap_sid,
+                "status": zap_status,
+                "source": "zapier",
+            },
         )
 
         return message_log
@@ -180,7 +162,6 @@ def send_sms(lead_uuid, to_number, message_body):
         settings.TWILIO_ACCOUNT_SID,
         settings.TWILIO_AUTH_TOKEN
     )
-
     sms_status_callback_url = getattr(settings, "TWILIO_SMS_STATUS_CALLBACK_URL", "").strip()
 
     sms_kwargs = {
@@ -202,6 +183,8 @@ def send_sms(lead_uuid, to_number, message_body):
         formatted_to_number,
         message.status,
     )
+
+
     TwilioMessage.objects.create(
         lead=lead,
         clinic=clinic,  # ✅ ADDED
@@ -211,19 +194,18 @@ def send_sms(lead_uuid, to_number, message_body):
         body=message_body,
         status=message.status,
         direction="outbound",
-        raw_payload={"sid": message.sid, "status": message.status},
+        raw_payload={"sid": message.sid, "status": message.status}
     )
-
     _notify_zapier("sms_sent", {
-        "lead_uuid": str(lead_uuid),
-        "lead_name": lead.full_name,
-        "lead_email": lead.email or "",
-        "lead_phone": lead_phone,
-        "from_number": settings.TWILIO_PHONE_NUMBER,
-        "to_number": formatted_to_number,
+        "lead_uuid"   : str(lead_uuid),
+        "lead_name"   : lead.full_name,
+        "lead_email"  : lead.email or "",
+        "lead_phone"  : lead_phone,
+        "from_number" : settings.TWILIO_PHONE_NUMBER,
+        "to_number"   : formatted_to_number,
         "message_body": message_body,
-        "sid": message.sid,
-        "status": message.status,
+        "sid"         : message.sid,
+        "status"      : message.status,
     })
 
     return message
@@ -236,6 +218,7 @@ def send_sms(lead_uuid, to_number, message_body):
 def make_call(lead_uuid, to_number, agent_number=None):
 
     lead = Lead.objects.get(id=lead_uuid)
+    clinic = getattr(lead, "clinic", None)  # ✅ ADDED
 
     formatted_to_number = _format_phone(to_number)
     if not formatted_to_number:
@@ -243,14 +226,11 @@ def make_call(lead_uuid, to_number, agent_number=None):
 
     formatted_agent_number = _format_phone(agent_number or getattr(settings, "TWILIO_BRIDGE_NUMBER", ""))
     lead_phone = _format_phone(lead.contact_no or formatted_to_number)
-    clinic = getattr(lead, "clinic", None)
-
     call_via_zapier = bool(getattr(settings, "TWILIO_CALL_VIA_ZAPIER", False))
 
     if call_via_zapier:
         zap_sid = f"ZAP-CALL-{uuid.uuid4().hex}"
         zap_status = "queued_in_zapier"
-
         _notify_zapier("call_initiated", {
             "lead_uuid": str(lead_uuid),
             "lead_name": lead.full_name,
@@ -262,6 +242,7 @@ def make_call(lead_uuid, to_number, agent_number=None):
             "sid": zap_sid,
             "status": zap_status,
         })
+
         logger.info(
             "Call dispatched via Zapier: lead_uuid=%s sid=%s from=%s to=%s status=%s",
             lead_uuid,
@@ -278,7 +259,12 @@ def make_call(lead_uuid, to_number, agent_number=None):
             from_number=settings.TWILIO_PHONE_NUMBER,
             to_number=formatted_to_number,
             status=zap_status,
-            raw_payload={"sid": zap_sid, "status": zap_status, "agent_number": formatted_agent_number, "source": "zapier"},
+            raw_payload={
+                "sid": zap_sid,
+                "status": zap_status,
+                "agent_number": formatted_agent_number or None,
+                "source": "zapier",
+            },
         )
 
         return call_log
@@ -323,19 +309,23 @@ def make_call(lead_uuid, to_number, agent_number=None):
         from_number=settings.TWILIO_PHONE_NUMBER,
         to_number=formatted_to_number,
         status=call.status,
-        raw_payload={"sid": call.sid, "status": call.status, "agent_number": formatted_agent_number},
+        raw_payload={
+            "sid": call.sid,
+            "status": call.status,
+            "agent_number": formatted_agent_number or None,
+        }
     )
-
     _notify_zapier("call_initiated", {
-        "lead_uuid": str(lead_uuid),
-        "lead_name": lead.full_name,
+        "lead_uuid" : str(lead_uuid),
+        "lead_name" : lead.full_name,
         "lead_email": lead.email or "",
         "lead_phone": lead_phone,
         "from_number": settings.TWILIO_PHONE_NUMBER,
-        "to_number": formatted_to_number,
+        "to_number" : formatted_to_number,
         "agent_number": formatted_agent_number,
-        "sid": call.sid,
-        "status": call.status,
+        "sid"       : call.sid,
+        "status"    : call.status,
     })
+
 
     return call

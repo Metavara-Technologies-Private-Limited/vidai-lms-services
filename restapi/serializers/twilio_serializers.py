@@ -3,42 +3,30 @@ from restapi.models.lead import Lead
 from restapi.models import TwilioMessage, TwilioCall
 
 
-# =====================================================
-# COMMON PHONE VALIDATOR FUNCTION (YOUR LOGIC)
-# =====================================================
 def normalize_indian_number(value):
     value = value.strip()
 
     if not value:
         raise serializers.ValidationError("Phone number required")
 
-    # -----------------------------
-    # CASE 1: International number
-    # -----------------------------
     if value.startswith("+"):
         digits = value[1:]
 
         if not digits.isdigit():
             raise serializers.ValidationError("Invalid international phone number")
 
-        # E.164 standard: 7 to 15 digits
         if not (7 <= len(digits) <= 15):
             raise serializers.ValidationError("Invalid international phone number")
 
-        return value  # ✅ Keep as is
+        return value
 
-    # -----------------------------
-    # CASE 2: Indian number (NO +)
-    # -----------------------------
     value = "".join(ch for ch in value if ch.isdigit())
 
-    # Remove prefixes
     if value.startswith("91") and len(value) == 12:
         value = value[2:]
     elif value.startswith("0") and len(value) == 11:
         value = value[1:]
 
-    # Validate Indian number
     if len(value) != 10:
         raise serializers.ValidationError("Phone number must be 10 digits")
 
@@ -51,7 +39,6 @@ def normalize_indian_number(value):
     if len(set(value)) == 1:
         raise serializers.ValidationError("Invalid phone number")
 
-    # ✅ Auto assign +91
     return f"+91{value}"
 
 
@@ -64,8 +51,19 @@ class SendSMSSerializer(serializers.Serializer):
     message = serializers.CharField()
 
     def validate_lead_uuid(self, value):
-        if not Lead.objects.filter(id=value).exists():
+        request = self.context.get("request")  # ✅ ADDED
+
+        lead = Lead.objects.filter(id=value).first()
+
+        if not lead:
             raise serializers.ValidationError("Invalid Lead UUID")
+
+        # ✅ CLINIC VALIDATION (ONLY ADDITION)
+        if request:
+            clinic_id = request.headers.get("X-Clinic-Id")
+            if clinic_id and str(lead.clinic_id) != str(clinic_id):
+                raise serializers.ValidationError("Lead does not belong to this clinic")
+
         return value
 
     def validate_to(self, value):
@@ -80,8 +78,19 @@ class MakeCallSerializer(serializers.Serializer):
     to = serializers.CharField()
 
     def validate_lead_uuid(self, value):
-        if not Lead.objects.filter(id=value).exists():
+        request = self.context.get("request")  # ✅ ADDED
+
+        lead = Lead.objects.filter(id=value).first()
+
+        if not lead:
             raise serializers.ValidationError("Invalid Lead UUID")
+
+        # ✅ CLINIC VALIDATION (ONLY ADDITION)
+        if request:
+            clinic_id = request.headers.get("X-Clinic-Id")
+            if clinic_id and str(lead.clinic_id) != str(clinic_id):
+                raise serializers.ValidationError("Lead does not belong to this clinic")
+
         return value
 
     def validate_to(self, value):

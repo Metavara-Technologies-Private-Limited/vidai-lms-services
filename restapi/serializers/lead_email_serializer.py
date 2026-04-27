@@ -24,7 +24,7 @@ class LeadEmailSerializer(serializers.ModelSerializer):
         )
         read_only_fields = (
             "id",
-            "clinic",   # ✅ Prevent manual override
+            "clinic",   # ✅ auto handled
             "status",
             "sent_at",
             "failed_reason",
@@ -32,18 +32,21 @@ class LeadEmailSerializer(serializers.ModelSerializer):
         )
 
     def create(self, validated_data):
-        # Remove non-model field
+        # remove send_now (handled in view)
         validated_data.pop("send_now", None)
 
         lead = validated_data.get("lead")
 
-        # ✅ Force clinic assignment from lead
+        # ✅ AUTO ASSIGN CLINIC FROM LEAD
         if lead:
             validated_data["clinic"] = getattr(lead, "clinic", None)
 
         return super().create(validated_data)
 
 
+# =====================================================
+# LIST SERIALIZER
+# =====================================================
 class LeadMailListSerializer(serializers.ModelSerializer):
     lead_uuid = serializers.UUIDField(source="lead.id", read_only=True)
     clinic_id = serializers.IntegerField(source="clinic.id", read_only=True)

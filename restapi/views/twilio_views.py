@@ -54,7 +54,12 @@ class SendSMSAPIView(APIView):
                 list(request.data.keys()) if hasattr(request, "data") else [],
             )
 
-            serializer = SendSMSSerializer(data=request.data)
+            # ✅ FIX ADDED HERE
+            serializer = SendSMSSerializer(
+                data=request.data,
+                context={"request": request}
+            )
+
             serializer.is_valid(raise_exception=True)
             validated_data = serializer.validated_data
 
@@ -119,7 +124,12 @@ class MakeCallAPIView(APIView):
                 list(request.data.keys()) if hasattr(request, "data") else [],
             )
 
-            serializer = MakeCallSerializer(data=request.data)
+            # ✅ FIX ADDED HERE
+            serializer = MakeCallSerializer(
+                data=request.data,
+                context={"request": request}
+            )
+
             serializer.is_valid(raise_exception=True)
             validated_data = serializer.validated_data
 
@@ -224,7 +234,7 @@ class TwilioSMSStatusCallbackAPIView(APIView):
 
         except Exception:
             logger.error("Twilio SMS Callback Error:\n" + traceback.format_exc())
-            return Response({"error": "Internal Server Error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": "Internal Server Error"}, status=500)
 
 
 # =====================================================
@@ -265,14 +275,22 @@ class TwilioCallStatusCallbackAPIView(APIView):
             lead_uuid = None
             if twilio_call:
                 lead_uuid = str(twilio_call.lead_id) if twilio_call.lead_id else None
-                merged_payload = twilio_call.raw_payload if isinstance(twilio_call.raw_payload, dict) else {}
+
+                merged_payload = (
+                    twilio_call.raw_payload
+                    if isinstance(twilio_call.raw_payload, dict)
+                    else {}
+                )
+
                 merged_payload["call_status_callback"] = payload
                 merged_payload["last_status_callback_at"] = timezone.now().isoformat()
 
                 if call_status:
                     twilio_call.status = call_status
+
                 twilio_call.raw_payload = merged_payload
                 twilio_call.save(update_fields=["status", "raw_payload"])
+
             else:
                 logger.warning("TwilioCallStatusCallback SID not found in DB: sid=%s", sid)
 
@@ -285,11 +303,17 @@ class TwilioCallStatusCallbackAPIView(APIView):
                 "direction": direction,
             })
 
-            return Response({"message": "Call callback processed"}, status=status.HTTP_200_OK)
+            return Response(
+                {"message": "Call callback processed"},
+                status=status.HTTP_200_OK
+            )
 
         except Exception:
             logger.error("Twilio Call Callback Error:\n" + traceback.format_exc())
-            return Response({"error": "Internal Server Error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # =====================================================
@@ -325,7 +349,10 @@ class TwilioMessageListAPIView(APIView):
 
         except Exception:
             logger.error("Twilio SMS Fetch Error:\n" + traceback.format_exc())
-            return Response({"error": "Internal Server Error"}, status=500)
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # =====================================================
@@ -361,4 +388,7 @@ class TwilioCallListAPIView(APIView):
 
         except Exception:
             logger.error("Twilio Call Fetch Error:\n" + traceback.format_exc())
-            return Response({"error": "Internal Server Error"}, status=500)
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
