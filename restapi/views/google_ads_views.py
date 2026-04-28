@@ -430,37 +430,37 @@ class GoogleAdsCampaignStatusAPIView(APIView):
             )
 
 
-class GoogleAdsInsightsAPIView(APIView):
-    """
-    Retrieve Google Ads insights for a campaign.
-    Endpoint: GET /api/google-ads/insights/?campaign_id=123&clinic_id=456
-    """
-    permission_classes = [IsAuthenticated]
+# class GoogleAdsInsightsAPIView(APIView):
+#     """
+#     Retrieve Google Ads insights for a campaign.
+#     Endpoint: GET /api/google-ads/insights/?campaign_id=123&clinic_id=456
+#     """
+#     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        campaign_id = request.query_params.get('campaign_id')
-        clinic_id   = request.query_params.get('clinic_id')
+#     def get(self, request):
+#         campaign_id = request.query_params.get('campaign_id')
+#         clinic_id   = request.query_params.get('clinic_id')
 
-        if not campaign_id or not clinic_id:
-            return Response(
-                {"error": "campaign_id and clinic_id are required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+#         if not campaign_id or not clinic_id:
+#             return Response(
+#                 {"error": "campaign_id and clinic_id are required"},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
 
-        try:
-            campaign = Campaign.objects.get(id=campaign_id, clinic_id=clinic_id)
-        except Campaign.DoesNotExist:
-            return Response(
-                {"error": "Campaign not found or access denied"},
-                status=status.HTTP_404_NOT_FOUND
-            )
+#         try:
+#             campaign = Campaign.objects.get(id=campaign_id, clinic_id=clinic_id)
+#         except Campaign.DoesNotExist:
+#             return Response(
+#                 {"error": "Campaign not found or access denied"},
+#                 status=status.HTTP_404_NOT_FOUND
+#             )
 
-        config, created = CampaignSocialMediaConfig.objects.get_or_create(
-            campaign=campaign,
-            platform_name=CampaignSocialMediaConfig.GOOGLE_ADS,
-            defaults={"insights": {}}
-        )
+#         config, created = CampaignSocialMediaConfig.objects.get_or_create(
+#             campaign=campaign,
+#             platform_name=CampaignSocialMediaConfig.GOOGLE_ADS,
+#             defaults={"insights": {}}
+#         )
 
-        return Response({
-            "insights": config.insights or {}
-        }, status=status.HTTP_200_OK)
+#         return Response({
+#             "insights": config.insights or {}
+#         }, status=status.HTTP_200_OK)

@@ -4,12 +4,12 @@ from .views import *
 from restapi.views.google_ads_views import (
     GoogleAdsCampaignCreateAPIView,
     GoogleAdsCampaignStatusAPIView,    # ← added
-    GoogleAdsInsightsAPIView,
+    #GoogleAdsInsightsAPIView,
 )
 
 from restapi.views.social_auth_views import (
     GoogleAdsCampaignCallbackAPIView,
-     #GoogleAdsInsightsAPIView,  # ← removed from here
+     GoogleAdsInsightsAPIView,  # ← removed from here
 )
 
 # ← added here
