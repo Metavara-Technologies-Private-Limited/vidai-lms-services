@@ -290,6 +290,7 @@ from restapi.views.google_ads_views import (
     GoogleAdsCampaignCreateAPIView,
     GoogleAdsCampaignStatusAPIView,
     GoogleAdsInsightsAPIView,
+    #GoogleAdsInsightsAPIView,
 )
 
 from restapi.views.social_auth_views import (

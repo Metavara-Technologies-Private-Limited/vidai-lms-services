@@ -1,8 +1,4 @@
-
-# =====================================================
-# restapi/views/social_auth_views.py
-# =====================================================
-
+import os
 import json
 import base64
 import secrets
@@ -17,11 +13,17 @@ from django.shortcuts import redirect
 from django.http import HttpResponseRedirect
 from django.utils import timezone
 from restapi.models import Clinic, Campaign
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+from django.core.exceptions import ObjectDoesNotExist
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, serializers
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError
+from rest_framework.authentication import SessionAuthentication, TokenAuthentication
 
 from restapi.models import Clinic, Campaign
 from restapi.models.social_account import SocialAccount
@@ -30,6 +32,10 @@ from restapi.utils.linkedin import (
     fetch_linkedin_account_details,
 )
 from restapi.utils.clinic_scope import resolve_request_clinic
+from restapi.utils.clinic_scope import resolve_request_clinic
+
+
+logger = logging.getLogger(__name__)
 
 
 # =====================================================
@@ -684,24 +690,218 @@ class SocialAccountListAPIView(APIView):
         )
 
         if int(clinic_id) != clinic.id:
-            raise ValidationError(
-                {
-                    "clinic_id": (
-                        "Clinic access denied"
-                    )
-                }
-            )
+            raise ValidationError({"clinic_id": "Clinic access denied"})
 
         accounts = SocialAccount.objects.filter(
-            clinic_id=clinic_id,
-            is_active=True,
-        ).values(
-            "platform",
-            "page_name",
-            "page_id",
-            "customer_id",
-        )
+            clinic_id=clinic_id, is_active=True
+        ).values("platform", "page_name", "page_id", "customer_id")
 
-        return Response(
-            list(accounts)
-        )
+        return Response(list(accounts))
+
+
+# =====================================================
+# GOOGLE ADS — CALLBACK (called by Zapier after campaign created)
+# =====================================================
+class GoogleAdsCampaignCallbackAPIView(APIView):
+    """
+    POST /api/google-ads/callback/
+    Zapier calls this after creating the campaign with the campaign resource name
+    """
+    def post(self, request):
+        try:
+            data = request.data
+            print("GOOGLE ADS CALLBACK FROM ZAPIER:", data)
+
+            campaign_name      = data.get("campaign_name")
+            google_campaign_id = data.get("campaign_id")
+            adgroup_id         = data.get("adgroup_id")
+            status_val         = data.get("status")
+
+            if status_val != "success":
+                return Response(
+                    {"error": data.get("message", "Campaign creation failed")},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            campaign = Campaign.objects.filter(
+                campaign_name=campaign_name
+            ).order_by("-id").first()
+
+            if not campaign:
+                return Response(
+                    {"error": f"Campaign '{campaign_name}' not found in DB"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            platform_data = campaign.platform_data or {}
+            existing_google = platform_data.get("google_ads", {})
+            if not isinstance(existing_google, dict):
+                existing_google = {}
+
+            platform_data["google_ads"] = {
+                **existing_google,
+                "campaign_resource_name": google_campaign_id,
+                "adgroup_id":             adgroup_id,
+                "status":                 "created",
+            }
+            campaign.platform_data = platform_data
+            campaign.save(update_fields=["platform_data"])
+
+            logger.info(
+                "[GoogleAdsCallback] Campaign '%s' updated with campaign_id: %s",
+                campaign_name, google_campaign_id
+            )
+
+            return Response(
+                {"success": True, "campaign_id": str(campaign.id)},
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            logger.error("[GoogleAdsCallback] Error: %s", str(e))
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+#=====================================================
+#GOOGLE ADS — INSIGHTS
+#=====================================================
+class GoogleAdsInsightsAPIView(APIView):
+    """
+    GET /api/google-ads/insights/?clinic_id=1
+    Fetches campaign performance insights from Google Ads API
+    """
+    def get(self, request):
+        try:
+            clinic_id = request.query_params.get("clinic_id")
+            if not clinic_id:
+                return Response(
+                    {"error": "clinic_id is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            google_account = SocialAccount.objects.filter(
+                clinic_id=clinic_id,
+                platform="google",
+                is_active=True
+            ).first()
+
+            if not google_account:
+                return Response(
+                    {"error": "Google Ads not connected for this clinic"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            refresh_token = google_account.user_token
+            customer_id   = google_account.customer_id or getattr(
+                settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", ""
+            )
+
+            if not refresh_token:
+                return Response(
+                    {"error": "Google refresh token missing. Please reconnect."},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+
+            auth_res = requests.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id":     settings.GOOGLE_CLIENT_ID,
+                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                    "refresh_token": refresh_token,
+                    "grant_type":    "refresh_token",
+                }
+            )
+            auth_json = auth_res.json()
+
+            if "access_token" not in auth_json:
+                return Response(
+                    {"error": "Failed to refresh Google token", "details": auth_json},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+
+            access_token = auth_json["access_token"]
+            cust_id      = str(customer_id).replace("-", "")
+
+            headers = {
+                "Authorization":   f"Bearer {access_token}",
+                "developer-token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
+                "Content-Type":    "application/json",
+            }
+
+            login_id = str(
+                getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
+            ).replace("-", "")
+            if login_id and login_id != cust_id:
+                headers["login-customer-id"] = login_id
+
+            # -------------------------------------------------------
+            # FIXED QUERY:
+            # - Removed LAST_30_DAYS filter so newly created campaigns appear
+            # - Removed REMOVED campaigns
+            # - Order by campaign.id DESC so newest appear first
+            # - Increased LIMIT to 200
+            # -------------------------------------------------------
+            query = """
+                SELECT
+                    campaign.id,
+                    campaign.name,
+                    campaign.status,
+                    campaign.advertising_channel_type,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.ctr,
+                    metrics.average_cpc,
+                    metrics.cost_micros,
+                    metrics.conversions
+                FROM campaign
+                WHERE campaign.status != 'REMOVED'
+                ORDER BY campaign.id DESC
+                LIMIT 200
+            """
+
+            insights_res = requests.post(
+                f"https://googleads.googleapis.com/v20/customers/{cust_id}/googleAds:search",
+                headers=headers,
+                json={"query": query}
+            )
+            insights_data = insights_res.json()
+
+            if "error" in insights_data:
+                return Response(
+                    {"error": "Google Ads API error", "details": insights_data},
+                    status=status.HTTP_502_BAD_GATEWAY
+                )
+
+            campaigns = []
+            for row in insights_data.get("results", []):
+                camp    = row.get("campaign", {})
+                metrics = row.get("metrics", {})
+                campaigns.append({
+                    "campaign_id":   camp.get("id"),
+                    "campaign_name": camp.get("name"),
+                    "status":        camp.get("status"),
+                    "type":          camp.get("advertisingChannelType"),
+                    "impressions":   int(metrics.get("impressions", 0)),
+                    "clicks":        int(metrics.get("clicks", 0)),
+                    "ctr":           round(float(metrics.get("ctr", 0)) * 100, 2),
+                    "avg_cpc":       round(int(metrics.get("averageCpc", 0)) / 1_000_000, 2),
+                    "cost":          round(int(metrics.get("costMicros", 0)) / 1_000_000, 2),
+                    "conversions":   float(metrics.get("conversions", 0)),
+                })
+
+            return Response({
+                "success":   True,
+                "clinic_id": clinic_id,
+                "total":     len(campaigns),
+                "campaigns": campaigns,
+            })
+
+        except Exception as e:
+            logger.error("[GoogleAdsInsights] Error: %s", traceback.format_exc())
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

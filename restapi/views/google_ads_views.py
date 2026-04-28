@@ -1,6 +1,7 @@
 import logging
 import traceback
 import requests
+import base64
 
 from django.conf import settings
 
@@ -95,10 +96,57 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 else str(keywords_raw)
             )
 
+            # ----------------------------------------------------------
+            # Upload Image → Get asset_id
+            # ----------------------------------------------------------
+            asset_id = None
+
+            if image_url:
+                try:
+                    auth_res = requests.post(
+                        "https://oauth2.googleapis.com/token",
+                        data={
+                            "client_id":     settings.GOOGLE_CLIENT_ID,
+                            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                            "refresh_token": refresh_token,
+                            "grant_type":    "refresh_token",
+                        },
+                        timeout=10,
+                    )
+                    auth_json    = auth_res.json()
+                    access_token = auth_json.get("access_token")
+
+                    if access_token:
+                        cust_id  = str(customer_id).replace("-", "")
+                        login_id = str(getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")).replace("-", "")
+                        headers  = {
+                            "Authorization":   f"Bearer {access_token}",
+                            "developer-token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
+                            "Content-Type":    "application/json",
+                        }
+                        if login_id and login_id != cust_id:
+                            headers["login-customer-id"] = login_id
+
+                        img_b64     = base64.b64encode(requests.get(image_url, timeout=15).content).decode("utf-8")
+                        upload_res  = requests.post(
+                            f"https://googleads.googleapis.com/v20/customers/{cust_id}/assets:mutate",
+                            headers=headers,
+                            json={"operations": [{"create": {"type": "IMAGE", "name": "Campaign Image", "image_asset": {"data": img_b64}}}]},
+                            timeout=15,
+                        )
+                        upload_json = upload_res.json()
+                        if "results" in upload_json:
+                            asset_id = upload_json["results"][0]["resourceName"]
+                            logger.info(f"[ImageUpload] Asset created: {asset_id}")
+                        else:
+                            logger.error(f"[ImageUpload] Failed: {upload_json}")
+                except Exception as e:
+                    logger.error(f"[ImageUpload] Exception: {str(e)}")
+
             zapier_payload = {
                 "event":             "google_ads_campaign_created",
                 "campaign_name":     campaign_name,
-                "image_url":         image_url,
+                "asset_id":          asset_id,
                 "customer_id":       str(customer_id).replace("-", ""),
                 "login_customer_id": getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", ""),
                 "developer_token":   settings.GOOGLE_ADS_DEVELOPER_TOKEN,
@@ -225,7 +273,6 @@ class GoogleAdsCampaignStatusAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # Step 1: Get fresh access token
             auth_res = requests.post(
                 "https://oauth2.googleapis.com/token",
                 data={
@@ -247,7 +294,6 @@ class GoogleAdsCampaignStatusAPIView(APIView):
 
             access_token = auth_json["access_token"]
 
-            # Step 2: Build headers
             headers = {
                 "Authorization":   f"Bearer {access_token}",
                 "developer-token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
@@ -258,7 +304,6 @@ class GoogleAdsCampaignStatusAPIView(APIView):
             if login_id and login_id != cust_id:
                 headers["login-customer-id"] = login_id
 
-            # Step 3: Find campaign_resource_name from platform_data
             platform_data          = campaign.platform_data or {}
             google_data            = platform_data.get("google_ads", {})
             campaign_resource_name = None
@@ -266,7 +311,6 @@ class GoogleAdsCampaignStatusAPIView(APIView):
             if isinstance(google_data, dict):
                 campaign_resource_name = google_data.get("campaign_resource_name")
 
-            # Step 4: If not stored, search by campaign name
             if not campaign_resource_name:
                 safe_name = campaign.campaign_name.strip().replace("'", "\\'")
                 query = (
@@ -324,7 +368,6 @@ class GoogleAdsCampaignStatusAPIView(APIView):
                     status=status.HTTP_200_OK,
                 )
 
-            # Step 5: Mutate campaign status
             new_status = "PAUSED" if action == "pause" else "ENABLED"
 
             mutate_resp = requests.post(
@@ -387,43 +430,37 @@ class GoogleAdsCampaignStatusAPIView(APIView):
             )
 
 
-# =====================================================
-# Google Ads Insights API View (GET)
-# =====================================================
-class GoogleAdsInsightsAPIView(APIView):
-    """
-    Retrieve Google Ads insights for a campaign.
-    Endpoint: GET /api/google-ads/insights/?campaign_id=123&clinic_id=456
-    """
-    permission_classes = [IsAuthenticated]
+# class GoogleAdsInsightsAPIView(APIView):
+#     """
+#     Retrieve Google Ads insights for a campaign.
+#     Endpoint: GET /api/google-ads/insights/?campaign_id=123&clinic_id=456
+#     """
+#     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        campaign_id = request.query_params.get('campaign_id')
-        clinic_id = request.query_params.get('clinic_id')
-        
-        if not campaign_id or not clinic_id:
-            return Response(
-                {"error": "campaign_id and clinic_id are required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Verify campaign exists and belongs to clinic
-        try:
-            campaign = Campaign.objects.get(id=campaign_id, clinic_id=clinic_id)
-        except Campaign.DoesNotExist:
-            return Response(
-                {"error": "Campaign not found or access denied"},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        # Get or create the social media config for Google Ads
-        config, created = CampaignSocialMediaConfig.objects.get_or_create(
-            campaign=campaign,
-            platform_name=CampaignSocialMediaConfig.GOOGLE_ADS,
-            defaults={"insights": {}}
-        )
-        
-        # Return the insights (empty dict if none stored yet)
-        return Response({
-            "insights": config.insights or {}
-        }, status=status.HTTP_200_OK)
+#     def get(self, request):
+#         campaign_id = request.query_params.get('campaign_id')
+#         clinic_id   = request.query_params.get('clinic_id')
+
+#         if not campaign_id or not clinic_id:
+#             return Response(
+#                 {"error": "campaign_id and clinic_id are required"},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+
+#         try:
+#             campaign = Campaign.objects.get(id=campaign_id, clinic_id=clinic_id)
+#         except Campaign.DoesNotExist:
+#             return Response(
+#                 {"error": "Campaign not found or access denied"},
+#                 status=status.HTTP_404_NOT_FOUND
+#             )
+
+#         config, created = CampaignSocialMediaConfig.objects.get_or_create(
+#             campaign=campaign,
+#             platform_name=CampaignSocialMediaConfig.GOOGLE_ADS,
+#             defaults={"insights": {}}
+#         )
+
+#         return Response({
+#             "insights": config.insights or {}
+#         }, status=status.HTTP_200_OK)
