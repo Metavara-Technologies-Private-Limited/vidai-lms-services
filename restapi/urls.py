@@ -3,15 +3,15 @@ from django.urls import path
 from .views import *
 from restapi.views.google_ads_views import (
     GoogleAdsCampaignCreateAPIView,
-    GoogleAdsCampaignStatusAPIView,    # ← added
+    #GoogleAdsCampaignStatusAPIView,    # ← added
 )
 
 from restapi.views.social_auth_views import (
     GoogleAdsCampaignCallbackAPIView,
-    # GoogleAdsInsightsAPIView,  # ← removed from here
+     GoogleAdsInsightsAPIView,  # ← removed from here
 )
 
-from restapi.views.google_ads_views import GoogleAdsInsightsAPIView  # ← added here
+# ← added here
 
 from restapi.views.campaign_insights_views import (
     CampaignInsightsTriggerAPIView,
@@ -241,7 +241,7 @@ urlpatterns = [
     # GOOGLE ADS
     # ============================
     path("google-ads/create/", GoogleAdsCampaignCreateAPIView.as_view(), name="google-ads-create"),
-    path("google-ads/status/", GoogleAdsCampaignStatusAPIView.as_view(), name="google-ads-status"),   # ← added
+    #path("google-ads/status/", GoogleAdsCampaignStatusAPIView.as_view(), name="google-ads-status"),   # ← added
     path("google-ads/callback/", GoogleAdsCampaignCallbackAPIView.as_view(), name="google-ads-callback"),
     path("google-ads/insights/", GoogleAdsInsightsAPIView.as_view(), name="google-ads-insights"),
 
