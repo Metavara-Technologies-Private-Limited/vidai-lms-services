@@ -422,140 +422,140 @@ class GoogleAdsCampaignCallbackAPIView(APIView):
 # =====================================================
 # GOOGLE ADS — INSIGHTS
 # =====================================================
-class GoogleAdsInsightsAPIView(APIView):
-    """
-    GET /api/google-ads/insights/?clinic_id=1
-    Fetches campaign performance insights from Google Ads API
-    """
-    def get(self, request):
-        try:
-            clinic_id = request.query_params.get("clinic_id")
-            if not clinic_id:
-                return Response(
-                    {"error": "clinic_id is required"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+# class GoogleAdsInsightsAPIView(APIView):
+#     """
+#     GET /api/google-ads/insights/?clinic_id=1
+#     Fetches campaign performance insights from Google Ads API
+#     """
+#     def get(self, request):
+#         try:
+#             clinic_id = request.query_params.get("clinic_id")
+#             if not clinic_id:
+#                 return Response(
+#                     {"error": "clinic_id is required"},
+#                     status=status.HTTP_400_BAD_REQUEST
+#                 )
 
-            google_account = SocialAccount.objects.filter(
-                clinic_id=clinic_id,
-                platform="google",
-                is_active=True
-            ).first()
+#             google_account = SocialAccount.objects.filter(
+#                 clinic_id=clinic_id,
+#                 platform="google",
+#                 is_active=True
+#             ).first()
 
-            if not google_account:
-                return Response(
-                    {"error": "Google Ads not connected for this clinic"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+#             if not google_account:
+#                 return Response(
+#                     {"error": "Google Ads not connected for this clinic"},
+#                     status=status.HTTP_400_BAD_REQUEST
+#                 )
 
-            refresh_token = google_account.user_token
-            customer_id   = google_account.customer_id or getattr(
-                settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", ""
-            )
+#             refresh_token = google_account.user_token
+#             customer_id   = google_account.customer_id or getattr(
+#                 settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", ""
+#             )
 
-            if not refresh_token:
-                return Response(
-                    {"error": "Google refresh token missing. Please reconnect."},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
+#             if not refresh_token:
+#                 return Response(
+#                     {"error": "Google refresh token missing. Please reconnect."},
+#                     status=status.HTTP_401_UNAUTHORIZED
+#                 )
 
-            auth_res = requests.post(
-                "https://oauth2.googleapis.com/token",
-                data={
-                    "client_id":     settings.GOOGLE_CLIENT_ID,
-                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
-                    "refresh_token": refresh_token,
-                    "grant_type":    "refresh_token",
-                }
-            )
-            auth_json = auth_res.json()
+#             auth_res = requests.post(
+#                 "https://oauth2.googleapis.com/token",
+#                 data={
+#                     "client_id":     settings.GOOGLE_CLIENT_ID,
+#                     "client_secret": settings.GOOGLE_CLIENT_SECRET,
+#                     "refresh_token": refresh_token,
+#                     "grant_type":    "refresh_token",
+#                 }
+#             )
+#             auth_json = auth_res.json()
 
-            if "access_token" not in auth_json:
-                return Response(
-                    {"error": "Failed to refresh Google token", "details": auth_json},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
+#             if "access_token" not in auth_json:
+#                 return Response(
+#                     {"error": "Failed to refresh Google token", "details": auth_json},
+#                     status=status.HTTP_401_UNAUTHORIZED
+#                 )
 
-            access_token = auth_json["access_token"]
-            cust_id      = str(customer_id).replace("-", "")
+#             access_token = auth_json["access_token"]
+#             cust_id      = str(customer_id).replace("-", "")
 
-            headers = {
-                "Authorization":   f"Bearer {access_token}",
-                "developer-token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
-                "Content-Type":    "application/json",
-            }
+#             headers = {
+#                 "Authorization":   f"Bearer {access_token}",
+#                 "developer-token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
+#                 "Content-Type":    "application/json",
+#             }
 
-            login_id = str(
-                getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
-            ).replace("-", "")
-            if login_id and login_id != cust_id:
-                headers["login-customer-id"] = login_id
+#             login_id = str(
+#                 getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
+#             ).replace("-", "")
+#             if login_id and login_id != cust_id:
+#                 headers["login-customer-id"] = login_id
 
-            # -------------------------------------------------------
-            # FIXED QUERY:
-            # - Removed LAST_30_DAYS filter so newly created campaigns appear
-            # - Removed REMOVED campaigns
-            # - Order by campaign.id DESC so newest appear first
-            # - Increased LIMIT to 200
-            # -------------------------------------------------------
-            query = """
-                SELECT
-                    campaign.id,
-                    campaign.name,
-                    campaign.status,
-                    campaign.advertising_channel_type,
-                    metrics.impressions,
-                    metrics.clicks,
-                    metrics.ctr,
-                    metrics.average_cpc,
-                    metrics.cost_micros,
-                    metrics.conversions
-                FROM campaign
-                WHERE campaign.status != 'REMOVED'
-                ORDER BY campaign.id DESC
-                LIMIT 200
-            """
+#             # -------------------------------------------------------
+#             # FIXED QUERY:
+#             # - Removed LAST_30_DAYS filter so newly created campaigns appear
+#             # - Removed REMOVED campaigns
+#             # - Order by campaign.id DESC so newest appear first
+#             # - Increased LIMIT to 200
+#             # -------------------------------------------------------
+#             query = """
+#                 SELECT
+#                     campaign.id,
+#                     campaign.name,
+#                     campaign.status,
+#                     campaign.advertising_channel_type,
+#                     metrics.impressions,
+#                     metrics.clicks,
+#                     metrics.ctr,
+#                     metrics.average_cpc,
+#                     metrics.cost_micros,
+#                     metrics.conversions
+#                 FROM campaign
+#                 WHERE campaign.status != 'REMOVED'
+#                 ORDER BY campaign.id DESC
+#                 LIMIT 200
+#             """
 
-            insights_res = requests.post(
-                f"https://googleads.googleapis.com/v20/customers/{cust_id}/googleAds:search",
-                headers=headers,
-                json={"query": query}
-            )
-            insights_data = insights_res.json()
+#             insights_res = requests.post(
+#                 f"https://googleads.googleapis.com/v20/customers/{cust_id}/googleAds:search",
+#                 headers=headers,
+#                 json={"query": query}
+#             )
+#             insights_data = insights_res.json()
 
-            if "error" in insights_data:
-                return Response(
-                    {"error": "Google Ads API error", "details": insights_data},
-                    status=status.HTTP_502_BAD_GATEWAY
-                )
+#             if "error" in insights_data:
+#                 return Response(
+#                     {"error": "Google Ads API error", "details": insights_data},
+#                     status=status.HTTP_502_BAD_GATEWAY
+#                 )
 
-            campaigns = []
-            for row in insights_data.get("results", []):
-                camp    = row.get("campaign", {})
-                metrics = row.get("metrics", {})
-                campaigns.append({
-                    "campaign_id":   camp.get("id"),
-                    "campaign_name": camp.get("name"),
-                    "status":        camp.get("status"),
-                    "type":          camp.get("advertisingChannelType"),
-                    "impressions":   int(metrics.get("impressions", 0)),
-                    "clicks":        int(metrics.get("clicks", 0)),
-                    "ctr":           round(float(metrics.get("ctr", 0)) * 100, 2),
-                    "avg_cpc":       round(int(metrics.get("averageCpc", 0)) / 1_000_000, 2),
-                    "cost":          round(int(metrics.get("costMicros", 0)) / 1_000_000, 2),
-                    "conversions":   float(metrics.get("conversions", 0)),
-                })
+#             campaigns = []
+#             for row in insights_data.get("results", []):
+#                 camp    = row.get("campaign", {})
+#                 metrics = row.get("metrics", {})
+#                 campaigns.append({
+#                     "campaign_id":   camp.get("id"),
+#                     "campaign_name": camp.get("name"),
+#                     "status":        camp.get("status"),
+#                     "type":          camp.get("advertisingChannelType"),
+#                     "impressions":   int(metrics.get("impressions", 0)),
+#                     "clicks":        int(metrics.get("clicks", 0)),
+#                     "ctr":           round(float(metrics.get("ctr", 0)) * 100, 2),
+#                     "avg_cpc":       round(int(metrics.get("averageCpc", 0)) / 1_000_000, 2),
+#                     "cost":          round(int(metrics.get("costMicros", 0)) / 1_000_000, 2),
+#                     "conversions":   float(metrics.get("conversions", 0)),
+#                 })
 
-            return Response({
-                "success":   True,
-                "clinic_id": clinic_id,
-                "total":     len(campaigns),
-                "campaigns": campaigns,
-            })
+#             return Response({
+#                 "success":   True,
+#                 "clinic_id": clinic_id,
+#                 "total":     len(campaigns),
+#                 "campaigns": campaigns,
+#             })
 
-        except Exception as e:
-            logger.error("[GoogleAdsInsights] Error: %s", traceback.format_exc())
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+#         except Exception as e:
+#             logger.error("[GoogleAdsInsights] Error: %s", traceback.format_exc())
+#             return Response(
+#                 {"error": str(e)},
+#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#             )
