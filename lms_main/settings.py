@@ -107,15 +107,31 @@ WSGI_APPLICATION = 'lms_main.wsgi.application'
 # ================================
 # DATABASE
 # ================================
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'stage5_db',
+#         'USER': 'postgres',
+#         'PASSWORD': 'saimohan',
+#         'HOST': 'host.docker.internal',  # 'host.docker.internal',   #host.docker.internal
+#         'PORT': '5432',
+
+#     }
+# }
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'stage5_db',
-        'USER': 'postgres',
-        'PASSWORD': 'saimohan',
-        'HOST': 'host.docker.internal',  # 'host.docker.internal',   #host.docker.internal
-        'PORT': '5432',
-
+        # 'NAME': 'stage5_db',
+        # 'USER': 'postgres',
+        # 'PASSWORD': 'saimohan',
+        # 'HOST': 'localhost',  # 'host.docker.internal',   #host.docker.internal
+        # 'PORT': '5432',
+        'NAME': os.getenv("DB_NAME"),
+        'USER': os.getenv("DB_USER"),
+        'PASSWORD': os.getenv("DB_PASSWORD"),
+        'HOST': os.getenv("DB_HOST"),
+        'PORT': os.getenv("DB_PORT"),
     }
 }
 
@@ -185,36 +201,87 @@ REST_FRAMEWORK = {
 }
 
 
+# # ================================
+# # LOGGING
+# # ================================
+# LOGGING = {
+#     "version": 1,
+#     "disable_existing_loggers": False,
+#     "formatters": {
+#         "detailed": {
+#             "format": "[{levelname}] {asctime} {name} — {message}",
+#             "style": "{",
+#         },
+#     },
+#     "handlers": {
+#         "api_file": {
+#             "level": "DEBUG",
+#             "class": "logging.FileHandler",
+#             "filename": BASE_DIR / "restapi/log/api.log",
+#             "formatter": "detailed",
+#         },
+#     },
+#     "loggers": {
+#         "restapi": {
+#             "handlers": ["api_file"],
+#             "level": "ERROR",
+#             "propagate": True,
+#         },
+#         "django": {
+#             "handlers": ["api_file"],
+#             "level": "ERROR",
+#             "propagate": True,
+#         },
+#     },
+# }
+
+
 # ================================
 # LOGGING
 # ================================
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+
     "formatters": {
         "detailed": {
             "format": "[{levelname}] {asctime} {name} — {message}",
             "style": "{",
         },
     },
+
     "handlers": {
-        "api_file": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "detailed",
             "level": "DEBUG",
+        },
+
+        "api_file": {
             "class": "logging.FileHandler",
             "filename": BASE_DIR / "restapi/log/api.log",
             "formatter": "detailed",
+            "level": "DEBUG",
         },
     },
+
     "loggers": {
         "restapi": {
-            "handlers": ["api_file"],
-            "level": "ERROR",
-            "propagate": True,
+            "handlers": ["console", "api_file"],
+            "level": "DEBUG",   # was ERROR
+            "propagate": False,
         },
+
         "django": {
-            "handlers": ["api_file"],
-            "level": "ERROR",
-            "propagate": True,
+            "handlers": ["console", "api_file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+
+        "django.request": {
+            "handlers": ["console", "api_file"],
+            "level": "DEBUG",
+            "propagate": False,
         },
     },
 }
@@ -303,7 +370,7 @@ ZAPIER_WEBHOOK_FB_INSIGHTS_URL = os.getenv("ZAPIER_WEBHOOK_FB_INSIGHTS_URL")
 
 ZAPIER_WEBHOOK_SOCIAL_URL = os.getenv(
     "ZAPIER_WEBHOOK_SOCIAL_URL",
-    "https://hooks.zapier.com/hooks/catch/25767405/u783kl8/",
+    "https://hooks.zapier.com/hooks/catch/27387148/uv6cug6/",
 )
 
 STAGE_LOGIN_URL = os.getenv("STAGE_LOGIN_URL")

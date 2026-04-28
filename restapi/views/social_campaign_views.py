@@ -1,7 +1,8 @@
-# restapi\views\social_campaign_views.py
+
 # =====================================================
-# Imports (ONLY REQUIRED)
+# restapi/views/social_campaign_views.py
 # =====================================================
+
 import logging
 import traceback
 import requests
@@ -18,34 +19,48 @@ from rest_framework.permissions import IsAuthenticated
 
 from drf_yasg.utils import swagger_auto_schema
 
-from restapi.models import Campaign, CampaignSocialMediaConfig, Clinic
+from restapi.models import (
+    Campaign,
+    CampaignSocialMediaConfig,
+    Clinic,
+)
 from restapi.models.social_account import SocialAccount
-from restapi.services.campaign_social_post_service import _is_direct_image_url
-from restapi.serializers.campaign_serializer import SocialMediaCampaignSerializer
 
 from restapi.services.campaign_social_post_service import (
+    _is_direct_image_url,
     post_to_facebook,
     post_to_instagram,
-    post_to_linkedin,
 )
-# from restapi.services.google_ads_service import create_google_ads_campaign
-from restapi.services.payload_builders import LinkedInPayloadBuilder
-from restapi.services.zapier_service import send_to_zapier_social
-from restapi.utils.clinic_scope import resolve_request_clinic
+
+from restapi.serializers.campaign_serializer import (
+    SocialMediaCampaignSerializer,
+)
+
+from restapi.services.payload_builders import (
+    LinkedInPayloadBuilder,
+)
+
+from restapi.services.zapier_service import (
+    send_to_zapier_social,
+)
+
+from restapi.utils.clinic_scope import (
+    resolve_request_clinic,
+)
 
 logger = logging.getLogger(__name__)
 
 
-# -------------------------------------------------------------------
-# Social Media Campaign Create API View (POST)
-# -------------------------------------------------------------------
+# =====================================================
+# SOCIAL MEDIA CAMPAIGN CREATE
+# =====================================================
 class SocialMediaCampaignCreateAPIView(APIView):
 
     @swagger_auto_schema(
         operation_description="Create Social Media Campaign Only",
         request_body=SocialMediaCampaignSerializer,
         responses={
-            201: "Campaign Created Successfully",
+            201: "Created",
             400: "Validation Error",
             500: "Internal Server Error",
         },
@@ -54,12 +69,20 @@ class SocialMediaCampaignCreateAPIView(APIView):
     @transaction.atomic
     def post(self, request):
         try:
-            clinic = resolve_request_clinic(request, required=True)
-            print("SOCIAL DATA:", request.data)
+            clinic = resolve_request_clinic(
+                request,
+                required=True,
+            )
+
             payload = request.data.copy()
             payload["clinic"] = clinic.id
-            serializer = SocialMediaCampaignSerializer(data=payload)
-            serializer.is_valid(raise_exception=True)
+
+            serializer = SocialMediaCampaignSerializer(
+                data=payload
+            )
+            serializer.is_valid(
+                raise_exception=True
+            )
 
             data = serializer.validated_data
 
@@ -70,151 +93,254 @@ class SocialMediaCampaignCreateAPIView(APIView):
 
             created_campaigns = []
 
-            for mode in data["campaign_mode"]:
+            for mode in data[
+                "campaign_mode"
+            ]:
 
-                raw_platform_data = data.get("platform_data") or {}
-                raw_campaign_content = (data.get("campaign_content") or "").strip()
+                raw_platform_data = (
+                    data.get(
+                        "platform_data"
+                    ) or {}
+                )
 
-                # Helper: extract first image URL from mixed text+URL string
+                raw_campaign_content = (
+                    data.get(
+                        "campaign_content"
+                    ) or ""
+                ).strip()
+
+                # -----------------------------------
+                # IMAGE URL extractor
+                # -----------------------------------
                 def _extract_image_url(text):
                     if not text:
                         return None, text
+
                     text = text.strip()
-                    # Case 1: entire string is just a URL
+
                     if (
                         _is_direct_image_url(text)
                         and "\n" not in text
                         and " " not in text
                     ):
                         return text, ""
-                    # Case 2: URL embedded inside text
-                    tokens = text.replace("\n", " ").split()
+
+                    tokens = (
+                        text.replace(
+                            "\n",
+                            " ",
+                        ).split()
+                    )
+
                     for token in tokens:
-                        token = token.strip(".,;!?\"'")
-                        if _is_direct_image_url(token):
-                            clean = text.replace(token, "").strip().strip(".,;!?\n ")
+                        token = token.strip(
+                            ".,;!?\"'"
+                        )
+                        if _is_direct_image_url(
+                            token
+                        ):
+                            clean = (
+                                text.replace(
+                                    token,
+                                    "",
+                                )
+                                .strip()
+                                .strip(
+                                    ".,;!?\n "
+                                )
+                            )
                             return token, clean
+
                     return None, text
 
-                # Resolve facebook message text
-                _platform_facebook = strip_tags(
-                    raw_platform_data.get("facebook", "") or ""
+                platform_fb = strip_tags(
+                    raw_platform_data.get(
+                        "facebook",
+                        "",
+                    ) or ""
                 ).strip()
-                _campaign_content = strip_tags(raw_campaign_content).strip()
 
-                # Extract any embedded image URL from the text fields
-                _fb_extracted_url, _platform_facebook = _extract_image_url(
-                    _platform_facebook
+                campaign_content = strip_tags(
+                    raw_campaign_content
+                ).strip()
+
+                fb_url, platform_fb = (
+                    _extract_image_url(
+                        platform_fb
+                    )
                 )
-                _cc_extracted_url, _campaign_content = _extract_image_url(
-                    _campaign_content
+                cc_url, campaign_content = (
+                    _extract_image_url(
+                        campaign_content
+                    )
                 )
 
-                facebook_message = _platform_facebook or _campaign_content
+                facebook_message = (
+                    platform_fb
+                    or campaign_content
+                )
 
-                # Resolve image_url
-                # Priority: 1. Explicit image_url field  2. platform_data.facebook  3. campaign_content
-                _raw_image_url = (request.data.get("image_url") or "").strip()
-                image_url_field = _raw_image_url if _raw_image_url else None
+                raw_image_url = (
+                    request.data.get(
+                        "image_url"
+                    ) or ""
+                ).strip()
 
-                # Fallback to URLs extracted from text fields only
-                if not image_url_field and _fb_extracted_url:
-                    image_url_field = _fb_extracted_url
-                    print(f"image_url extracted from platform_data.facebook: {image_url_field}")
+                image_url_field = (
+                    raw_image_url
+                    if raw_image_url
+                    else None
+                )
 
-                if not image_url_field and _cc_extracted_url:
-                    image_url_field = _cc_extracted_url
-                    print(f"image_url extracted from campaign_content: {image_url_field}")
-                if _raw_image_url:
-                    _extracted, _ = _extract_image_url(_raw_image_url)
-                    image_url_field = _extracted or None
-                    if image_url_field != _raw_image_url:
-                        print(
-                            f"image_url cleaned: {repr(_raw_image_url[:80])} -> {image_url_field}"
+                if raw_image_url:
+                    extracted, _ = (
+                        _extract_image_url(
+                            raw_image_url
                         )
-                else:
-                    image_url_field = None
-
-                if not image_url_field and _fb_extracted_url:
-                    image_url_field = _fb_extracted_url
-                    print(f"image_url extracted from platform_data.facebook: {image_url_field}")
-
-                if not image_url_field and _cc_extracted_url:
-                    image_url_field = _cc_extracted_url
-                    print(f"image_url extracted from campaign_content: {image_url_field}")
-
-                print("=" * 60)
-                print("DEBUG raw platform_data   :", raw_platform_data)
-                print("DEBUG campaign_content     :", _campaign_content)
-                print("DEBUG facebook_message     :", facebook_message)
-                print("DEBUG image_url            :", image_url_field)
-                print("=" * 60)
-
-                # Build selected_start / selected_end
-                from datetime import datetime, time, date as date_type
-
-                start = data["start_date"]
-                end = data["end_date"]
-
-                selected_start = timezone.make_aware(
-                    datetime.combine(
-                        (
-                            start
-                            if isinstance(start, date_type)
-                            else datetime.strptime(start, "%Y-%m-%d").date()
-                        ),
-                        time(0, 0, 0),
                     )
-                )
-                selected_end = timezone.make_aware(
-                    datetime.combine(
-                        (
-                            end
-                            if isinstance(end, date_type)
-                            else datetime.strptime(end, "%Y-%m-%d").date()
-                        ),
-                        time(23, 59, 59),
+                    image_url_field = (
+                        extracted or None
                     )
+
+                if (
+                    not image_url_field
+                    and fb_url
+                ):
+                    image_url_field = fb_url
+
+                if (
+                    not image_url_field
+                    and cc_url
+                ):
+                    image_url_field = cc_url
+
+                # -----------------------------------
+                # Dates
+                # -----------------------------------
+                from datetime import (
+                    datetime,
+                    time,
+                    date as date_type,
                 )
 
-                # Only store budget for selected platforms
-                selected_platforms = data["select_ad_accounts"]
-                raw_budget_data = data.get("budget_data") or {}
+                start = data[
+                    "start_date"
+                ]
+                end = data[
+                    "end_date"
+                ]
+
+                selected_start = (
+                    timezone.make_aware(
+                        datetime.combine(
+                            (
+                                start
+                                if isinstance(
+                                    start,
+                                    date_type,
+                                )
+                                else datetime.strptime(
+                                    start,
+                                    "%Y-%m-%d",
+                                ).date()
+                            ),
+                            time(0,0,0),
+                        )
+                    )
+                )
+
+                selected_end = (
+                    timezone.make_aware(
+                        datetime.combine(
+                            (
+                                end
+                                if isinstance(
+                                    end,
+                                    date_type,
+                                )
+                                else datetime.strptime(
+                                    end,
+                                    "%Y-%m-%d",
+                                ).date()
+                            ),
+                            time(23,59,59),
+                        )
+                    )
+                )
+
+                selected_platforms = (
+                    data[
+                        "select_ad_accounts"
+                    ]
+                )
+
+                raw_budget = (
+                    data.get(
+                        "budget_data"
+                    ) or {}
+                )
+
                 filtered_budget = {
-                    p: raw_budget_data.get(p, 0) for p in selected_platforms
+                    p: raw_budget.get(
+                        p,
+                        0,
+                    )
+                    for p in selected_platforms
                 }
-                filtered_budget["total"] = sum(
-                    v for k, v in filtered_budget.items() if k != "total"
+
+                filtered_budget[
+                    "total"
+                ] = sum(
+                    v
+                    for k,v in filtered_budget.items()
+                    if k != "total"
                 )
 
+                # -----------------------------------
+                # Create campaign
+                # -----------------------------------
                 campaign = Campaign.objects.create(
-                    clinic_id=data["clinic"],
-                    campaign_name=data["campaign_name"],
-                    campaign_description=data["campaign_description"],
-                    campaign_objective=data["campaign_objective"],
-                    target_audience=data["target_audience"],
-                    start_date=data["start_date"],
-                    end_date=data["end_date"],
-                    campaign_mode=mode_mapping.get(mode),
+                    clinic_id=data[
+                        "clinic"
+                    ],
+                    campaign_name=data[
+                        "campaign_name"
+                    ],
+                    campaign_description=data[
+                        "campaign_description"
+                    ],
+                    campaign_objective=data[
+                        "campaign_objective"
+                    ],
+                    target_audience=data[
+                        "target_audience"
+                    ],
+                    start_date=data[
+                        "start_date"
+                    ],
+                    end_date=data[
+                        "end_date"
+                    ],
+                    campaign_mode=mode_mapping.get(
+                        mode
+                    ),
                     campaign_content=facebook_message,
                     selected_start=selected_start,
                     selected_end=selected_end,
-                    enter_time=data["enter_time"],
+                    enter_time=data[
+                        "enter_time"
+                    ],
                     platform_data=raw_platform_data,
                     budget_data=filtered_budget,
                     image_url=image_url_field,
                     is_active=True,
                 )
 
-                print("=" * 60)
-                print("PLATFORM DATA:", campaign.platform_data)
-                print("FACEBOOK MESSAGE:", facebook_message)
-                print("IMAGE URL SAVED:", campaign.image_url)
-                print("=" * 60)
-
                 channels = []
 
-                for platform in data["select_ad_accounts"]:
+                for platform in data[
+                    "select_ad_accounts"
+                ]:
                     CampaignSocialMediaConfig.objects.create(
                         campaign=campaign,
                         platform_name=platform,
@@ -222,17 +348,17 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     )
                     channels.append(platform)
 
-                clinic_id = data["clinic"]
+                clinic_id = data[
+                    "clinic"
+                ]
 
-                # Defaults — must be set before platform blocks
                 fb_post_id = None
                 google_result = {}
 
-                # =====================================================
-                # FIX 1: Build formatted_message ONCE here, for ALL platforms
-                # =====================================================
                 if not facebook_message:
-                    facebook_message = campaign.campaign_name
+                    facebook_message = (
+                        campaign.campaign_name
+                    )
 
                 formatted_message = (
                     f"📢 {campaign.campaign_name}\n\n"
@@ -243,37 +369,41 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     f"⏰ Scheduled Time: "
                     f"{campaign.enter_time.strftime('%I:%M %p') if campaign.enter_time else 'N/A'}\n"
                     f"🎯 Objective: {campaign.campaign_objective}\n"
-                    f"👥 Target Audience: {campaign.target_audience}\n\n"
-                    f"#LMS #Campaign #{campaign.campaign_name.replace(' ', '')}"
+                    f"👥 Target Audience: {campaign.target_audience}"
                 )
 
-                # =====================================================
+                # ===================================
                 # FACEBOOK
-                # =====================================================
+                # ===================================
                 if "facebook" in channels:
 
                     social_fb = SocialAccount.objects.filter(
-                        clinic_id=clinic_id, platform="facebook", is_active=True
+                        clinic_id=clinic_id,
+                        platform="facebook",
+                        is_active=True,
                     ).first()
 
                     if not social_fb:
                         return Response(
-                            {"error": "Facebook not connected for this clinic"},
+                            {
+                                "error": (
+                                    "Facebook not connected"
+                                )
+                            },
                             status=400,
                         )
 
-                    send_to_zapier_social({
-                        "event": "social_campaign_created",
-                        "campaign_id": str(campaign.id),
-                        "campaign_name": campaign.campaign_name,
-                        "platforms": channels,
-                        "budget": filtered_budget,
-                        "content": facebook_message,
-                        "image_url": campaign.image_url,
-                        "status": data.get("status"),
-                        "start_date": str(data.get("start_date")),
-                        "end_date": str(data.get("end_date")),
-                    })
+                    send_to_zapier_social(
+                        {
+                            "event": "social_campaign_created",
+                            "campaign_id": str(
+                                campaign.id
+                            ),
+                            "platforms": channels,
+                            "content": facebook_message,
+                            "image_url": campaign.image_url,
+                        }
+                    )
 
                     fb_response = post_to_facebook(
                         page_id=social_fb.page_id,
@@ -282,24 +412,46 @@ class SocialMediaCampaignCreateAPIView(APIView):
                         image_url=campaign.image_url,
                     )
 
-                    fb_post_id = fb_response.get("post_id") or fb_response.get("id")
+                    fb_post_id = (
+                        fb_response.get(
+                            "post_id"
+                        )
+                        or fb_response.get(
+                            "id"
+                        )
+                    )
 
                     if fb_post_id:
-                        campaign.post_id = fb_post_id
-                        campaign.save(update_fields=["post_id"])
+                        campaign.post_id = (
+                            fb_post_id
+                        )
+                        campaign.save(
+                            update_fields=[
+                                "post_id"
+                            ]
+                        )
 
-                # =====================================================
+                # ===================================
                 # INSTAGRAM
-                # =====================================================
+                # ===================================
                 if "instagram" in channels:
-
                     social_ig = SocialAccount.objects.filter(
-                        clinic_id=clinic_id, platform="facebook", is_active=True
+                        clinic_id=clinic_id,
+                        platform="facebook",
+                        is_active=True,
                     ).first()
 
-                    ig_user_id = getattr(social_ig, "instagram_id", None)
+                    ig_user_id = getattr(
+                        social_ig,
+                        "instagram_id",
+                        None,
+                    )
 
-                    if social_ig and ig_user_id and campaign.image_url:
+                    if (
+                        social_ig
+                        and ig_user_id
+                        and campaign.image_url
+                    ):
                         post_to_instagram(
                             ig_user_id=ig_user_id,
                             access_token=social_ig.access_token,
@@ -307,23 +459,28 @@ class SocialMediaCampaignCreateAPIView(APIView):
                             image_url=campaign.image_url,
                         )
 
-                
-                # =====================================================
-                # LINKEDIN VIA ZAPIER
-                # =====================================================
-
+                # ===================================
+                # LINKEDIN
+                # ===================================
                 if "linkedin" in channels:
 
                     social_li = SocialAccount.objects.filter(
                         clinic_id=clinic_id,
                         platform="linkedin",
-                        is_active=True
+                        is_active=True,
                     ).first()
 
-                    if not social_li or not social_li.access_token:
+                    if (
+                        not social_li
+                        or not social_li.access_token
+                    ):
                         return Response(
-                            {"error":"LinkedIn not connected"},
-                            status=400
+                            {
+                                "error": (
+                                    "LinkedIn not connected"
+                                )
+                            },
+                            status=400,
                         )
 
                     if (
@@ -333,205 +490,208 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     ):
                         return Response(
                             {
-                                "error":
-                                "LinkedIn account setup incomplete"
+                                "error":(
+                                  "LinkedIn account setup incomplete"
+                                )
                             },
-                            status=400
+                            status=400,
                         )
 
-
-                    linkedin_payload = LinkedInPayloadBuilder.create(
-                        campaign=campaign,
-                        social_account=social_li,
-                        validated_data=data
+                    linkedin_payload = (
+                        LinkedInPayloadBuilder.create(
+                            campaign=campaign,
+                            social_account=social_li,
+                            validated_data=data,
+                        )
                     )
 
+                    send_to_zapier_social(
+                        linkedin_payload
+                    )
 
-                    print("🚀 Sending LinkedIn Campaign To Zapier")
-                    print({
-                        **linkedin_payload,
-                        "auth":{
-                            **linkedin_payload["auth"],
-                            "access_token":"****"
-                        }
-                    })
-
-                    send_to_zapier_social(linkedin_payload)
-
-                    print("✅ Sent To Zapier")
-                
-                
-                    
-                # =====================================================
+                # ===================================
                 # GOOGLE ADS
-                # =====================================================
+                # ===================================
                 if "google_ads" in channels:
-
-                    print("=" * 60)
-                    print("DEBUG: ENTERING GOOGLE ADS BLOCK")
-                    print("DEBUG: channels =", channels)
-                    print("=" * 60)
 
                     google_account = SocialAccount.objects.filter(
                         clinic_id=clinic_id,
                         platform="google",
-                        is_active=True
+                        is_active=True,
                     ).first()
 
-                    # --- Load tokens: DB first, then settings.py fallback ---
-                    refresh_token = google_account.user_token if google_account else None
-                    access_token  = google_account.access_token if google_account else None
-                    customer_id   = google_account.customer_id if google_account else None
+                    refresh_token = (
+                        google_account.user_token
+                        if google_account
+                        else None
+                    )
+
+                    access_token = (
+                        google_account.access_token
+                        if google_account
+                        else None
+                    )
+
+                    customer_id = (
+                        google_account.customer_id
+                        if google_account
+                        else None
+                    )
 
                     if not refresh_token:
-                        refresh_token = getattr(settings, "GOOGLE_REFRESH_TOKEN", None)
-
-                    if not access_token:
-                        access_token = getattr(settings, "GOOGLE_ACCESS_TOKEN", None)
+                        refresh_token = getattr(
+                            settings,
+                            "GOOGLE_REFRESH_TOKEN",
+                            None,
+                        )
 
                     if not customer_id:
-                        customer_id = getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", None)
-
-                    if not refresh_token:
-                        logger.error(
-                            "[SocialCampaign] Google Ads skipped — refresh token missing for clinic %s",
-                            clinic_id
+                        customer_id = getattr(
+                            settings,
+                            "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
+                            None,
                         )
-                        google_result = {"status": "skipped_no_token"}
-                    else:
-                        # ✅ FIX: Get clinic website for final_url
-                        clinic_obj = Clinic.objects.filter(id=clinic_id).first()
+
+                    if refresh_token:
+                        clinic_obj = Clinic.objects.filter(
+                            id=clinic_id
+                        ).first()
+
                         clinic_website = (
-                            getattr(clinic_obj, "website", None)
-                            or getattr(clinic_obj, "clinic_url", None)
+                            getattr(
+                                clinic_obj,
+                                "website",
+                                None,
+                            )
+                            or getattr(
+                                clinic_obj,
+                                "clinic_url",
+                                None,
+                            )
                             or settings.BACKEND_BASE_URL
                         )
 
-                        # platform_data.google_ads can be a string or a dict
-                        raw_google_data = campaign.platform_data.get("google_ads", {})
+                        raw_google_data = (
+                            campaign.platform_data.get(
+                                "google_ads",
+                                {},
+                            )
+                        )
 
-                        if isinstance(raw_google_data, str):
-                            google_ads_description = raw_google_data
-                            google_campaign_data   = {}
+                        if isinstance(
+                            raw_google_data,
+                            str,
+                        ):
+                            google_data = {}
                         else:
-                            google_ads_description = ""
-                            google_campaign_data   = raw_google_data
+                            google_data = raw_google_data
 
-                        # Resolve image_url
-                        image_url = (
-                            google_campaign_data.get("image_url")
-                            or campaign.image_url
-                            or None
+                        keywords_raw = (
+                            google_data.get(
+                                "keywords",
+                                [],
+                            )
                         )
 
-                        # Resolve budget
-                        budget = int(
-                            filtered_budget.get("google_ads")
-                            or google_campaign_data.get("budget", 500)
-                        )
-
-                        # Keywords
-                        keywords_raw = google_campaign_data.get("keywords", [])
                         keywords_str = (
-                            ",".join(keywords_raw)
-                            if isinstance(keywords_raw, list)
-                            else str(keywords_raw)
+                            ",".join(
+                                keywords_raw
+                            )
+                            if isinstance(
+                                keywords_raw,
+                                list,
+                            )
+                            else str(
+                                keywords_raw
+                            )
                         )
 
                         google_payload = {
-                            "event":              "google_ads_campaign_created",
-                            "campaign_name":      campaign.campaign_name,
-                            "image_url":          image_url or "",
-                            "customer_id":        str(customer_id or "").replace("-", ""),
-                            "login_customer_id":  getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", ""),
-                            "developer_token":    settings.GOOGLE_ADS_DEVELOPER_TOKEN,
-                            "client_id":          settings.GOOGLE_CLIENT_ID,
-                            "client_secret":      settings.GOOGLE_CLIENT_SECRET,
-                            "refresh_token":      refresh_token,
-                            "access_token":       access_token or "",
-                            "budget":             budget,
-                            "bidding_strategy":   google_campaign_data.get("bidding_strategy", "MANUAL_CPC"),
-                            "locations":          google_campaign_data.get("locations", []),
-                            "keywords":           keywords_str,
-                            "cpc_bid":            int(google_campaign_data.get("cpc_bid", 20)),
-                            "ad_group_name":      google_campaign_data.get(
-                                                      "ad_group_name",
-                                                      f"{campaign.campaign_name} AdGroup"
-                                                  ),
-                            # ✅ FIX: use clinic website instead of hardcoded example.com
-                            "final_url":          clinic_website,
-                            # ✅ FIX: auto headlines from campaign data
-                            "headline_1":         campaign.campaign_name[:30],
-                            "headline_2":         "Book Free Consultation",
-                            "headline_3":         "Contact Us Today",
-                            # ✅ FIX: use campaign_description instead of emoji content
-                            "description": strip_tags(campaign.campaign_description or campaign.campaign_name)[:90],
-                            "description_2":      "Expert care tailored for you. Call now.",
-                            "campaign_objective": campaign.campaign_objective,
-                            "start_date":         str(campaign.start_date),
-                            "end_date":           str(campaign.end_date),
-                            # ✅ FIX: add campaign_id and callback_url for insights flow
-                            "campaign_id":        str(campaign.id),
-                            "callback_url":       f"{settings.BACKEND_BASE_URL}/api/campaign/insights/callback/",
+                            "event":"google_ads_campaign_created",
+                            "campaign_name": campaign.campaign_name,
+                            "customer_id": str(customer_id).replace("-", ""),
+                            "refresh_token": refresh_token,
+                            "access_token": access_token or "",
+                            "developer_token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
+                            "client_id": settings.GOOGLE_CLIENT_ID,
+                            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                            "budget": int(
+                                filtered_budget.get(
+                                    "google_ads",
+                                    500,
+                                )
+                            ),
+                            "keywords": keywords_str,
+                            "final_url": clinic_website,
+                            "headline_1": campaign.campaign_name[:30],
+                            "headline_2": "Book Free Consultation",
+                            "headline_3": "Contact Us Today",
+                            "description": strip_tags(
+                                campaign.campaign_description
+                                or campaign.campaign_name
+                            )[:90],
+                            "campaign_id": str(
+                                campaign.id
+                            ),
+                            "callback_url": (
+                                f"{settings.BACKEND_BASE_URL}/api/campaign/insights/callback/"
+                            ),
                         }
 
-                        print("=" * 60)
-                        print("GOOGLE ADS PAYLOAD SENDING TO ZAPIER:", google_payload)
-                        print("=" * 60)
-
-                        webhook_url = settings.ZAPIER_WEBHOOK_GOOGLE_ADS_URL
                         try:
-                            zapier_resp = requests.post(
-                                webhook_url, json=google_payload, timeout=10
+                            requests.post(
+                                settings.ZAPIER_WEBHOOK_GOOGLE_ADS_URL,
+                                json=google_payload,
+                                timeout=10,
                             )
-                            logger.info(
-                                "[SocialCampaign] Google Ads Zapier response: %s | body: %s",
-                                zapier_resp.status_code, zapier_resp.text
-                            )
+
                             google_result = {
-                                "status":        "sent_to_zapier",
-                                "zapier_status": zapier_resp.status_code,
+                                "status":"sent_to_zapier"
                             }
-                        except requests.exceptions.RequestException as e:
-                            logger.error(
-                                "[SocialCampaign] Google Ads Zapier request failed: %s", str(e)
+                        except Exception as e:
+                            google_result = {
+                                "status":"zapier_failed",
+                                "error":str(e),
+                            }
+
+                created_campaigns.append(
+                    {
+                        "campaign_id": str(
+                            campaign.id
+                        ),
+                        "mode": mode,
+                        "platforms": channels,
+                        "fb_post_id": fb_post_id,
+                        "google_ads_status": (
+                            google_result.get(
+                                "status"
                             )
-                            google_result = {"status": "zapier_failed", "error": str(e)}
+                            if "google_ads" in channels
+                            else None
+                        ),
+                    }
+                )
 
-                # =====================================================
-                # APPEND RESULT
-                # =====================================================
-                created_campaigns.append({
-                    "campaign_id":          str(campaign.id),
-                    "mode":                 mode,
-                    "platforms":            channels,
-                    "fb_post_id":           fb_post_id,
-                    "fb_campaign_id":       getattr(campaign, "fb_campaign_id", None),
-                    "google_ads_status":    google_result.get("status") if "google_ads" in channels else None,
-                    "google_campaign_name": google_result.get("campaign_resource_name") if "google_ads" in channels else None,
-                })
-
-            # =====================================================
-            # RETURN
-            # =====================================================
             return Response(
                 {
-                    "message": "Social media campaign(s) created successfully",
+                    "message": (
+                      "Social media campaign(s) created successfully"
+                    ),
                     "campaigns": created_campaigns,
                 },
-                status=status.HTTP_201_CREATED,
+                status=201,
             )
 
         except Exception as e:
             return Response(
                 {
                     "error": str(e),
-                    "type": type(e).__name__,
                     "trace": traceback.format_exc(),
                 },
                 status=400,
             )
-            
+
+
             
 # -------------------------------------------------------------------
 # LINKEDIN CAMPAIGN INSIGHTS
@@ -824,3 +984,4 @@ class LinkedInCampaignUpdateAPIView(APIView):
            "desired_status":
                desired_status
         })            
+
