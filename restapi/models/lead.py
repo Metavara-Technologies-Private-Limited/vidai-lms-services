@@ -166,7 +166,7 @@ class Lead(models.Model):
         return f"{self.full_name} ({self.lead_status})"
 
     # =====================================================
-    # ✅ FINAL FIXED SAVE LOGIC (PRODUCTION SAFE)
+    # ✅ FINAL FIXED SAVE LOGIC (WORKS FOR YOUR REQUIREMENT)
     # =====================================================
     def save(self, *args, **kwargs):
 
@@ -180,25 +180,25 @@ class Lead(models.Model):
             old_stage = old.stage if old else None
 
         if self.stage:
+            # ✅ Always sync lead status
             self.lead_status = self.stage.stage_name
-            is_converted = self.stage.is_conversion_stage
 
             # =============================
-            # ✅ CREATE CASE
+            # 🔥 CREATE CASE → ALWAYS STORE STAGE
             # =============================
-            if not self.pk and is_converted:
-                self.converted_at = timezone.now()
+            if not self.pk:
                 self.converted_at_stage = self.stage
 
             # =============================
-            # ✅ UPDATE CASE (STAGE CHANGE)
+            # 🔥 UPDATE CASE → ONLY IF CONVERSION
             # =============================
-            elif self.pk and old_stage and old_stage.id != self.stage.id and is_converted:
+            is_converted = self.stage.is_conversion_stage
+
+            if self.pk and old_stage and old_stage.id != self.stage.id and is_converted:
 
                 if not self.converted_at:
                     self.converted_at = timezone.now()
 
-                if not self.converted_at_stage:
-                    self.converted_at_stage = self.stage
+                self.converted_at_stage = self.stage
 
         super().save(*args, **kwargs)
