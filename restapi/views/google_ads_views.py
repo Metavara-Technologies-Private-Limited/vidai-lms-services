@@ -83,17 +83,25 @@ class GoogleAdsCampaignCreateAPIView(APIView):
 
             google_data = data.get("platform_data", {}).get("google_ads", {})
 
-            image_url = (
+            # ✅ FIX: image_url — check all possible sources, always resolve to string (never None/null)
+            # Zapier completely hides fields that are null — so we must always send a string
+            raw_image_url = (
                 data.get("image_url")
                 or (google_data.get("image_url") if isinstance(google_data, dict) else None)
+                or ""
             )
+            image_url = str(raw_image_url).strip() if raw_image_url else ""
 
+            # ✅ FIX: keywords — convert list to comma string, never empty if possible
             keywords_raw = data.get("keywords", [])
-            keywords_str = (
-                ",".join(keywords_raw)
-                if isinstance(keywords_raw, list)
-                else str(keywords_raw)
-            )
+            if isinstance(keywords_raw, list):
+                # Filter out blank entries, join with comma
+                keywords_str = ",".join(k.strip() for k in keywords_raw if str(k).strip())
+            else:
+                keywords_str = str(keywords_raw).strip()
+
+            # ✅ FIX: internal_campaign_id — always a string, never null/empty silently
+            internal_campaign_id = str(data.get("internal_campaign_id") or "").strip()
 
             login_customer_id = str(
                 data.get("login_customer_id") or getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
@@ -106,7 +114,6 @@ class GoogleAdsCampaignCreateAPIView(APIView):
             )
 
             campaign_type = data.get("campaign_type", "SEARCH")
-            internal_campaign_id = str(data.get("internal_campaign_id", ""))
 
             callback_base = getattr(settings, "BACKEND_BASE_URL", "https://lms-vidaisolutions.metavaratechnologies.com")
             campaign_created_callback_url = f"{callback_base}/api/google-ads/callback/campaign-created/"
@@ -117,6 +124,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 "campaign_type":                campaign_type,
                 "internal_campaign_id":         internal_campaign_id,
                 "campaign_created_callback_url": campaign_created_callback_url,
+                # ✅ FIX: always a string — Zapier hides null fields entirely from UI and Python code
                 "image_url":                    image_url,
                 "customer_id":                  str(customer_id).replace("-", ""),
                 "login_customer_id":            login_customer_id,
@@ -128,6 +136,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 "budget":                       int(data.get("budget", 500)),
                 "bidding_strategy":             data.get("bidding_strategy", "MANUAL_CPC"),
                 "locations":                    data.get("locations", []),
+                # ✅ FIX: always a string — empty string shows the field in Zapier, null hides it
                 "keywords":                     keywords_str,
                 "cpc_bid":                      int(data.get("cpc_bid", 20)),
                 "ad_group_name":                data.get("ad_group_name", f"{campaign_name} AdGroup"),
@@ -140,11 +149,14 @@ class GoogleAdsCampaignCreateAPIView(APIView):
             }
 
             logger.info(
-                "[GoogleAdsView] Sending to Zapier | clinic=%s | customer_id=%s | refresh_token_source=%s | image_url=%s | login_customer_id=%s | campaign_type=%s | internal_campaign_id=%s",
+                "[GoogleAdsView] Sending to Zapier | clinic=%s | customer_id=%s | "
+                "refresh_token_source=%s | image_url='%s' | keywords='%s' | "
+                "login_customer_id=%s | campaign_type=%s | internal_campaign_id=%s",
                 clinic_id,
                 customer_id,
                 "DB" if google_account and google_account.user_token else "Settings",
                 image_url,
+                keywords_str,
                 login_customer_id,
                 campaign_type,
                 internal_campaign_id,
@@ -171,10 +183,12 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                         "success": True,
                         "message": "Google Ads campaign request sent to Zapier successfully",
                         "data": {
-                            "campaign_name": campaign_name,
-                            "customer_id":   customer_id,
-                            "has_image":     bool(image_url),
-                            "status":        "sent_to_zapier",
+                            "campaign_name":       campaign_name,
+                            "customer_id":         customer_id,
+                            "has_image":           bool(image_url),
+                            "keywords_sent":       keywords_str,
+                            "internal_campaign_id": internal_campaign_id,
+                            "status":              "sent_to_zapier",
                         },
                     },
                     status=status.HTTP_201_CREATED,
