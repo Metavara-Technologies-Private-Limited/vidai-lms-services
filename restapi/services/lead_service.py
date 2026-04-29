@@ -239,9 +239,9 @@ def create_lead(validated_data, request=None):
                 id=ref_source_id,
                 clinic=clinic
             )
-
             if referral_department and referral_source.referral_department_id != referral_department.id:
                 raise ValidationError("Referral mismatch")
+
 
     validated_data.pop("referral_department_id", None)
     validated_data.pop("referral_source_id", None)
@@ -274,7 +274,7 @@ def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # 🔥 FIX: CAPTURE OLD STAGE FIRST
+    # 🔥 IMPORTANT FIX
     old_stage = instance.stage
 
     if "contact_no" in validated_data:
@@ -289,6 +289,7 @@ def update_lead(instance, validated_data, request=None):
     instance.updated_by_id = updated_by_id
     instance.updated_by_name = updated_by_name
 
+    # ================= STAGE =================
     stage_id = validated_data.pop("stage_id", None)
 
     if stage_id:
@@ -304,6 +305,7 @@ def update_lead(instance, validated_data, request=None):
 
         instance.stage = stage
 
+    # ================= ASSIGNED TO (YOUR CODE — RESTORED) =================
     if "assigned_to_id" in validated_data:
         assigned_to_id = validated_data.pop("assigned_to_id")
         assigned_to_name = validated_data.pop("assigned_to_name", None)
@@ -314,6 +316,7 @@ def update_lead(instance, validated_data, request=None):
             assigned_to_name
         )
 
+    # ================= REFERRAL (YOUR CODE — RESTORED) =================
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)
 
@@ -355,10 +358,15 @@ def update_lead(instance, validated_data, request=None):
                 clinic=instance.clinic
             ).first()
 
-    # 🔥 SOHAN LOGIC
-    new_status = validated_data.get("lead_status")
+    # ================= 🔥 SOHAN LOGIC (FIXED) =================
+    new_status = (
+        validated_data.get("lead_status")
+        or (request.data.get("lead_status") if request else None)
+    )
 
-    if new_status == "converted" and instance.lead_status != "converted":
+    if str(new_status).lower() == "converted" and instance.lead_status != "converted":
+
+        print("🔥 CONVERSION TRIGGERED")
 
         instance.converted_at_stage = old_stage
         instance.converted_at_status = instance.lead_status
@@ -375,6 +383,7 @@ def update_lead(instance, validated_data, request=None):
 
         instance.converted_at = timezone.now()
 
+    # ================= UPDATE =================
     for field, value in validated_data.items():
         if hasattr(instance, field):
             setattr(instance, field, value)
