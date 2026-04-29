@@ -93,12 +93,9 @@ def _validate_phone(value):
         raise ValidationError({"contact_no": "Phone must be 10 digits"})
 
     invalid_numbers = {
-        "1111111111", "2222222222",
-        "3333333333", "4444444444",
-        "5555555555", "6666666666",
-        "7777777777", "8888888888",
-        "9999999999", "1234567890",
-        "0123456789"
+        "1111111111","2222222222","3333333333","4444444444",
+        "5555555555","6666666666","7777777777","8888888888",
+        "9999999999","1234567890","0123456789"
     }
 
     if value in invalid_numbers:
@@ -264,9 +261,8 @@ def create_lead(validated_data, request=None):
 
     return lead
 
-
 # =====================================================
-# UPDATE LEAD (🔥 FINAL CORRECT)
+# UPDATE LEAD (🔥 FINAL PERFECT VERSION)
 # =====================================================
 @transaction.atomic
 def update_lead(instance, validated_data, request=None):
@@ -316,7 +312,6 @@ def update_lead(instance, validated_data, request=None):
     # ================= REFERRAL =================
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)
-
     referral_source_data = validated_data.pop("referral_source", None)
 
     if referral_source_data:
@@ -356,37 +351,29 @@ def update_lead(instance, validated_data, request=None):
             ).first()
 
     # ================= 🔥 CONVERSION LOGIC =================
-    new_status = None
+    new_status = validated_data.get("lead_status") or (
+        request.data.get("lead_status") if request else None
+    )
 
-    if request and hasattr(request, "data"):
-        new_status = request.data.get("lead_status")
+    if (
+        new_status
+        and str(new_status).lower() == "converted"
+        and str(old_status).lower() != "converted"
+    ):
+        instance.converted_at_stage = old_stage
+        instance.converted_at_status = old_status
 
-    if not new_status:
-        new_status = validated_data.get("lead_status")
+        conversion_stage = PipelineStage.objects.filter(
+            pipeline=old_stage.pipeline if old_stage else None,
+            is_conversion_stage=True,
+            is_active=True,
+            is_deleted=False
+        ).first()
 
-    print("NEW STATUS:", new_status)
-    print("OLD STATUS:", old_status)
+        if conversion_stage:
+            instance.stage = conversion_stage
 
-    if new_status and str(new_status).lower() == "converted":
-
-        if str(old_status).lower() != "converted":
-
-            print("🔥 CONVERSION TRIGGERED")
-
-            instance.converted_at_stage = old_stage
-            instance.converted_at_status = old_status
-
-            conversion_stage = PipelineStage.objects.filter(
-                pipeline=old_stage.pipeline if old_stage else None,
-                is_conversion_stage=True,
-                is_active=True,
-                is_deleted=False
-            ).first()
-
-            if conversion_stage:
-                instance.stage = conversion_stage
-
-            instance.converted_at = timezone.now()
+        instance.converted_at = timezone.now()
 
     # ================= UPDATE =================
     for field, value in validated_data.items():
