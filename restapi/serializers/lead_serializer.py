@@ -344,8 +344,8 @@ class LeadSerializer(serializers.ModelSerializer):
 
         validated_data.pop("pipeline_id", None)
 
-        if validated_data.get("full_name"):
-            validated_data["personal_name"] = validated_data["full_name"]
+        # if validated_data.get("full_name"):
+        #     validated_data["personal_name"] = validated_data["full_name"]
 
         return create_lead(validated_data, request=request)
 
@@ -357,8 +357,8 @@ class LeadSerializer(serializers.ModelSerializer):
 
         validated_data.pop("pipeline_id", None)
 
-        if validated_data.get("full_name"):
-            validated_data["personal_name"] = validated_data["full_name"]
+        # if validated_data.get("full_name"):
+        #     validated_data["personal_name"] = validated_data["full_name"]
 
         # =====================================================
         # 🔥 FIX 2: FORCE STATUS INTO SERVICE
