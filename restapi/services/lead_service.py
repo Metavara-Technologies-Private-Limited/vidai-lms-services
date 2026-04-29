@@ -239,9 +239,9 @@ def create_lead(validated_data, request=None):
                 id=ref_source_id,
                 clinic=clinic
             )
+
             if referral_department and referral_source.referral_department_id != referral_department.id:
                 raise ValidationError("Referral mismatch")
-
 
     validated_data.pop("referral_department_id", None)
     validated_data.pop("referral_source_id", None)
@@ -267,23 +267,19 @@ def create_lead(validated_data, request=None):
 
 
 # =====================================================
-# UPDATE LEAD (🔥 FINAL FIXED)
+# UPDATE LEAD (🔥 FINAL WORKING FIX)
 # =====================================================
 @transaction.atomic
 def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # 🔥 IMPORTANT FIX
-    old_stage = instance.stage
+    old_stage = instance.stage  # 🔥 VERY IMPORTANT
 
     if "contact_no" in validated_data:
         validated_data["contact_no"] = _validate_phone(
             validated_data.get("contact_no")
         )
-
-    validated_data.pop("updated_by_id", None)
-    validated_data.pop("updated_by_name", None)
 
     updated_by_id, updated_by_name = _get_user_info(request)
     instance.updated_by_id = updated_by_id
@@ -305,7 +301,7 @@ def update_lead(instance, validated_data, request=None):
 
         instance.stage = stage
 
-    # ================= ASSIGNED TO (YOUR CODE — RESTORED) =================
+    # ================= ASSIGNEE =================
     if "assigned_to_id" in validated_data:
         assigned_to_id = validated_data.pop("assigned_to_id")
         assigned_to_name = validated_data.pop("assigned_to_name", None)
@@ -316,7 +312,7 @@ def update_lead(instance, validated_data, request=None):
             assigned_to_name
         )
 
-    # ================= REFERRAL (YOUR CODE — RESTORED) =================
+    # ================= REFERRAL =================
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)
 
@@ -358,13 +354,19 @@ def update_lead(instance, validated_data, request=None):
                 clinic=instance.clinic
             ).first()
 
-    # ================= 🔥 SOHAN LOGIC (FIXED) =================
-    new_status = (
-        validated_data.get("lead_status")
-        or (request.data.get("lead_status") if request else None)
-    )
+    # ================= 🔥 CONVERSION FIX =================
+    new_status = None
 
-    if str(new_status).lower() == "converted" and instance.lead_status != "converted":
+    if request and hasattr(request, "data"):
+        new_status = request.data.get("lead_status")
+
+    if not new_status:
+        new_status = validated_data.get("lead_status")
+
+    print("DEBUG STATUS:", new_status)
+    print("OLD STATUS:", instance.lead_status)
+
+    if new_status and str(new_status).lower() == "converted":
 
         print("🔥 CONVERSION TRIGGERED")
 
@@ -394,6 +396,8 @@ def update_lead(instance, validated_data, request=None):
         LeadDocument.objects.create(lead=instance, file=file)
 
     return instance
+
+
 # =====================================================
 # EMAIL HELPERS
 # =====================================================
