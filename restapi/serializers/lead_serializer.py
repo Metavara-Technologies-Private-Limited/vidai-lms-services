@@ -45,6 +45,9 @@ class LeadReadSerializer(serializers.ModelSerializer):
     campaign_id = serializers.UUIDField(source="campaign.id", read_only=True)
     campaign_name = serializers.CharField(source="campaign.campaign_name", read_only=True)
 
+    updated_by_id = serializers.IntegerField(read_only=True)
+    updated_by_name = serializers.CharField(read_only=True)
+
     campaign_duration = serializers.SerializerMethodField()
 
     assigned_to_id = serializers.IntegerField(read_only=True)
@@ -65,6 +68,12 @@ class LeadReadSerializer(serializers.ModelSerializer):
 
     referral_source_email = serializers.CharField(source="referral_source.email", read_only=True)   # ✅ NEW
     referral_source_phone = serializers.CharField(source="referral_source.phone", read_only=True)   # ✅ NEW
+
+    # 🔥 IMPORTANT (FOR ANALYTICS)
+    converted_at_stage_id = serializers.UUIDField(source="converted_at_stage.id", read_only=True)
+    converted_at_stage_name = serializers.CharField(source="converted_at_stage.stage_name", read_only=True)
+
+    # ==
     # STAGE
     stage_id = serializers.UUIDField(source="stage.id", read_only=True)
     stage_name = serializers.CharField(source="stage.stage_name", read_only=True)

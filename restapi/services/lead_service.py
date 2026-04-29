@@ -57,9 +57,6 @@ def _resolve_assignee_name(assigned_to_id, assigned_to_name):
 # =====================================================
 def _validate_phone(value):
 
-    # =============================
-    # ✅ EMPTY → NULL (FIX ADDED)
-    # =============================
     if value is None:
         return None
 
@@ -68,7 +65,6 @@ def _validate_phone(value):
     if value == "" or value.lower() in ["null", "none"]:
         return None
 
-    # 🔥 FRONTEND BUG FIX (IMPORTANT)
     if value in ["0", "00", "000", "0000000000"]:
         return None
 
@@ -121,7 +117,6 @@ def create_lead(validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # 🔥 APPLY VALIDATION HERE
     validated_data["contact_no"] = _validate_phone(
         validated_data.get("contact_no")
     )
@@ -208,7 +203,6 @@ def create_lead(validated_data, request=None):
 
         full_name = f"{first_name} {last_name}".strip()
 
-        # Resolve referral department (priority: FE id > role mapping)
         if ref_dept_id:
             referral_department = ReferralDepartment.objects.filter(
                 id=ref_dept_id,
@@ -258,8 +252,6 @@ def create_lead(validated_data, request=None):
             if referral_department and referral_source.referral_department_id != referral_department.id:
                 raise ValidationError("Referral mismatch")
 
-    # ===================== CREATE =====================
-    # FINAL SAFETY CLEAN (ADD HERE)
     validated_data.pop("referral_department_id", None)
     validated_data.pop("referral_source_id", None)
 
@@ -291,20 +283,19 @@ def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # 🔥 APPLY VALIDATION HERE
     if "contact_no" in validated_data:
         validated_data["contact_no"] = _validate_phone(
             validated_data.get("contact_no")
         )
 
-    # ===================== UPDATED BY =====================
     validated_data.pop("updated_by_id", None)
     validated_data.pop("updated_by_name", None)
 
     updated_by_id, updated_by_name = _get_user_info(request)
     instance.updated_by_id = updated_by_id
     instance.updated_by_name = updated_by_name
-    # ===================== STAGE =====================
+
+    # ✅ CRITICAL FIX: SET STAGE BEFORE SAVE
     stage_id = validated_data.pop("stage_id", None)
 
     if stage_id:
@@ -318,7 +309,7 @@ def update_lead(instance, validated_data, request=None):
         if not stage:
             raise ValidationError({"stage_id": "Invalid stage"})
 
-        instance.stage = stage
+        instance.stage = stage  # 🔥 IMPORTANT
 
     # ===================== ASSIGNEE =====================
     if "assigned_to_id" in validated_data:
@@ -330,6 +321,7 @@ def update_lead(instance, validated_data, request=None):
             assigned_to_id,
             assigned_to_name
         )
+
     # ===================== REFERRAL UPDATE =====================
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)
@@ -373,7 +365,6 @@ def update_lead(instance, validated_data, request=None):
             ).first()
 
     # ===================== UPDATE FIELDS =====================
-
     for field, value in validated_data.items():
         if hasattr(instance, field):
             setattr(instance, field, value)
@@ -384,6 +375,8 @@ def update_lead(instance, validated_data, request=None):
         LeadDocument.objects.create(lead=instance, file=file)
 
     return instance
+
+
 # =====================================================
 # EMAIL HELPERS
 # =====================================================

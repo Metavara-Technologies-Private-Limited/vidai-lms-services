@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 
+
 class PipelineStage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
@@ -31,6 +32,12 @@ class PipelineStage(models.Model):
         default="open"
     )
 
+    # ✅ CRITICAL: MARK WHICH STAGE IS ACTUAL CONVERSION
+    is_conversion_stage = models.BooleanField(default=False)
+
+    # ✅ OPTIONAL BUT USEFUL: DEFAULT ENTRY STAGE
+    is_default_stage = models.BooleanField(default=False)
+
     color_code = models.CharField(max_length=10, default="#EBFAEF")
 
     ENTRY_RULE_CHOICES = (
@@ -48,6 +55,8 @@ class PipelineStage(models.Model):
     modified_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        
         db_table = "restapi_pipeline_stage"
         ordering = ["stage_order"]
+
+    def __str__(self):
+        return f"{self.stage_name} ({self.stage_type})"

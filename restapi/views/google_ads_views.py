@@ -82,11 +82,12 @@ class GoogleAdsCampaignCreateAPIView(APIView):
             campaign_name = data["campaign_name"]
 
             google_data = data.get("platform_data", {}).get("google_ads", {})
-            image_url   = (
-                google_data.get("image_url")
-                if isinstance(google_data, dict)
-                else None
-            ) or data.get("image_url")
+
+            # ✅ FIX: image_url — check top-level first, then nested platform_data
+            image_url = (
+                data.get("image_url")
+                or (google_data.get("image_url") if isinstance(google_data, dict) else None)
+            )
 
             keywords_raw = data.get("keywords", [])
             keywords_str = (
@@ -95,12 +96,24 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 else str(keywords_raw)
             )
 
+            # ✅ FIX: login_customer_id — check top-level payload first, then settings
+            login_customer_id = str(
+                data.get("login_customer_id") or getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
+            ).replace("-", "")
+
+            # ✅ FIX: description_2 — check top-level payload first, then fallback
+            description_2 = (
+                data.get("description_2")
+                or (google_data.get("description_2") if isinstance(google_data, dict) else None)
+                or "Call us now or visit our website."
+            )
+
             zapier_payload = {
                 "event":             "google_ads_campaign_created",
                 "campaign_name":     campaign_name,
                 "image_url":         image_url,
                 "customer_id":       str(customer_id).replace("-", ""),
-                "login_customer_id": getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", ""),
+                "login_customer_id": login_customer_id,
                 "developer_token":   settings.GOOGLE_ADS_DEVELOPER_TOKEN,
                 "client_id":         settings.GOOGLE_CLIENT_ID,
                 "client_secret":     settings.GOOGLE_CLIENT_SECRET,
@@ -117,14 +130,17 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 "headline_2":        data.get("headline_2", "Learn More"),
                 "headline_3":        data.get("headline_3", "Contact Us Today"),
                 "description":       data.get("description", "")[:90],
-                "description_2":     data.get("description_2", "Call us now or visit our website.")[:90],
+                "description_2":     description_2[:90],
             }
 
             logger.info(
-                "[GoogleAdsView] Sending to Zapier | clinic=%s | customer_id=%s | refresh_token_source=%s",
+                "[GoogleAdsView] Sending to Zapier | clinic=%s | customer_id=%s | refresh_token_source=%s | image_url=%s | login_customer_id=%s | description_2=%s",
                 clinic_id,
                 customer_id,
                 "DB" if google_account and google_account.user_token else "Settings",
+                image_url,
+                login_customer_id,
+                description_2,
             )
 
             webhook_url = settings.ZAPIER_WEBHOOK_GOOGLE_ADS_URL

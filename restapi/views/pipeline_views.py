@@ -254,6 +254,9 @@ class PipelineDetailAPIView(APIView):
 # -------------------------------------------------------------------
 # ADD STAGE TO PIPELINE (POST)
 # -------------------------------------------------------------------
+# -------------------------------------------------------------------
+# ADD STAGE TO PIPELINE (POST)
+# -------------------------------------------------------------------
 class PipelineStageCreateAPIView(APIView):
 
     @swagger_auto_schema(
@@ -264,6 +267,8 @@ class PipelineStageCreateAPIView(APIView):
                 "pipeline_id": openapi.Schema(type=openapi.TYPE_STRING),
                 "stage_name": openapi.Schema(type=openapi.TYPE_STRING),
                 "stage_type": openapi.Schema(type=openapi.TYPE_STRING),
+                "is_conversion_stage": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                "is_default_stage": openapi.Schema(type=openapi.TYPE_BOOLEAN),
             },
             required=["pipeline_id", "stage_name", "stage_type"],
         ),
@@ -271,6 +276,27 @@ class PipelineStageCreateAPIView(APIView):
     )
     def post(self, request):
         try:
+            pipeline_id = request.data.get("pipeline_id")
+
+            # ✅ ADD VALIDATION
+            if request.data.get("is_default_stage"):
+                exists = PipelineStage.objects.filter(
+                    pipeline_id=pipeline_id,
+                    is_default_stage=True,
+                    is_deleted=False
+                ).exists()
+                if exists:
+                    raise ValidationError({"is_default_stage": "Default stage already exists"})
+
+            if request.data.get("is_conversion_stage"):
+                exists = PipelineStage.objects.filter(
+                    pipeline_id=pipeline_id,
+                    is_conversion_stage=True,
+                    is_deleted=False
+                ).exists()
+                if exists:
+                    raise ValidationError({"is_conversion_stage": "Conversion stage already exists"})
+
             stage = add_stage(request.data)
 
             return Response(
@@ -305,6 +331,26 @@ class PipelineStageUpdateAPIView(APIView):
     def put(self, request, stage_id):
         try:
             stage = _get_scoped_stage(request, stage_id)
+
+            # ✅ ADD VALIDATION
+            if request.data.get("is_default_stage"):
+                exists = PipelineStage.objects.filter(
+                    pipeline=stage.pipeline,
+                    is_default_stage=True,
+                    is_deleted=False
+                ).exclude(id=stage.id).exists()
+                if exists:
+                    raise ValidationError({"is_default_stage": "Default stage already exists"})
+
+            if request.data.get("is_conversion_stage"):
+                exists = PipelineStage.objects.filter(
+                    pipeline=stage.pipeline,
+                    is_conversion_stage=True,
+                    is_deleted=False
+                ).exclude(id=stage.id).exists()
+                if exists:
+                    raise ValidationError({"is_conversion_stage": "Conversion stage already exists"})
+
             stage = update_stage(stage, request.data)
 
             return Response(

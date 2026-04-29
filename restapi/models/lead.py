@@ -19,11 +19,6 @@ class LeadChoices:
         ("female", "Female"),
     )
 
-    # NEXT_ACTION_TYPE intentionally removed.
-    # next_action_type is now free text driven by pipeline stage rules
-    # (action_type enum or custom_label). Removing choices allows any
-    # value from the pipeline to be stored without validation errors.
-
 
 class Lead(models.Model):
 
@@ -41,7 +36,9 @@ class Lead(models.Model):
 
     department = models.ForeignKey(Department, on_delete=models.CASCADE)
 
-    # ✅ SOURCE OF TRUTH
+    # =============================
+    # STAGE
+    # =============================
     stage = models.ForeignKey(
         "restapi.PipelineStage",
         on_delete=models.SET_NULL,
@@ -50,10 +47,17 @@ class Lead(models.Model):
         related_name="leads"
     )
 
+    converted_at_stage = models.ForeignKey(
+        "restapi.PipelineStage",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="converted_leads"
+    )
+
     # =============================
     # EMPLOYEE DETAILS
     # =============================
-
     assigned_to_id = models.IntegerField(null=True, blank=True)
     assigned_to_name = models.CharField(max_length=255, null=True, blank=True)
 
@@ -69,39 +73,22 @@ class Lead(models.Model):
     # =============================
     # BASIC DETAILS
     # =============================
-
     full_name = models.CharField(max_length=255)
     age = models.IntegerField(null=True, blank=True)
 
-    gender = models.CharField(
-        max_length=10,
-        choices=LeadChoices.GENDER,
-        null=True,
-        blank=True
-    )
-
-    marital_status = models.CharField(
-        max_length=20,
-        choices=LeadChoices.MARITAL_STATUS,
-        null=True,
-        blank=True
-    )
+    gender = models.CharField(max_length=10, choices=LeadChoices.GENDER, null=True, blank=True)
+    marital_status = models.CharField(max_length=20, choices=LeadChoices.MARITAL_STATUS, null=True, blank=True)
 
     email = models.EmailField(null=True, blank=True)
-    contact_no = models.CharField(
-    max_length=20,
-    null=True,
-    blank=True
-)
+    contact_no = models.CharField(max_length=20, null=True, blank=True)
 
     language_preference = models.CharField(max_length=50, blank=True)
     location = models.CharField(max_length=255, blank=True)
     address = models.TextField(blank=True)
 
     # =============================
-    # CONTACT INFORMATION (contracts app)
+    # CONTACT INFORMATION
     # =============================
-
     contact_full_name = models.CharField(max_length=255, null=True, blank=True)
     contact_designation = models.CharField(max_length=255, null=True, blank=True)
     contact_phone = models.CharField(max_length=20, null=True, blank=True)
@@ -110,22 +97,14 @@ class Lead(models.Model):
     # =============================
     # PARTNER DETAILS
     # =============================
-
     partner_inquiry = models.BooleanField(default=False)
     partner_full_name = models.CharField(max_length=255, blank=True)
     partner_age = models.IntegerField(null=True, blank=True)
-
-    partner_gender = models.CharField(
-        max_length=10,
-        choices=LeadChoices.GENDER,
-        null=True,
-        blank=True
-    )
+    partner_gender = models.CharField(max_length=10, choices=LeadChoices.GENDER, null=True, blank=True)
 
     # =============================
     # SOURCE
     # =============================
-
     source = models.CharField(max_length=100)
     sub_source = models.CharField(max_length=100, blank=True)
 
@@ -146,39 +125,17 @@ class Lead(models.Model):
     )
 
     # =============================
-    # STATUS (DYNAMIC — PIPELINE DRIVEN)
+    # STATUS
     # =============================
-
-    # No choices → accepts any pipeline stage name
-    lead_status = models.CharField(
-        max_length=100,
-        null=True,
-        blank=True
-    )
-
-    # No choices → accepts any pipeline stage name
-    next_action_status = models.CharField(
-        max_length=100,
-        null=True,
-        blank=True
-    )
-
-    # No choices → accepts pipeline rule action_type or custom_label free text.
-    # max_length increased to 200 to accommodate longer custom labels.
-    next_action_type = models.CharField(
-        max_length=200,
-        null=True,
-        blank=True
-    )
-
+    lead_status = models.CharField(max_length=100, null=True, blank=True)
+    next_action_status = models.CharField(max_length=100, null=True, blank=True)
+    next_action_type = models.CharField(max_length=200, null=True, blank=True)
     next_action_description = models.TextField(null=True, blank=True)
 
     # =============================
     # APPOINTMENT
     # =============================
-
-    treatment_interest = models.TextField(help_text="Comma separated values")
-
+    treatment_interest = models.TextField()
     book_appointment = models.BooleanField(default=False)
     appointment_date = models.DateField(null=True, blank=True)
     slot = models.CharField(max_length=50, blank=True)
@@ -187,16 +144,18 @@ class Lead(models.Model):
     # =============================
     # FLAGS
     # =============================
-
     is_active = models.BooleanField(default=True)
     is_deleted = models.BooleanField(default=False)
 
     # =============================
     # TIMESTAMPS
     # =============================
-
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+
+    # =============================
+    # CONVERSION TIME
+    # =============================
     converted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -206,17 +165,28 @@ class Lead(models.Model):
     def __str__(self):
         return f"{self.full_name} ({self.lead_status})"
 
+    # =====================================================
+    # ✅ FIXED SAVE LOGIC
+    # =====================================================
     def save(self, *args, **kwargs):
 
-        # ✅ AUTO SYNC lead_status from stage
-        if self.stage and self.stage.stage_name:
+        old_stage = None
+
+        if self.pk:
+            old = Lead.objects.filter(pk=self.pk).only("stage").first()
+            old_stage = old.stage if old else None
+
+        if self.stage:
             self.lead_status = self.stage.stage_name
+            is_converted = self.stage.is_conversion_stage
 
-        # ✅ FIXED CASE BUG
-        if self.lead_status == "Converted" and not self.converted_at:
-            self.converted_at = timezone.now()
+            # ✅ FIXED COMPARISON
+            if (not old_stage or old_stage.id != self.stage.id) and is_converted:
 
-        if self.lead_status != "Converted":
-            self.converted_at = None
+                if not self.converted_at:
+                    self.converted_at = timezone.now()
+
+                if not self.converted_at_stage:
+                    self.converted_at_stage = self.stage
 
         super().save(*args, **kwargs)
