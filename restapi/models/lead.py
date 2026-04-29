@@ -166,12 +166,15 @@ class Lead(models.Model):
         return f"{self.full_name} ({self.lead_status})"
 
     # =====================================================
-    # ✅ FIXED SAVE LOGIC
+    # ✅ FINAL FIXED SAVE LOGIC (PRODUCTION SAFE)
     # =====================================================
     def save(self, *args, **kwargs):
 
         old_stage = None
 
+        # =============================
+        # FETCH OLD STAGE (UPDATE CASE)
+        # =============================
         if self.pk:
             old = Lead.objects.filter(pk=self.pk).only("stage").first()
             old_stage = old.stage if old else None
@@ -180,8 +183,17 @@ class Lead(models.Model):
             self.lead_status = self.stage.stage_name
             is_converted = self.stage.is_conversion_stage
 
-            # ✅ FIXED COMPARISON
-            if (not old_stage or old_stage.id != self.stage.id) and is_converted:
+            # =============================
+            # ✅ CREATE CASE
+            # =============================
+            if not self.pk and is_converted:
+                self.converted_at = timezone.now()
+                self.converted_at_stage = self.stage
+
+            # =============================
+            # ✅ UPDATE CASE (STAGE CHANGE)
+            # =============================
+            elif self.pk and old_stage and old_stage.id != self.stage.id and is_converted:
 
                 if not self.converted_at:
                     self.converted_at = timezone.now()
