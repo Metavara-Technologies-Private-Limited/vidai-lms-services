@@ -1,6 +1,7 @@
 # =====================================================
 # Imports
 # =====================================================
+import logging
 from django.core.mail import send_mail
 from django.utils import timezone
 from django.utils.html import strip_tags
@@ -20,6 +21,8 @@ from restapi.models import (
     ReferralSource,
     PipelineStage,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # =====================================================
@@ -70,6 +73,7 @@ def _validate_phone(value):
 
     value = value.replace(" ", "")
 
+    # INTERNATIONAL
     if value.startswith("+"):
         digits = value[1:]
 
@@ -81,6 +85,7 @@ def _validate_phone(value):
 
         return value
 
+    # INDIA
     if value.startswith("+91"):
         value = value[3:]
     elif value.startswith("91") and len(value) == 12:
@@ -179,7 +184,6 @@ def create_lead(validated_data, request=None):
 
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)
-
     referral_source_data = validated_data.pop("referral_source", None)
 
     if referral_source_data:
@@ -220,7 +224,6 @@ def create_lead(validated_data, request=None):
     else:
         if ref_source_id and not ref_dept_id:
             raise ValidationError({"referral_department_id": "Required"})
-
         if ref_dept_id:
             referral_department = get_object_or_404(
                 ReferralDepartment,
@@ -235,7 +238,6 @@ def create_lead(validated_data, request=None):
                 id=ref_source_id,
                 clinic=clinic
             )
-
             if referral_department and referral_source.referral_department_id != referral_department.id:
                 raise ValidationError("Referral mismatch")
 
@@ -261,6 +263,7 @@ def create_lead(validated_data, request=None):
 
     return lead
 
+
 # =====================================================
 # UPDATE LEAD (🔥 FINAL PERFECT VERSION)
 # =====================================================
@@ -269,8 +272,11 @@ def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
+    # 🔥 ALWAYS GET OLD STATUS FROM DB
+    old_status = Lead.objects.filter(id=instance.id)\
+        .values_list("lead_status", flat=True).first()
+
     old_stage = instance.stage
-    old_status = instance.lead_status
 
     # ================= PHONE =================
     if "contact_no" in validated_data:
@@ -351,15 +357,21 @@ def update_lead(instance, validated_data, request=None):
             ).first()
 
     # ================= 🔥 CONVERSION LOGIC =================
-    new_status = validated_data.get("lead_status") or (
-        request.data.get("lead_status") if request else None
-    )
+    new_status = None
 
-    if (
-        new_status
-        and str(new_status).lower() == "converted"
-        and str(old_status).lower() != "converted"
-    ):
+    if request and hasattr(request, "data"):
+        new_status = request.data.get("lead_status")
+
+    if not new_status:
+        new_status = validated_data.get("lead_status")
+
+    if new_status:
+        new_status = str(new_status).strip().lower()
+
+    logger.info(f"OLD STATUS: {old_status} | NEW STATUS: {new_status}")
+
+    if new_status == "converted" and str(old_status).lower() != "converted":
+
         instance.converted_at_stage = old_stage
         instance.converted_at_status = old_status
 

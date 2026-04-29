@@ -189,23 +189,21 @@ class LeadUpdateAPIView(APIView):
             clinic = get_request_clinic(request)
             lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
-            # ==================================================
-            # 🔥 FIX: MUTABLE DATA
-            # ==================================================
             data = request.data.copy()
 
             # ==================================================
-            # 🔥 NORMALIZE STATUS
+            # 🔥 FINAL FIX (STATUS SYNC)
             # ==================================================
             if "lead_status" in data:
                 status_val = str(data.get("lead_status")).strip().lower()
                 data["lead_status"] = status_val
 
+                # 🔥 CRITICAL FIX
+                request._full_data = request.data.copy()
+                request._full_data["lead_status"] = status_val
+
                 logger.info(f"Lead Update Requested Status: {status_val}")
 
-            # ==================================================
-            # VALIDATION
-            # ==================================================
             stage_id = data.get("stage_id")
             pipeline_id = data.get("pipeline_id")
 
@@ -227,7 +225,7 @@ class LeadUpdateAPIView(APIView):
 
             serializer = LeadSerializer(
                 lead,
-                data=data,  # 🔥 FIXED
+                data=data,
                 context={"request": request},
                 partial=True
             )

@@ -55,7 +55,7 @@ class Lead(models.Model):
         related_name="converted_leads"
     )
 
-    # 🔥 NEW FIELD (SOHAN REQUIREMENT)
+    # 🔥 SOHAN REQUIREMENT
     converted_at_status = models.CharField(max_length=100, null=True, blank=True)
 
     # =============================
@@ -177,9 +177,15 @@ class Lead(models.Model):
             old = Lead.objects.filter(pk=self.pk).only("stage").first()
             old_stage = old.stage if old else None
 
-        if self.stage:
+        # =====================================================
+        # 🔥 FIX: DO NOT OVERRIDE STATUS SET BY API/SERVICE
+        # =====================================================
+        if self.stage and not self.lead_status:
             self.lead_status = self.stage.stage_name
 
+        # =====================================================
+        # AUTO CONVERSION TRACKING
+        # =====================================================
         if (
             not is_create
             and old_stage
