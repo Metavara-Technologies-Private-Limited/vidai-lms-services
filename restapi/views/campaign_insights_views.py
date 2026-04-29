@@ -31,7 +31,9 @@ class CampaignInsightsTriggerAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            campaign  = Campaign.objects.get(id=campaign_id)
+            campaign = Campaign.objects.get(id=campaign_id)
+
+            # Get clinic from campaign directly — no resolve_request_clinic needed
             clinic_id = campaign.clinic_id
 
             google_account = SocialAccount.objects.filter(
@@ -46,28 +48,33 @@ class CampaignInsightsTriggerAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # ← FIXED: always use hardcoded login_customer_id fallback
-            login_customer_id = str(
-                getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "9256476396")
-            ).replace("-", "")
-
-            customer_id = str(google_account.customer_id or "").replace("-", "")
+            # ✅ FIX: get campaign_resource_name saved from Zapier callback when campaign was created
+            # This is used in the insights Zap to filter by exact campaign — not by name LIKE which
+            # returns all 137 campaigns
+            platform_data          = campaign.platform_data or {}
+            google_data            = platform_data.get("google_ads", {})
+            campaign_resource_name = (
+                google_data.get("campaign_resource_name", "")
+                if isinstance(google_data, dict)
+                else ""
+            )
 
             payload = {
-                "event":             "google_ads_insights_requested",
-                "campaign_id":       str(campaign_id),
-                "clinic_id":         str(clinic_id),
-                "campaign_name":     campaign.campaign_name,
-                "refresh_token":     google_account.user_token,
-                "customer_id":       customer_id,
-                "login_customer_id": login_customer_id,  # ← always set
-                "developer_token":   settings.GOOGLE_ADS_DEVELOPER_TOKEN,
-                "client_id":         settings.GOOGLE_CLIENT_ID,
-                "client_secret":     settings.GOOGLE_CLIENT_SECRET,
-                "callback_url":      f"{settings.BACKEND_BASE_URL}/api/campaign/insights/callback/",
+                "event":                   "google_ads_insights_requested",
+                "campaign_id":             str(campaign_id),
+                "clinic_id":               str(clinic_id),
+                "campaign_name":           campaign.campaign_name,
+                "campaign_resource_name":  campaign_resource_name,  # ✅ FIX: send exact resource name to Zapier
+                "refresh_token":           google_account.user_token,
+                "customer_id":             str(google_account.customer_id or "").replace("-", ""),
+                "login_customer_id":       str(
+                    getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
+                ).replace("-", ""),
+                "developer_token":         settings.GOOGLE_ADS_DEVELOPER_TOKEN,
+                "client_id":               settings.GOOGLE_CLIENT_ID,
+                "client_secret":           settings.GOOGLE_CLIENT_SECRET,
+                "callback_url":            f"{settings.BACKEND_BASE_URL}/api/campaign/insights/callback/",
             }
-
-            print(f"[InsightsTrigger] Payload: {payload}")  # ← debug
 
             zapier_resp = requests.post(
                 settings.ZAPIER_WEBHOOK_INSIGHTS_URL,
@@ -76,8 +83,8 @@ class CampaignInsightsTriggerAPIView(APIView):
             )
 
             logger.info(
-                "[InsightsTrigger] Sent to Zapier: %s | response: %s",
-                campaign_id, zapier_resp.status_code
+                "[InsightsTrigger] Sent to Zapier: %s | resource_name: %s | response: %s",
+                campaign_id, campaign_resource_name, zapier_resp.status_code
             )
 
             return Response({

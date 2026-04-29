@@ -13,7 +13,7 @@ from restapi.models import (
     ReferralSource,
     ReferralDepartment,
     PipelineStage,
-    Pipeline,   # 🔥 REQUIRED
+    Pipeline,
 )
 
 from restapi.services.lead_service import create_lead, update_lead
@@ -45,6 +45,9 @@ class LeadReadSerializer(serializers.ModelSerializer):
     campaign_id = serializers.UUIDField(source="campaign.id", read_only=True)
     campaign_name = serializers.CharField(source="campaign.campaign_name", read_only=True)
 
+    updated_by_id = serializers.IntegerField(read_only=True)
+    updated_by_name = serializers.CharField(read_only=True)
+
     campaign_duration = serializers.SerializerMethodField()
 
     assigned_to_id = serializers.IntegerField(read_only=True)
@@ -63,8 +66,13 @@ class LeadReadSerializer(serializers.ModelSerializer):
     referral_source_id = serializers.IntegerField(source="referral_source.id", read_only=True)
     referral_source_name = serializers.CharField(source="referral_source.name", read_only=True)
 
-    referral_source_email = serializers.CharField(source="referral_source.email", read_only=True)   # ✅ NEW
-    referral_source_phone = serializers.CharField(source="referral_source.phone", read_only=True)   # ✅ NEW
+    referral_source_email = serializers.CharField(source="referral_source.email", read_only=True)
+    referral_source_phone = serializers.CharField(source="referral_source.phone", read_only=True)
+
+    # 🔥 CONVERSION TRACKING
+    converted_at_stage_id = serializers.UUIDField(source="converted_at_stage.id", read_only=True)
+    converted_at_stage_name = serializers.CharField(source="converted_at_stage.stage_name", read_only=True)
+
     # STAGE
     stage_id = serializers.UUIDField(source="stage.id", read_only=True)
     stage_name = serializers.CharField(source="stage.stage_name", read_only=True)
@@ -108,29 +116,17 @@ class LeadSerializer(serializers.ModelSerializer):
     personal_id = serializers.IntegerField(required=False, allow_null=True)
     personal_name = serializers.CharField(required=False, allow_null=True)
 
-    # =============================
-    # 🔥 FIXED PHONE FIELD
-    # =============================
-    contact_no = serializers.CharField(
-        required=False,
-        allow_null=True,
-        allow_blank=True
-    )
+    contact_no = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
-    # REFERRAL (OLD)
     referral_department_id = serializers.IntegerField(required=False, allow_null=True)
     referral_source_id = serializers.IntegerField(required=False, allow_null=True)
-
-    # 🔥 NEW OBJECT SUPPORT
     referral_source = serializers.JSONField(required=False)
 
-    # PIPELINE + STAGE
     pipeline_id = serializers.UUIDField(required=False, allow_null=True)
     stage_id = serializers.UUIDField(required=False, allow_null=True)
 
     documents = MultiFileField(write_only=True, required=False)
 
-    # CONTACT INFORMATION (contracts app)
     contact_full_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     contact_designation = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     contact_phone = serializers.CharField(required=False, allow_null=True, allow_blank=True)
@@ -196,15 +192,27 @@ class LeadSerializer(serializers.ModelSerializer):
             "documents",
             "is_active",
         ]
-
         read_only_fields = ("id",)
 
     # =====================================================
-    # 🔥 FINAL PHONE VALIDATION (CORRECT FIX)
+    # 🔥 FIX 1: NORMALIZE STATUS
+    # =====================================================
+    def validate_lead_status(self, value):
+        if value is None:
+            return None
+
+        value = str(value).strip().lower()
+
+        if value == "":
+            return None
+
+        return value
+
+    # =====================================================
+    # PHONE VALIDATION
     # =====================================================
     def validate_contact_no(self, value):
 
-        # ✅ EMPTY → NULL (THIS FIXES YOUR ERROR)
         if value is None:
             return None
 
@@ -213,13 +221,11 @@ class LeadSerializer(serializers.ModelSerializer):
         if value == "":
             return None
 
-        # 🔥 HANDLE FRONTEND BUG VALUES
         if value in ["0", "00", "000", "0000000000"]:
             return None
 
         value = value.replace(" ", "")
 
-        # 🌍 INTERNATIONAL
         if value.startswith("+"):
             digits = value[1:]
 
@@ -231,7 +237,6 @@ class LeadSerializer(serializers.ModelSerializer):
 
             return value
 
-        # 🇮🇳 INDIA
         if value.startswith("+91"):
             value = value[3:]
         elif value.startswith("91") and len(value) == 12:
@@ -244,10 +249,10 @@ class LeadSerializer(serializers.ModelSerializer):
             raise ValidationError("Phone must be 10 digits")
 
         invalid_numbers = {
-            "1111111111", "2222222222", "3333333333",
-            "4444444444", "5555555555", "6666666666",
-            "7777777777", "8888888888", "9999999999",
-            "1234567890", "0123456789"
+            "1111111111","2222222222","3333333333",
+            "4444444444","5555555555","6666666666",
+            "7777777777","8888888888","9999999999",
+            "1234567890","0123456789"
         }
 
         if value in invalid_numbers:
@@ -261,13 +266,11 @@ class LeadSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get("request")
 
-        # ================= CLINIC =================
         clinic_id = attrs.get("clinic_id") or request.headers.get("X-Clinic-Id")
 
         if not clinic_id:
             raise ValidationError({"clinic_id": "Clinic is required"})
 
-        # ================= PIPELINE =================
         pipeline_id = attrs.get("pipeline_id")
 
         if pipeline_id:
@@ -277,7 +280,6 @@ class LeadSerializer(serializers.ModelSerializer):
                 is_deleted=False
             ).exists():
                 raise ValidationError({"pipeline_id": "Invalid pipeline"})
-
         # ================= REFERRAL =================
         ref_dept_id = attrs.get("referral_department_id")
         ref_source_id = attrs.get("referral_source_id")
@@ -357,5 +359,11 @@ class LeadSerializer(serializers.ModelSerializer):
 
         if validated_data.get("full_name"):
             validated_data["personal_name"] = validated_data["full_name"]
+
+        # =====================================================
+        # 🔥 FIX 2: FORCE STATUS INTO SERVICE
+        # =====================================================
+        if request and "lead_status" in request.data:
+            validated_data["lead_status"] = request.data.get("lead_status")
 
         return update_lead(instance, validated_data, request=request)

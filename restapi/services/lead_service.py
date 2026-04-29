@@ -1,6 +1,7 @@
 # =====================================================
 # Imports
 # =====================================================
+import logging
 from django.core.mail import send_mail
 from django.utils import timezone
 from django.utils.html import strip_tags
@@ -20,6 +21,8 @@ from restapi.models import (
     ReferralSource,
     PipelineStage,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # =====================================================
@@ -53,13 +56,10 @@ def _resolve_assignee_name(assigned_to_id, assigned_to_name):
 
 
 # =====================================================
-# 🔥 PHONE VALIDATION (SERVICE LEVEL)
+# PHONE VALIDATION
 # =====================================================
 def _validate_phone(value):
 
-    # =============================
-    # ✅ EMPTY → NULL (FIX ADDED)
-    # =============================
     if value is None:
         return None
 
@@ -68,13 +68,12 @@ def _validate_phone(value):
     if value == "" or value.lower() in ["null", "none"]:
         return None
 
-    # 🔥 FRONTEND BUG FIX (IMPORTANT)
     if value in ["0", "00", "000", "0000000000"]:
         return None
 
     value = value.replace(" ", "")
 
-    # 🌍 INTERNATIONAL
+    # INTERNATIONAL
     if value.startswith("+"):
         digits = value[1:]
 
@@ -86,7 +85,7 @@ def _validate_phone(value):
 
         return value
 
-    # 🇮🇳 INDIA
+    # INDIA
     if value.startswith("+91"):
         value = value[3:]
     elif value.startswith("91") and len(value) == 12:
@@ -99,12 +98,9 @@ def _validate_phone(value):
         raise ValidationError({"contact_no": "Phone must be 10 digits"})
 
     invalid_numbers = {
-        "1111111111", "2222222222",
-        "3333333333", "4444444444",
-        "5555555555", "6666666666",
-        "7777777777", "8888888888",
-        "9999999999", "1234567890",
-        "0123456789"
+        "1111111111","2222222222","3333333333","4444444444",
+        "5555555555","6666666666","7777777777","8888888888",
+        "9999999999","1234567890","0123456789"
     }
 
     if value in invalid_numbers:
@@ -121,12 +117,10 @@ def create_lead(validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # 🔥 APPLY VALIDATION HERE
     validated_data["contact_no"] = _validate_phone(
         validated_data.get("contact_no")
     )
 
-    # ===================== CLINIC =====================
     clinic_id = request.headers.get("X-Clinic-Id") if request else None
 
     if not clinic_id:
@@ -135,14 +129,11 @@ def create_lead(validated_data, request=None):
     clinic = get_object_or_404(Clinic, id=clinic_id)
 
     validated_data.pop("clinic_id", None)
-
-    # ===================== CREATED BY =====================
     validated_data.pop("created_by_id", None)
     validated_data.pop("created_by_name", None)
 
     created_by_id, created_by_name = _get_user_info(request)
 
-    # ===================== STAGE =====================
     stage_id = validated_data.pop("stage_id", None)
     stage = None
 
@@ -157,7 +148,6 @@ def create_lead(validated_data, request=None):
         if not stage:
             raise ValidationError({"stage_id": "Invalid stage"})
 
-    # ===================== DEPARTMENT =====================
     department_id = validated_data.pop("department_id", None)
 
     department = Department.objects.filter(
@@ -176,7 +166,6 @@ def create_lead(validated_data, request=None):
             is_active=True
         )
 
-    # ===================== CAMPAIGN =====================
     campaign_id = validated_data.pop("campaign_id", None)
 
     campaign = Campaign.objects.filter(
@@ -184,20 +173,17 @@ def create_lead(validated_data, request=None):
         clinic=clinic
     ).first() if campaign_id else None
 
-    # ===================== ASSIGNEE =====================
     assigned_to_id = validated_data.pop("assigned_to_id", None)
     assigned_to_name = _resolve_assignee_name(
         assigned_to_id,
         validated_data.pop("assigned_to_name", None)
     )
 
-    # ===================== REFERRAL =====================
     referral_department = None
     referral_source = None
 
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)
-
     referral_source_data = validated_data.pop("referral_source", None)
 
     if referral_source_data:
@@ -208,7 +194,6 @@ def create_lead(validated_data, request=None):
 
         full_name = f"{first_name} {last_name}".strip()
 
-        # Resolve referral department (priority: FE id > role mapping)
         if ref_dept_id:
             referral_department = ReferralDepartment.objects.filter(
                 id=ref_dept_id,
@@ -239,7 +224,6 @@ def create_lead(validated_data, request=None):
     else:
         if ref_source_id and not ref_dept_id:
             raise ValidationError({"referral_department_id": "Required"})
-
         if ref_dept_id:
             referral_department = get_object_or_404(
                 ReferralDepartment,
@@ -254,12 +238,9 @@ def create_lead(validated_data, request=None):
                 id=ref_source_id,
                 clinic=clinic
             )
-
             if referral_department and referral_source.referral_department_id != referral_department.id:
                 raise ValidationError("Referral mismatch")
 
-    # ===================== CREATE =====================
-    # FINAL SAFETY CLEAN (ADD HERE)
     validated_data.pop("referral_department_id", None)
     validated_data.pop("referral_source_id", None)
 
@@ -284,27 +265,30 @@ def create_lead(validated_data, request=None):
 
 
 # =====================================================
-# UPDATE LEAD
+# UPDATE LEAD (🔥 FINAL PERFECT VERSION)
 # =====================================================
 @transaction.atomic
 def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # 🔥 APPLY VALIDATION HERE
+    # 🔥 ALWAYS GET OLD STATUS FROM DB
+    old_status = Lead.objects.filter(id=instance.id)\
+        .values_list("lead_status", flat=True).first()
+
+    old_stage = instance.stage
+
+    # ================= PHONE =================
     if "contact_no" in validated_data:
         validated_data["contact_no"] = _validate_phone(
             validated_data.get("contact_no")
         )
 
-    # ===================== UPDATED BY =====================
-    validated_data.pop("updated_by_id", None)
-    validated_data.pop("updated_by_name", None)
-
     updated_by_id, updated_by_name = _get_user_info(request)
     instance.updated_by_id = updated_by_id
     instance.updated_by_name = updated_by_name
-    # ===================== STAGE =====================
+
+    # ================= STAGE =================
     stage_id = validated_data.pop("stage_id", None)
 
     if stage_id:
@@ -320,7 +304,7 @@ def update_lead(instance, validated_data, request=None):
 
         instance.stage = stage
 
-    # ===================== ASSIGNEE =====================
+    # ================= ASSIGNEE =================
     if "assigned_to_id" in validated_data:
         assigned_to_id = validated_data.pop("assigned_to_id")
         assigned_to_name = validated_data.pop("assigned_to_name", None)
@@ -330,10 +314,10 @@ def update_lead(instance, validated_data, request=None):
             assigned_to_id,
             assigned_to_name
         )
-    # ===================== REFERRAL UPDATE =====================
+
+    # ================= REFERRAL =================
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)
-
     referral_source_data = validated_data.pop("referral_source", None)
 
     if referral_source_data:
@@ -372,11 +356,40 @@ def update_lead(instance, validated_data, request=None):
                 clinic=instance.clinic
             ).first()
 
-    # ===================== UPDATE FIELDS =====================
+    # ================= 🔥 CONVERSION LOGIC =================
+    new_status = None
 
+    if request and hasattr(request, "data"):
+        new_status = request.data.get("lead_status")
+
+    if not new_status:
+        new_status = validated_data.get("lead_status")
+
+    if new_status:
+        new_status = str(new_status).strip().lower()
+
+    logger.info(f"OLD STATUS: {old_status} | NEW STATUS: {new_status}")
+
+    if new_status == "converted" and str(old_status).lower() != "converted":
+
+        instance.converted_at_stage = old_stage
+        instance.converted_at_status = old_status
+
+        conversion_stage = PipelineStage.objects.filter(
+            pipeline=old_stage.pipeline if old_stage else None,
+            is_conversion_stage=True,
+            is_active=True,
+            is_deleted=False
+        ).first()
+
+        if conversion_stage:
+            instance.stage = conversion_stage
+
+        instance.converted_at = timezone.now()
+
+    # ================= UPDATE =================
     for field, value in validated_data.items():
-        if hasattr(instance, field):
-            setattr(instance, field, value)
+        setattr(instance, field, value)
 
     instance.save()
 
@@ -384,6 +397,8 @@ def update_lead(instance, validated_data, request=None):
         LeadDocument.objects.create(lead=instance, file=file)
 
     return instance
+
+
 # =====================================================
 # EMAIL HELPERS
 # =====================================================

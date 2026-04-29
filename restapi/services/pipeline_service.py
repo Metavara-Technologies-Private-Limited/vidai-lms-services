@@ -24,6 +24,7 @@ def create_pipeline(validated_data):
 
     return pipeline
 
+
 # update_pipeline
 @transaction.atomic
 def update_pipeline(instance, validated_data):
@@ -37,6 +38,7 @@ def update_pipeline(instance, validated_data):
     instance.save()
     instance.refresh_from_db()
     return instance
+
 
 # add_stage
 @transaction.atomic
@@ -61,6 +63,13 @@ def add_stage(validated_data):
     entry_rule = validated_data.get("entry_rule", "manual")
     stage_status = validated_data.get("stage_status", "open")
 
+    # ✅ ADD: ensure only one conversion stage
+    if validated_data.get("is_conversion_stage"):
+        PipelineStage.objects.filter(
+            pipeline=pipeline,
+            is_conversion_stage=True
+        ).update(is_conversion_stage=False)
+
     stage = PipelineStage.objects.create(
         pipeline=pipeline,
         stage_name=validated_data["stage_name"],
@@ -69,9 +78,14 @@ def add_stage(validated_data):
         stage_status=stage_status,
         color_code=color_code,
         entry_rule=entry_rule,
+
+        # ✅ ADD: pass conversion flags
+        is_conversion_stage=validated_data.get("is_conversion_stage", False),
+        is_default_stage=validated_data.get("is_default_stage", False),
     )
 
     return stage
+
 
 # update_stage
 @transaction.atomic
@@ -86,11 +100,22 @@ def update_stage(instance, validated_data):
         "entry_rule",
         "is_active",
         "is_deleted",
+
+        # ✅ ADD
+        "is_conversion_stage",
+        "is_default_stage",
     }
 
     payload = dict(validated_data)
     if "stage_color" in payload and "color_code" not in payload:
         payload["color_code"] = payload.pop("stage_color")
+
+    # ✅ ADD: ensure only one conversion stage
+    if payload.get("is_conversion_stage") is True:
+        PipelineStage.objects.filter(
+            pipeline=instance.pipeline,
+            is_conversion_stage=True
+        ).exclude(id=instance.id).update(is_conversion_stage=False)
 
     for field, value in payload.items():
         if field in IMMUTABLE_FIELDS or field not in MUTABLE_FIELDS:
@@ -100,6 +125,7 @@ def update_stage(instance, validated_data):
     instance.save()
     instance.refresh_from_db()
     return instance
+
 
 # save_stage_rules
 @transaction.atomic
@@ -156,6 +182,10 @@ def duplicate_pipeline(pipeline_id):
             stage_order=stage.stage_order,
             color_code=stage.color_code,
             entry_rule=stage.entry_rule,
+
+            # ✅ ADD: copy flags
+            is_conversion_stage=stage.is_conversion_stage,
+            is_default_stage=stage.is_default_stage,
         )
 
         for rule in stage.rules.all():
@@ -224,6 +254,10 @@ def duplicate_stage(stage_id):
         stage_order=highest_order + 1,
         color_code=original.color_code,
         entry_rule=original.entry_rule,
+
+        # ✅ ADD: copy flags
+        is_conversion_stage=original.is_conversion_stage,
+        is_default_stage=original.is_default_stage,
     )
 
     for rule in original.rules.all():

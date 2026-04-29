@@ -6,10 +6,8 @@ from restapi.models import (
     StageField,
 )
 from restapi.utils.permissions import get_user_permissions, has_permission
-from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from restapi.models import Pipeline
 from restapi.services.pipeline_service import (
     create_pipeline,
     update_pipeline,
@@ -63,6 +61,11 @@ class PipelineStageReadSerializer(serializers.ModelSerializer):
             "stage_order",
             "color_code",
             "entry_rule",
+
+            # ✅ REQUIRED FOR LEAD CONVERSION
+            "is_conversion_stage",
+            "is_default_stage",
+
             "rules",
             "fields",
         ]
@@ -90,10 +93,7 @@ class PipelineStageReadSerializer(serializers.ModelSerializer):
         if role_name in {"super admin", "superadmin", "admin", "clinic admin"}:
             return data
 
-        # ❌ NO PERMISSION
-        # Returning an empty object causes frontend to create ghost/fallback stages
-        # or hide stages entirely depending on normalization logic. Keep a minimal,
-        # non-sensitive shape so stage cards remain stable in UI.
+        # ❌ NO PERMISSION → return minimal but stable structure
         if not has_permission(user, "pipeline", "stages", "view"):
             return {
                 "id": data.get("id"),
@@ -103,6 +103,11 @@ class PipelineStageReadSerializer(serializers.ModelSerializer):
                 "stage_order": data.get("stage_order"),
                 "color_code": data.get("color_code"),
                 "entry_rule": data.get("entry_rule"),
+
+                # ✅ IMPORTANT: keep these visible
+                "is_conversion_stage": data.get("is_conversion_stage"),
+                "is_default_stage": data.get("is_default_stage"),
+
                 "rules": [],
                 "fields": [],
             }
@@ -116,6 +121,10 @@ class PipelineStageReadSerializer(serializers.ModelSerializer):
             "stage_order",
             "color_code",
             "entry_rule",
+
+            # ✅ REQUIRED
+            "is_conversion_stage",
+            "is_default_stage",
         ]
 
         return {k: v for k, v in data.items() if k in allowed_fields}
