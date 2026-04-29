@@ -1,3 +1,4 @@
+import logging
 import os
 import json
 import base64
@@ -49,14 +50,40 @@ class LinkedInLoginAPIView(APIView):
         if clinic_id:
             request.session["linkedin_clinic_id"] = clinic_id
 
+        # scopes = [
+        #     "openid",
+        #     "profile",
+        #     "email",
+        #     "r_ads",
+        #     "r_ads_reporting",
+        #     "rw_ads",
+        #     "r_organization_social",
+        # ]
+        
         scopes = [
             "openid",
             "profile",
             "email",
+
+            # Ads
             "r_ads",
-            "r_ads_reporting",
             "rw_ads",
+            "r_ads_reporting",
+
+            # Organization / social analytics
+            "r_organization_admin",
+            "rw_organization_admin",
             "r_organization_social",
+            "w_organization_social",
+
+            # Optional if posting as member
+            "w_member_social",
+
+            # Optional basic profile legacy
+            "r_basicprofile",
+
+            # Optional
+            "r_1st_connections_size",
         ]
 
         scope_param = "%20".join(scopes)
