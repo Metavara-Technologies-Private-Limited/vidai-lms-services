@@ -55,6 +55,9 @@ class Lead(models.Model):
         related_name="converted_leads"
     )
 
+    # 🔥 NEW FIELD (SOHAN REQUIREMENT)
+    converted_at_status = models.CharField(max_length=100, null=True, blank=True)
+
     # =============================
     # EMPLOYEE DETAILS
     # =============================
@@ -165,30 +168,18 @@ class Lead(models.Model):
     def __str__(self):
         return f"{self.full_name} ({self.lead_status})"
 
-    # =====================================================
-    # ✅ FINAL SAFE SAVE LOGIC
-    # =====================================================
     def save(self, *args, **kwargs):
 
         is_create = self._state.adding
         old_stage = None
 
-        # =============================
-        # FETCH OLD STAGE (UPDATE CASE)
-        # =============================
         if not is_create:
             old = Lead.objects.filter(pk=self.pk).only("stage").first()
             old_stage = old.stage if old else None
 
-        # =============================
-        # SYNC STATUS WITH STAGE
-        # =============================
         if self.stage:
             self.lead_status = self.stage.stage_name
 
-        # =============================
-        # HANDLE STAGE CHANGE (FALLBACK)
-        # =============================
         if (
             not is_create
             and old_stage
@@ -197,11 +188,9 @@ class Lead(models.Model):
         ):
             if getattr(self.stage, "is_conversion_stage", False):
 
-                # Set conversion time if not already set
                 if not self.converted_at:
                     self.converted_at = timezone.now()
 
-                # Store previous stage ONLY if not already set by API
                 if not self.converted_at_stage:
                     self.converted_at_stage = old_stage
 

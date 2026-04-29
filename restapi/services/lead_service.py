@@ -133,7 +133,6 @@ def create_lead(validated_data, request=None):
 
     created_by_id, created_by_name = _get_user_info(request)
 
-    # ===================== STAGE =====================
     stage_id = validated_data.pop("stage_id", None)
     stage = None
 
@@ -148,7 +147,6 @@ def create_lead(validated_data, request=None):
         if not stage:
             raise ValidationError({"stage_id": "Invalid stage"})
 
-    # ===================== DEPARTMENT =====================
     department_id = validated_data.pop("department_id", None)
 
     department = Department.objects.filter(
@@ -167,7 +165,6 @@ def create_lead(validated_data, request=None):
             is_active=True
         )
 
-    # ===================== CAMPAIGN =====================
     campaign_id = validated_data.pop("campaign_id", None)
 
     campaign = Campaign.objects.filter(
@@ -175,14 +172,12 @@ def create_lead(validated_data, request=None):
         clinic=clinic
     ).first() if campaign_id else None
 
-    # ===================== ASSIGNEE =====================
     assigned_to_id = validated_data.pop("assigned_to_id", None)
     assigned_to_name = _resolve_assignee_name(
         assigned_to_id,
         validated_data.pop("assigned_to_name", None)
     )
 
-    # ===================== REFERRAL =====================
     referral_department = None
     referral_source = None
 
@@ -272,12 +267,15 @@ def create_lead(validated_data, request=None):
 
 
 # =====================================================
-# UPDATE LEAD (🔥 FINAL WITH SOHAN LOGIC)
+# UPDATE LEAD (🔥 FINAL FIXED)
 # =====================================================
 @transaction.atomic
 def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
+
+    # 🔥 FIX: CAPTURE OLD STAGE FIRST
+    old_stage = instance.stage
 
     if "contact_no" in validated_data:
         validated_data["contact_no"] = _validate_phone(
@@ -291,7 +289,6 @@ def update_lead(instance, validated_data, request=None):
     instance.updated_by_id = updated_by_id
     instance.updated_by_name = updated_by_name
 
-    # ===================== STAGE UPDATE =====================
     stage_id = validated_data.pop("stage_id", None)
 
     if stage_id:
@@ -307,7 +304,6 @@ def update_lead(instance, validated_data, request=None):
 
         instance.stage = stage
 
-    # ===================== ASSIGNEE =====================
     if "assigned_to_id" in validated_data:
         assigned_to_id = validated_data.pop("assigned_to_id")
         assigned_to_name = validated_data.pop("assigned_to_name", None)
@@ -318,7 +314,6 @@ def update_lead(instance, validated_data, request=None):
             assigned_to_name
         )
 
-    # ===================== REFERRAL UPDATE =====================
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)
 
@@ -360,13 +355,13 @@ def update_lead(instance, validated_data, request=None):
                 clinic=instance.clinic
             ).first()
 
-    # ===================== 🔥 SOHAN LOGIC =====================
-    old_stage = instance.stage
+    # 🔥 SOHAN LOGIC
     new_status = validated_data.get("lead_status")
 
     if new_status == "converted" and instance.lead_status != "converted":
 
         instance.converted_at_stage = old_stage
+        instance.converted_at_status = instance.lead_status
 
         conversion_stage = PipelineStage.objects.filter(
             pipeline=old_stage.pipeline if old_stage else None,
@@ -380,7 +375,6 @@ def update_lead(instance, validated_data, request=None):
 
         instance.converted_at = timezone.now()
 
-    # ===================== UPDATE FIELDS =====================
     for field, value in validated_data.items():
         if hasattr(instance, field):
             setattr(instance, field, value)
@@ -391,8 +385,6 @@ def update_lead(instance, validated_data, request=None):
         LeadDocument.objects.create(lead=instance, file=file)
 
     return instance
-
-
 # =====================================================
 # EMAIL HELPERS
 # =====================================================
