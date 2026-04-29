@@ -53,7 +53,7 @@ def _resolve_assignee_name(assigned_to_id, assigned_to_name):
 
 
 # =====================================================
-# 🔥 PHONE VALIDATION (SERVICE LEVEL)
+# PHONE VALIDATION
 # =====================================================
 def _validate_phone(value):
 
@@ -70,7 +70,6 @@ def _validate_phone(value):
 
     value = value.replace(" ", "")
 
-    # 🌍 INTERNATIONAL
     if value.startswith("+"):
         digits = value[1:]
 
@@ -82,7 +81,6 @@ def _validate_phone(value):
 
         return value
 
-    # 🇮🇳 INDIA
     if value.startswith("+91"):
         value = value[3:]
     elif value.startswith("91") and len(value) == 12:
@@ -121,7 +119,6 @@ def create_lead(validated_data, request=None):
         validated_data.get("contact_no")
     )
 
-    # ===================== CLINIC =====================
     clinic_id = request.headers.get("X-Clinic-Id") if request else None
 
     if not clinic_id:
@@ -131,7 +128,6 @@ def create_lead(validated_data, request=None):
 
     validated_data.pop("clinic_id", None)
 
-    # ===================== CREATED BY =====================
     validated_data.pop("created_by_id", None)
     validated_data.pop("created_by_name", None)
 
@@ -276,7 +272,7 @@ def create_lead(validated_data, request=None):
 
 
 # =====================================================
-# UPDATE LEAD
+# UPDATE LEAD (🔥 FINAL WITH SOHAN LOGIC)
 # =====================================================
 @transaction.atomic
 def update_lead(instance, validated_data, request=None):
@@ -295,7 +291,7 @@ def update_lead(instance, validated_data, request=None):
     instance.updated_by_id = updated_by_id
     instance.updated_by_name = updated_by_name
 
-    # ✅ CRITICAL FIX: SET STAGE BEFORE SAVE
+    # ===================== STAGE UPDATE =====================
     stage_id = validated_data.pop("stage_id", None)
 
     if stage_id:
@@ -309,7 +305,7 @@ def update_lead(instance, validated_data, request=None):
         if not stage:
             raise ValidationError({"stage_id": "Invalid stage"})
 
-        instance.stage = stage  # 🔥 IMPORTANT
+        instance.stage = stage
 
     # ===================== ASSIGNEE =====================
     if "assigned_to_id" in validated_data:
@@ -363,6 +359,26 @@ def update_lead(instance, validated_data, request=None):
                 id=ref_source_id,
                 clinic=instance.clinic
             ).first()
+
+    # ===================== 🔥 SOHAN LOGIC =====================
+    old_stage = instance.stage
+    new_status = validated_data.get("lead_status")
+
+    if new_status == "converted" and instance.lead_status != "converted":
+
+        instance.converted_at_stage = old_stage
+
+        conversion_stage = PipelineStage.objects.filter(
+            pipeline=old_stage.pipeline if old_stage else None,
+            is_conversion_stage=True,
+            is_active=True,
+            is_deleted=False
+        ).first()
+
+        if conversion_stage:
+            instance.stage = conversion_stage
+
+        instance.converted_at = timezone.now()
 
     # ===================== UPDATE FIELDS =====================
     for field, value in validated_data.items():

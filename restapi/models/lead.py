@@ -166,12 +166,11 @@ class Lead(models.Model):
         return f"{self.full_name} ({self.lead_status})"
 
     # =====================================================
-    # ✅ FINAL FIXED SAVE LOGIC (PRODUCTION SAFE)
+    # ✅ FINAL SAFE SAVE LOGIC
     # =====================================================
     def save(self, *args, **kwargs):
 
-        is_create = self._state.adding  # ✅ correct way to detect create
-
+        is_create = self._state.adding
         old_stage = None
 
         # =============================
@@ -181,28 +180,29 @@ class Lead(models.Model):
             old = Lead.objects.filter(pk=self.pk).only("stage").first()
             old_stage = old.stage if old else None
 
+        # =============================
+        # SYNC STATUS WITH STAGE
+        # =============================
         if self.stage:
-            # ✅ Always sync lead status
             self.lead_status = self.stage.stage_name
 
-            # =============================
-            # ✅ CREATE CASE
-            # =============================
-            if is_create:
-                self.converted_at_stage = self.stage
+        # =============================
+        # HANDLE STAGE CHANGE (FALLBACK)
+        # =============================
+        if (
+            not is_create
+            and old_stage
+            and self.stage
+            and old_stage.id != self.stage.id
+        ):
+            if getattr(self.stage, "is_conversion_stage", False):
 
-                if self.stage.is_conversion_stage:
+                # Set conversion time if not already set
+                if not self.converted_at:
                     self.converted_at = timezone.now()
 
-            # =============================
-            # ✅ UPDATE CASE
-            # =============================
-            elif old_stage and old_stage.id != self.stage.id:
-
-                if self.stage.is_conversion_stage:
-                    if not self.converted_at:
-                        self.converted_at = timezone.now()
-
-                    self.converted_at_stage = self.stage
+                # Store previous stage ONLY if not already set by API
+                if not self.converted_at_stage:
+                    self.converted_at_stage = old_stage
 
         super().save(*args, **kwargs)
