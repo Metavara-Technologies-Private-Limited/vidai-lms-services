@@ -189,20 +189,25 @@ class LeadUpdateAPIView(APIView):
             clinic = get_request_clinic(request)
             lead = get_scoped_lead_or_404(request, clinic, lead_id)
 
-            # =============================
-            # 🔥 NORMALIZE lead_status
-            # =============================
-            if "lead_status" in request.data:
-                status_val = str(request.data.get("lead_status")).strip().lower()
-                request.data["lead_status"] = status_val
+            # ==================================================
+            # 🔥 FIX: MUTABLE DATA
+            # ==================================================
+            data = request.data.copy()
+
+            # ==================================================
+            # 🔥 NORMALIZE STATUS
+            # ==================================================
+            if "lead_status" in data:
+                status_val = str(data.get("lead_status")).strip().lower()
+                data["lead_status"] = status_val
 
                 logger.info(f"Lead Update Requested Status: {status_val}")
 
-            # =============================
+            # ==================================================
             # VALIDATION
-            # =============================
-            stage_id = request.data.get("stage_id")
-            pipeline_id = request.data.get("pipeline_id")
+            # ==================================================
+            stage_id = data.get("stage_id")
+            pipeline_id = data.get("pipeline_id")
 
             if stage_id:
                 stage = PipelineStage.objects.filter(
@@ -222,7 +227,7 @@ class LeadUpdateAPIView(APIView):
 
             serializer = LeadSerializer(
                 lead,
-                data=request.data,
+                data=data,  # 🔥 FIXED
                 context={"request": request},
                 partial=True
             )
@@ -230,7 +235,6 @@ class LeadUpdateAPIView(APIView):
             serializer.is_valid(raise_exception=True)
             updated_lead = serializer.save()
 
-            # 🔥 DEBUG LOG (OPTIONAL)
             logger.info(
                 f"Lead {updated_lead.id} updated | "
                 f"status={updated_lead.lead_status} | "

@@ -127,7 +127,6 @@ def create_lead(validated_data, request=None):
     clinic = get_object_or_404(Clinic, id=clinic_id)
 
     validated_data.pop("clinic_id", None)
-
     validated_data.pop("created_by_id", None)
     validated_data.pop("created_by_name", None)
 
@@ -267,15 +266,17 @@ def create_lead(validated_data, request=None):
 
 
 # =====================================================
-# UPDATE LEAD (🔥 FINAL WORKING FIX)
+# UPDATE LEAD (🔥 FINAL CORRECT)
 # =====================================================
 @transaction.atomic
 def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    old_stage = instance.stage  # 🔥 VERY IMPORTANT
+    old_stage = instance.stage
+    old_status = instance.lead_status
 
+    # ================= PHONE =================
     if "contact_no" in validated_data:
         validated_data["contact_no"] = _validate_phone(
             validated_data.get("contact_no")
@@ -354,7 +355,7 @@ def update_lead(instance, validated_data, request=None):
                 clinic=instance.clinic
             ).first()
 
-    # ================= 🔥 CONVERSION FIX =================
+    # ================= 🔥 CONVERSION LOGIC =================
     new_status = None
 
     if request and hasattr(request, "data"):
@@ -363,32 +364,33 @@ def update_lead(instance, validated_data, request=None):
     if not new_status:
         new_status = validated_data.get("lead_status")
 
-    print("DEBUG STATUS:", new_status)
-    print("OLD STATUS:", instance.lead_status)
+    print("NEW STATUS:", new_status)
+    print("OLD STATUS:", old_status)
 
     if new_status and str(new_status).lower() == "converted":
 
-        print("🔥 CONVERSION TRIGGERED")
+        if str(old_status).lower() != "converted":
 
-        instance.converted_at_stage = old_stage
-        instance.converted_at_status = instance.lead_status
+            print("🔥 CONVERSION TRIGGERED")
 
-        conversion_stage = PipelineStage.objects.filter(
-            pipeline=old_stage.pipeline if old_stage else None,
-            is_conversion_stage=True,
-            is_active=True,
-            is_deleted=False
-        ).first()
+            instance.converted_at_stage = old_stage
+            instance.converted_at_status = old_status
 
-        if conversion_stage:
-            instance.stage = conversion_stage
+            conversion_stage = PipelineStage.objects.filter(
+                pipeline=old_stage.pipeline if old_stage else None,
+                is_conversion_stage=True,
+                is_active=True,
+                is_deleted=False
+            ).first()
 
-        instance.converted_at = timezone.now()
+            if conversion_stage:
+                instance.stage = conversion_stage
+
+            instance.converted_at = timezone.now()
 
     # ================= UPDATE =================
     for field, value in validated_data.items():
-        if hasattr(instance, field):
-            setattr(instance, field, value)
+        setattr(instance, field, value)
 
     instance.save()
 
