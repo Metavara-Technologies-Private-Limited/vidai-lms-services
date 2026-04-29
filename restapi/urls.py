@@ -3,17 +3,17 @@ from django.urls import path
 from .views import *
 from restapi.views.google_ads_views import (
     GoogleAdsCampaignCreateAPIView,
-    GoogleAdsCampaignStatusAPIView,    # ← added
-    #GoogleAdsInsightsAPIView,
+    GoogleAdsCampaignStatusAPIView,
+    GoogleAdsInsightsAPIView,                  # ✅ FIX: moved here from social_auth_views
+    GoogleAdsCampaignCreatedCallbackAPIView,   # ✅ NEW
+    GoogleAdsInsightsCallbackAPIView,          # ✅ NEW
 )
 
 from restapi.views.social_auth_views import (
     GoogleAdsCampaignCallbackAPIView,
-     GoogleAdsInsightsAPIView,  # ← removed from here
+    # ✅ FIX: GoogleAdsInsightsAPIView REMOVED from here — it was returning all 149 campaigns
+    # It now lives in google_ads_views and reads only from DB for the selected campaign
 )
-
-# ← added here
-
 
 from restapi.views.campaign_insights_views import (
     CampaignInsightsTriggerAPIView,
@@ -211,26 +211,23 @@ urlpatterns = [
     path("google/callback/", GoogleCallbackAPIView.as_view()),
 
     path("clinics/<int:clinic_id>/social-accounts/", SocialAccountListAPIView.as_view(), name="social-account-list"),
-     path("linkedin/login/", LinkedInLoginAPIView.as_view(), name="linkedin-login"),
-    path("linkedin/callback/", LinkedInCallbackAPIView.as_view(), name="linkedin-callback"),
-    path("linkedin/status/", LinkedInStatusAPIView.as_view(), name="linkedin-status"),
-    
-    # LinkedIn Ads & Analytics endpoints (add these)
+
+    # LinkedIn Ads & Analytics endpoints
     path("linkedin/ad-accounts/", LinkedInAdsAccountsAPIView.as_view(), name="linkedin-ad-accounts"),
     path("linkedin/campaigns/", LinkedInCampaignsAPIView.as_view(), name="linkedin-campaigns"),
     path("linkedin/campaign-analytics/", LinkedInCampaignAnalyticsAPIView.as_view(), name="linkedin-campaign-analytics"),
     path("linkedin/full-analytics/", LinkedInFullAnalyticsAPIView.as_view(), name="linkedin-full-analytics"),
-    path("linkedin/status/", LinkedInStatusAPIView.as_view()),
     path("social/campaign/insights/", LinkedInCampaignInsightsAPIView.as_view(), name="linkedin-campaign-insights"),
     path("social/campaign/status/", LinkedInCampaignStatusAPIView.as_view(), name="linkedin-campaign-status"),
-    path("social/campaign/update/", LinkedInCampaignUpdateAPIView.as_view(), name="linkedin-campaign-update"
-),
+    path("social/campaign/update/", LinkedInCampaignUpdateAPIView.as_view(), name="linkedin-campaign-update"),
 
     # ============================
     # WEBHOOK
     # ============================
     path("webhooks/gohighlevel/lead/", GoHighLevelLeadWebhookAPIView.as_view(), name="ghl-webhook"),
-    path('webhooks/linkedin-zapier-callback/', LinkedInZapierCallbackAPIView.as_view(), name='linkedin-callback'),
+    path('webhooks/linkedin-zapier-callback/', LinkedInZapierCallbackAPIView.as_view(), name='linkedin-zapier-callback'),
+    # LinkedInAccountStatusAPIView not yet defined in social_auth_views — add when ready
+    # path("webhooks/linkedin-account-status/<int:clinic_id>/", LinkedInAccountStatusAPIView.as_view(), name="linkedin-account-status"),
 
     # ============================
     # FACEBOOK ADS
@@ -242,13 +239,15 @@ urlpatterns = [
     # ============================
     # GOOGLE ADS
     # ============================
-    path("google-ads/create/", GoogleAdsCampaignCreateAPIView.as_view(), name="google-ads-create"),
-    path("google-ads/status/", GoogleAdsCampaignStatusAPIView.as_view(), name="google-ads-status"),   # ← added
-    path("google-ads/callback/", GoogleAdsCampaignCallbackAPIView.as_view(), name="google-ads-callback"),
-    path("google-ads/insights/", GoogleAdsInsightsAPIView.as_view(), name="google-ads-insights"),
+    path("google-ads/create/",                      GoogleAdsCampaignCreateAPIView.as_view(),          name="google-ads-create"),
+    path("google-ads/status/",                      GoogleAdsCampaignStatusAPIView.as_view(),          name="google-ads-status"),
+    path("google-ads/callback/",                    GoogleAdsCampaignCallbackAPIView.as_view(),        name="google-ads-callback"),
+    path("google-ads/insights/",                    GoogleAdsInsightsAPIView.as_view(),                name="google-ads-insights"),        # ✅ FIX: now reads from DB, not 149 campaigns
+    path("google-ads/callback/campaign-created/",   GoogleAdsCampaignCreatedCallbackAPIView.as_view(), name="google-ads-campaign-created-callback"),  # ✅ NEW
+    path("google-ads/callback/insights/",           GoogleAdsInsightsCallbackAPIView.as_view(),        name="google-ads-insights-callback"),           # ✅ NEW
 
-    path("campaign/insights/trigger/",  CampaignInsightsTriggerAPIView.as_view()),
-    path("campaign/insights/callback/", CampaignInsightsCallbackAPIView.as_view()),
+    path("campaign/insights/trigger/",  CampaignInsightsTriggerAPIView.as_view(),  name="campaign-insights-trigger"),
+    path("campaign/insights/callback/", CampaignInsightsCallbackAPIView.as_view(), name="campaign-insights-callback"),
 
     # ============================
     # REPUTATION
