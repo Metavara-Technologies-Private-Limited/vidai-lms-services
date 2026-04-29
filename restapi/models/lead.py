@@ -166,16 +166,18 @@ class Lead(models.Model):
         return f"{self.full_name} ({self.lead_status})"
 
     # =====================================================
-    # ✅ FINAL FIXED SAVE LOGIC (WORKS FOR YOUR REQUIREMENT)
+    # ✅ FINAL FIXED SAVE LOGIC (PRODUCTION SAFE)
     # =====================================================
     def save(self, *args, **kwargs):
+
+        is_create = self._state.adding  # ✅ correct way to detect create
 
         old_stage = None
 
         # =============================
         # FETCH OLD STAGE (UPDATE CASE)
         # =============================
-        if self.pk:
+        if not is_create:
             old = Lead.objects.filter(pk=self.pk).only("stage").first()
             old_stage = old.stage if old else None
 
@@ -184,21 +186,23 @@ class Lead(models.Model):
             self.lead_status = self.stage.stage_name
 
             # =============================
-            # 🔥 CREATE CASE → ALWAYS STORE STAGE
+            # ✅ CREATE CASE
             # =============================
-            if not self.pk:
+            if is_create:
                 self.converted_at_stage = self.stage
 
-            # =============================
-            # 🔥 UPDATE CASE → ONLY IF CONVERSION
-            # =============================
-            is_converted = self.stage.is_conversion_stage
-
-            if self.pk and old_stage and old_stage.id != self.stage.id and is_converted:
-
-                if not self.converted_at:
+                if self.stage.is_conversion_stage:
                     self.converted_at = timezone.now()
 
-                self.converted_at_stage = self.stage
+            # =============================
+            # ✅ UPDATE CASE
+            # =============================
+            elif old_stage and old_stage.id != self.stage.id:
+
+                if self.stage.is_conversion_stage:
+                    if not self.converted_at:
+                        self.converted_at = timezone.now()
+
+                    self.converted_at_stage = self.stage
 
         super().save(*args, **kwargs)
