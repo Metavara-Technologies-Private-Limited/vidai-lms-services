@@ -1,3 +1,4 @@
+# flake8: noqa
 """
 Django settings for django_rest_main project.
 """

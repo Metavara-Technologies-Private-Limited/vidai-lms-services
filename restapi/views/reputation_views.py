@@ -348,8 +348,7 @@ class ReputationDashboardAPIView(APIView):
     def get(self, request):
         clinic = resolve_request_clinic(request, required=True)
 
-        from django.db.models import Avg
-        from restapi.models.reputation import ReviewRequest, Review, ReviewRequestLead
+
 
         total_requests = ReviewRequest.objects.filter(clinic=clinic).count()
         total_sent_requests = ReviewRequestLead.objects.filter(

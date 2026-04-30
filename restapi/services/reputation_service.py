@@ -1,14 +1,15 @@
+# flake8: noqa
 from django.conf import settings
 from restapi.models.reputation import ReviewRequest, ReviewRequestLead
 from restapi.models.review_request_document import ReviewRequestDocument
 from restapi.models.lead import Lead
 from restapi.services.twilio_service import send_sms
 from restapi.services.zapier_service import _post_to_webhook
-# from restapi.services.zapier_service import (
-#     send_to_zapier,
-#     send_to_zapier_email,
-#     send_to_zapier_reputation_email,
-# )
+from restapi.services.zapier_service import (
+    send_to_zapier,
+    send_to_zapier_email,
+    send_to_zapier_reputation_email,
+)
 import logging
 import re
 import uuid

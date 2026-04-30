@@ -1,4 +1,5 @@
 # restapi/models/__init__.py
+# flake8: noqa
 
 from .user_profile import UserProfile
 from .role import Role

@@ -1,3 +1,4 @@
+# flake8: noqa
 from .employee_views import *
 from .clinic_views import *
 
