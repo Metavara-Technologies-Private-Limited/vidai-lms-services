@@ -33,16 +33,25 @@ logger = logging.getLogger(__name__)
 # =====================================================
 class InteractionCountsAPIView(APIView):
     """
-    GET /api/interactions/counts/
+    GET /api/interactions/counts/?clinic_id=25
 
     Returns per-platform interaction counts for the Communication chart.
-    Order: Email → SMS → Call → WhatsApp → Chatbot
     """
 
     def get(self, request):
         try:
-            # ── EMAIL — from LeadEmail DB ────────────────────────────────
-            email_counts = LeadEmail.objects.aggregate(
+            clinic_id = request.query_params.get("clinic_id")
+
+            if not clinic_id:
+                return Response(
+                    {"error": "clinic_id is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # ───────────────── EMAIL ─────────────────
+            email_qs = LeadEmail.objects.filter(lead__clinic_id=clinic_id)
+
+            email_counts = email_qs.aggregate(
                 high=Count(
                     "id",
                     filter=Q(
@@ -70,8 +79,10 @@ class InteractionCountsAPIView(APIView):
             email_no   = email_counts["no"] or 0
 
 
-            # ── SMS — from TwilioMessage DB ──────────────────────────────
-            sms_counts = TwilioMessage.objects.aggregate(
+            # ───────────────── SMS ─────────────────
+            sms_qs = TwilioMessage.objects.filter(lead__clinic_id=clinic_id)
+
+            sms_counts = sms_qs.aggregate(
                 high=Count(
                     "id",
                     filter=Q(status__in=["delivered", "sent", "queued_via_zapier"])
@@ -91,8 +102,10 @@ class InteractionCountsAPIView(APIView):
             sms_no   = sms_counts["no"] or 0
 
 
-            # ── CALLS — from TwilioCall DB ───────────────────────────────
-            call_counts = TwilioCall.objects.aggregate(
+            # ───────────────── CALL ─────────────────
+            call_qs = TwilioCall.objects.filter(lead__clinic_id=clinic_id)
+
+            call_counts = call_qs.aggregate(
                 high=Count(
                     "id",
                     filter=Q(status__in=["completed", "in-progress", "ringing", "in_progress"])
@@ -111,13 +124,13 @@ class InteractionCountsAPIView(APIView):
             call_low  = call_counts["low"] or 0
             call_no   = call_counts["no"] or 0
 
-            # Fallback: if no categorized calls but records exist
-            total_calls = TwilioCall.objects.count()
+            # fallback
+            total_calls = call_qs.count()
             if call_high == 0 and call_low == 0 and call_no == 0 and total_calls > 0:
                 call_high = total_calls
 
 
-            # ── FINAL RESPONSE ──────────────────────────────────────────
+            # ───────────────── FINAL RESPONSE ─────────────────
             data = [
                 {"platform": "Email",    "high": email_high, "low": email_low, "no": email_no},
                 {"platform": "SMS",      "high": sms_high,   "low": sms_low,   "no": sms_no},
