@@ -43,7 +43,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ✅ FIX: Always read tokens from DB first — env is last resort only
+            # ✅ Always read tokens from DB first — env is last resort only
             google_account = SocialAccount.objects.filter(
                 clinic_id=clinic_id,
                 platform="google",
@@ -62,12 +62,11 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ✅ FIX: DB tokens are PRIMARY — env vars are LAST RESORT fallback only
+            # ✅ DB tokens are PRIMARY — env vars are LAST RESORT fallback only
             refresh_token = None
             access_token  = None
 
             if google_account:
-                # Always try DB first
                 refresh_token = google_account.user_token   or None
                 access_token  = google_account.access_token or None
                 logger.info(
@@ -75,7 +74,6 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                     clinic_id, bool(refresh_token), bool(access_token),
                 )
 
-            # Only fall back to env if DB has nothing
             if not refresh_token:
                 refresh_token = getattr(settings, "GOOGLE_REFRESH_TOKEN", None)
                 if refresh_token:
@@ -117,7 +115,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
             # ✅ internal_campaign_id — always a string
             internal_campaign_id = str(data.get("internal_campaign_id") or "").strip()
 
-            # ✅ FIX: login_customer_id — from payload first, then DB account, then env
+            # ✅ login_customer_id — from payload first, then DB account, then env
             login_customer_id = str(
                 data.get("login_customer_id")
                 or (google_account.login_customer_id if google_account and hasattr(google_account, "login_customer_id") else None)
@@ -139,6 +137,18 @@ class GoogleAdsCampaignCreateAPIView(APIView):
             our_status        = data.get("campaign_status") or data.get("status") or "draft"
             google_ads_status = "ENABLED" if our_status == "live" else "PAUSED"
 
+            # ✅ NEW FIELDS — campaign objective, target audience, schedule dates & time
+            campaign_objective = str(data.get("campaign_objective") or "").strip()
+            target_audience    = data.get("target_audience", "")
+            if isinstance(target_audience, list):
+                target_audience = ",".join(str(t).strip() for t in target_audience if str(t).strip())
+            else:
+                target_audience = str(target_audience).strip()
+
+            start_date  = str(data.get("start_date")  or data.get("from_date") or "").strip()
+            end_date    = str(data.get("end_date")    or data.get("to_date")   or "").strip()
+            start_time  = str(data.get("start_time")  or data.get("time")      or "").strip()
+
             zapier_payload = {
                 "event":                         "google_ads_campaign_created",
                 "campaign_name":                 campaign_name,
@@ -151,7 +161,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 "developer_token":               settings.GOOGLE_ADS_DEVELOPER_TOKEN,
                 "client_id":                     settings.GOOGLE_CLIENT_ID,
                 "client_secret":                 settings.GOOGLE_CLIENT_SECRET,
-                # ✅ FIX: DB token is sent — not env var
+                # ✅ DB token is sent — not env var
                 "refresh_token":                 refresh_token,
                 "access_token":                  access_token or "",
                 "budget":                        int(data.get("budget", 500)),
@@ -168,18 +178,26 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 "description_2":                 description_2[:90],
                 "campaign_status":               google_ads_status,
                 "our_status":                    our_status,
+                # ✅ NEW FIELDS
+                "campaign_objective":            campaign_objective,
+                "target_audience":               target_audience,
+                "start_date":                    start_date,
+                "end_date":                      end_date,
+                "start_time":                    start_time,
             }
 
             logger.info(
                 "[GoogleAdsView] Sending to Zapier | clinic=%s | customer_id=%s | "
                 "token_source=%s | image_url='%s' | keywords='%s' | "
                 "login_customer_id=%s | campaign_type=%s | internal_campaign_id=%s | "
-                "our_status=%s | google_ads_status=%s",
+                "our_status=%s | google_ads_status=%s | "
+                "campaign_objective=%s | target_audience=%s | start_date=%s | end_date=%s | start_time=%s",
                 clinic_id, customer_id,
                 "DB" if google_account and google_account.user_token else "ENV_FALLBACK",
                 image_url, keywords_str, login_customer_id,
                 campaign_type, internal_campaign_id,
                 our_status, google_ads_status,
+                campaign_objective, target_audience, start_date, end_date, start_time,
             )
 
             webhook_url = settings.ZAPIER_WEBHOOK_GOOGLE_ADS_URL
@@ -208,6 +226,11 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                             "google_ads_status":    google_ads_status,
                             "token_source":         "DB" if google_account and google_account.user_token else "ENV_FALLBACK",
                             "status":               "sent_to_zapier",
+                            "campaign_objective":   campaign_objective,
+                            "target_audience":      target_audience,
+                            "start_date":           start_date,
+                            "end_date":             end_date,
+                            "start_time":           start_time,
                         },
                     },
                     status=status.HTTP_201_CREATED,
@@ -360,7 +383,7 @@ class GoogleAdsCampaignStatusAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ✅ FIX: DB token primary, env fallback only
+            # ✅ DB token primary, env fallback only
             refresh_token = google_account.user_token or None
             if not refresh_token:
                 refresh_token = getattr(settings, "GOOGLE_REFRESH_TOKEN", None)
@@ -532,7 +555,7 @@ class GoogleAdsInsightsAPIView(APIView):
     """
     GET /api/google-ads/insights/?campaign_id=<uuid>&clinic_id=<int>
     Reads saved insights from DB for THIS specific campaign only.
-    ✅ FIX: filters by clinic_id to prevent cross-clinic data leakage.
+    ✅ filters by clinic_id to prevent cross-clinic data leakage.
     """
     permission_classes = [IsAuthenticated]
 
@@ -544,7 +567,7 @@ class GoogleAdsInsightsAPIView(APIView):
             return Response({"error": "campaign_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # ✅ FIX: filter by clinic_id so only this clinic's campaign is returned
+            # ✅ filter by clinic_id so only this clinic's campaign is returned
             filters = {"id": campaign_id}
             if clinic_id:
                 filters["clinic_id"] = clinic_id
