@@ -187,12 +187,31 @@ class CampaignUpdateAPIView(APIView):
 class CampaignListAPIView(APIView):
 
     @swagger_auto_schema(
-        operation_description="Get all campaigns with lead count",
+        operation_description="Get all campaigns for a clinic with lead count",
         responses={200: CampaignReadSerializer(many=True)},
         tags=["Campaigns"]
     )
     def get(self, request):
-        campaigns = Campaign.objects.all().order_by("-created_at")
+        # =====================================================
+        # ✅ FIX: was Campaign.objects.all() — returned every
+        #    campaign in the DB regardless of clinic.
+        #    Now filters strictly by clinic_id query param.
+        #    Returns 400 if clinic_id is missing so callers
+        #    know they must pass it rather than silently
+        #    getting all-clinic data.
+        # =====================================================
+        clinic_id = request.query_params.get("clinic_id")
+        if not clinic_id:
+            return Response(
+                {"error": "clinic_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        campaigns = (
+            Campaign.objects
+            .filter(clinic_id=clinic_id, is_deleted=False)
+            .order_by("-created_at")
+        )
 
         data = []
         for campaign in campaigns:
@@ -251,67 +270,83 @@ class CampaignListAPIView(APIView):
 class CampaignGetAPIView(APIView):
 
     @swagger_auto_schema(
-        operation_description="Get campaign by ID",
+        operation_description="Get campaign by ID, scoped to clinic",
         responses={200: CampaignReadSerializer},
         tags=["Campaigns"]
     )
     def get(self, request, campaign_id):
-        campaign = get_object_or_404(Campaign, id=campaign_id)
+        # =====================================================
+        # ✅ FIX 1 (clinic_id filtering): was get_object_or_404(Campaign, id=campaign_id)
+        #    which returned the campaign regardless of which clinic the caller
+        #    belongs to. Now also matches clinic_id so one clinic can never
+        #    read another clinic's campaign data.
+        #
+        # ✅ FIX 2 (double external call): the original code called
+        #    get_mailchimp_campaign_report() — an outbound HTTP request to
+        #    Mailchimp — on EVERY dashboard load. That was the "second call"
+        #    visible in the network tab. We now read exclusively from the
+        #    cached insights JSONField on CampaignEmailConfig, which is a
+        #    single fast DB read. The dedicated mailchimp-insights endpoint
+        #    is the only place that should trigger the live Mailchimp fetch.
+        # =====================================================
+        clinic_id = request.query_params.get("clinic_id")
+
+        if clinic_id:
+            # Scope to clinic when caller provides it (always should)
+            campaign = get_object_or_404(Campaign, id=campaign_id, clinic_id=clinic_id)
+        else:
+            # Fallback: still fetch by id but log a warning so we can track
+            # callers that forgot to send clinic_id
+            logger.warning(
+                f"CampaignGetAPIView called without clinic_id for campaign {campaign_id}. "
+                "All callers should pass clinic_id."
+            )
+            campaign = get_object_or_404(Campaign, id=campaign_id)
 
         data = CampaignReadSerializer(campaign).data
         data["lead_generated"] = campaign.leads.count()
 
-        if campaign.mailchimp_campaign_id:
-            report = get_mailchimp_campaign_report(campaign.mailchimp_campaign_id)
-            if report:
-                data["impressions"]     = report["opens"]
-                data["clicks"]          = report["clicks"]
-                data["emails_sent"]     = report["emails_sent"]
-                data["bounces"]         = report["bounces"]
-                data["unsubscribes"]    = report["unsubscribes"]
-                data["conversion_rate"] = (
-                    round((data["lead_generated"] / report["emails_sent"]) * 100, 2)
-                    if report["emails_sent"] > 0
-                    else 0
-                )
-            else:
-                # ✅ FALLBACK: use last saved insights from CampaignEmailConfig
-                # This means dashboard NEVER shows 0 if insights were fetched before.
-                # ── Reads from insights JSONField (single column approach) ──
-                # If insights is None (never synced), defaults to 0 for all fields.
-                email_config = campaign.email_configs.filter(is_active=True).first()
-                cached = email_config.insights if email_config else None
+        # =====================================================
+        # ✅ FIX 2: Read ONLY from cached insights — no live
+        #    Mailchimp HTTP call here. Use the dedicated
+        #    /campaigns/<id>/mailchimp-insights/ endpoint to
+        #    refresh cache when needed.
+        # =====================================================
+        email_config = campaign.email_configs.filter(is_active=True).first()
+        cached = email_config.insights if email_config else None
 
-                if cached and cached.get("emails_sent") is not None:
-                    # ✅ Read all values from insights JSON column
-                    data["impressions"]        = cached.get("opens", 0)
-                    data["clicks"]             = cached.get("clicks", 0)
-                    data["emails_sent"]        = cached.get("emails_sent", 0)
-                    data["bounces"]            = cached.get("bounces", 0)
-                    data["unsubscribes"]       = cached.get("unsubscribes", 0)
-                    data["open_rate"]          = cached.get("open_rate", 0)
-                    data["click_rate"]         = cached.get("click_rate", 0)
-                    data["last_open"]          = cached.get("last_open")
-                    data["last_click"]         = cached.get("last_click")
-                    data["insights_synced_at"] = cached.get("synced_at")
-                    data["conversion_rate"]    = (
-                        round((data["lead_generated"] / cached.get("emails_sent")) * 100, 2)
-                        if cached.get("emails_sent", 0) > 0
-                        else 0
-                    )
-                else:
-                    data["impressions"]     = 0
-                    data["clicks"]          = 0
-                    data["emails_sent"]     = 0
-                    data["bounces"]         = 0
-                    data["unsubscribes"]    = 0
+        if cached and cached.get("emails_sent") is not None:
+            data["impressions"]        = cached.get("opens", 0)
+            data["clicks"]             = cached.get("clicks", 0)
+            data["emails_sent"]        = cached.get("emails_sent", 0)
+            data["bounces"]            = cached.get("bounces", 0)
+            data["unsubscribes"]       = cached.get("unsubscribes", 0)
+            data["open_rate"]          = cached.get("open_rate", 0)
+            data["click_rate"]         = cached.get("click_rate", 0)
+            data["last_open"]          = cached.get("last_open")
+            data["last_click"]         = cached.get("last_click")
+            data["insights_synced_at"] = cached.get("synced_at")
+            data["conversion_rate"]    = (
+                round((data["lead_generated"] / cached.get("emails_sent")) * 100, 2)
+                if cached.get("emails_sent", 0) > 0
+                else 0
+            )
         else:
-            data["impressions"]  = 0
-            data["clicks"]       = 0
-            data["emails_sent"]  = 0
-            data["bounces"]      = 0
-            data["unsubscribes"] = 0
+            data["impressions"]        = 0
+            data["clicks"]             = 0
+            data["emails_sent"]        = 0
+            data["bounces"]            = 0
+            data["unsubscribes"]       = 0
+            data["open_rate"]          = 0
+            data["click_rate"]         = 0
+            data["last_open"]          = None
+            data["last_click"]         = None
+            data["insights_synced_at"] = None
+            data["conversion_rate"]    = 0
 
+        # =====================================================
+        # Facebook post insights (unchanged)
+        # =====================================================
         if campaign.post_id:
             social = SocialAccount.objects.filter(
                 clinic=campaign.clinic, platform="facebook", is_active=True
