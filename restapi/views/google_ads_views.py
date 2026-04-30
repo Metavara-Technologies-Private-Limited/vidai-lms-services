@@ -43,6 +43,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            # ✅ FIX: Always read tokens from DB first — env is last resort only
             google_account = SocialAccount.objects.filter(
                 clinic_id=clinic_id,
                 platform="google",
@@ -61,20 +62,35 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            refresh_token = google_account.user_token if google_account else None
-            access_token  = google_account.access_token if google_account else None
+            # ✅ FIX: DB tokens are PRIMARY — env vars are LAST RESORT fallback only
+            refresh_token = None
+            access_token  = None
 
+            if google_account:
+                # Always try DB first
+                refresh_token = google_account.user_token   or None
+                access_token  = google_account.access_token or None
+                logger.info(
+                    "[GoogleAdsView] Token source: DB | clinic=%s | has_refresh=%s | has_access=%s",
+                    clinic_id, bool(refresh_token), bool(access_token),
+                )
+
+            # Only fall back to env if DB has nothing
             if not refresh_token:
                 refresh_token = getattr(settings, "GOOGLE_REFRESH_TOKEN", None)
+                if refresh_token:
+                    logger.warning("[GoogleAdsView] DB refresh_token missing — falling back to env var for clinic=%s", clinic_id)
 
             if not access_token:
                 access_token = getattr(settings, "GOOGLE_ACCESS_TOKEN", None)
+                if access_token:
+                    logger.warning("[GoogleAdsView] DB access_token missing — falling back to env var for clinic=%s", clinic_id)
 
             if not refresh_token:
                 return Response(
                     {
                         "success": False,
-                        "error": "Google refresh token missing. Please connect via OAuth or update .env",
+                        "error": "Google refresh token missing. Please connect via OAuth in Integrations.",
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
@@ -91,18 +107,21 @@ class GoogleAdsCampaignCreateAPIView(APIView):
             )
             image_url = str(raw_image_url).strip() if raw_image_url else ""
 
-            # ✅ keywords — convert list to comma string, always a string never null
+            # ✅ keywords — convert list to comma string
             keywords_raw = data.get("keywords", [])
             if isinstance(keywords_raw, list):
                 keywords_str = ",".join(k.strip() for k in keywords_raw if str(k).strip())
             else:
                 keywords_str = str(keywords_raw).strip()
 
-            # ✅ internal_campaign_id — always a string, never null
+            # ✅ internal_campaign_id — always a string
             internal_campaign_id = str(data.get("internal_campaign_id") or "").strip()
 
+            # ✅ FIX: login_customer_id — from payload first, then DB account, then env
             login_customer_id = str(
-                data.get("login_customer_id") or getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
+                data.get("login_customer_id")
+                or (google_account.login_customer_id if google_account and hasattr(google_account, "login_customer_id") else None)
+                or getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
             ).replace("-", "")
 
             description_2 = (
@@ -116,10 +135,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
             callback_base = getattr(settings, "BACKEND_BASE_URL", "https://lms-vidaisolutions.metavaratechnologies.com")
             campaign_created_callback_url = f"{callback_base}/api/google-ads/callback/campaign-created/"
 
-            # ✅ FIX: Map our status to Google Ads status
-            # "live"      → ENABLED  (runs immediately)
-            # "scheduled" → PAUSED   (user will enable when start date arrives)
-            # "draft"     → PAUSED   (not ready)
+            # ✅ Map our status to Google Ads status
             our_status        = data.get("campaign_status") or data.get("status") or "draft"
             google_ads_status = "ENABLED" if our_status == "live" else "PAUSED"
 
@@ -135,6 +151,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 "developer_token":               settings.GOOGLE_ADS_DEVELOPER_TOKEN,
                 "client_id":                     settings.GOOGLE_CLIENT_ID,
                 "client_secret":                 settings.GOOGLE_CLIENT_SECRET,
+                # ✅ FIX: DB token is sent — not env var
                 "refresh_token":                 refresh_token,
                 "access_token":                  access_token or "",
                 "budget":                        int(data.get("budget", 500)),
@@ -149,18 +166,17 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 "headline_3":                    data.get("headline_3", "Contact Us Today"),
                 "description":                   data.get("description", "")[:90],
                 "description_2":                 description_2[:90],
-                # ✅ FIX: send campaign_status so Zapier creates with correct Google Ads status
                 "campaign_status":               google_ads_status,
                 "our_status":                    our_status,
             }
 
             logger.info(
                 "[GoogleAdsView] Sending to Zapier | clinic=%s | customer_id=%s | "
-                "refresh_token_source=%s | image_url='%s' | keywords='%s' | "
+                "token_source=%s | image_url='%s' | keywords='%s' | "
                 "login_customer_id=%s | campaign_type=%s | internal_campaign_id=%s | "
                 "our_status=%s | google_ads_status=%s",
                 clinic_id, customer_id,
-                "DB" if google_account and google_account.user_token else "Settings",
+                "DB" if google_account and google_account.user_token else "ENV_FALLBACK",
                 image_url, keywords_str, login_customer_id,
                 campaign_type, internal_campaign_id,
                 our_status, google_ads_status,
@@ -168,12 +184,9 @@ class GoogleAdsCampaignCreateAPIView(APIView):
 
             webhook_url = settings.ZAPIER_WEBHOOK_GOOGLE_ADS_URL
             try:
-                zapier_resp = requests.post(webhook_url, json=zapier_payload, timeout=10)
+                zapier_resp   = requests.post(webhook_url, json=zapier_payload, timeout=10)
                 response_code = zapier_resp.status_code
-                logger.info(
-                    "[GoogleAdsView] Zapier response: %s | body: %s",
-                    response_code, zapier_resp.text
-                )
+                logger.info("[GoogleAdsView] Zapier response: %s | body: %s", response_code, zapier_resp.text)
             except requests.exceptions.RequestException as e:
                 logger.error("[GoogleAdsView] Zapier request failed: %s", str(e))
                 return Response(
@@ -193,6 +206,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                             "keywords_sent":        keywords_str,
                             "internal_campaign_id": internal_campaign_id,
                             "google_ads_status":    google_ads_status,
+                            "token_source":         "DB" if google_account and google_account.user_token else "ENV_FALLBACK",
                             "status":               "sent_to_zapier",
                         },
                     },
@@ -200,10 +214,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 )
             else:
                 return Response(
-                    {
-                        "success": False,
-                        "error": f"Zapier webhook failed with status {response_code}",
-                    },
+                    {"success": False, "error": f"Zapier webhook failed with status {response_code}"},
                     status=status.HTTP_502_BAD_GATEWAY,
                 )
 
@@ -312,7 +323,6 @@ class GoogleAdsCampaignStatusAPIView(APIView):
     """
     POST /api/google-ads/status/
     Pause or enable a Google Ads campaign directly via Google Ads REST API.
-    Called when user clicks pause/enable button in UI — syncs to Google Ads immediately.
     """
 
     permission_classes = [IsAuthenticated]
@@ -350,9 +360,11 @@ class GoogleAdsCampaignStatusAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            refresh_token = google_account.user_token
+            # ✅ FIX: DB token primary, env fallback only
+            refresh_token = google_account.user_token or None
             if not refresh_token:
                 refresh_token = getattr(settings, "GOOGLE_REFRESH_TOKEN", None)
+                logger.warning("[GoogleAdsStatus] DB refresh_token missing — using env fallback for clinic=%s", clinic_id)
 
             if not refresh_token:
                 return Response(
@@ -408,7 +420,7 @@ class GoogleAdsCampaignStatusAPIView(APIView):
                     f"FROM campaign "
                     f"WHERE campaign.name LIKE '%{safe_name}%' "
                     f"AND campaign.status != 'REMOVED' "
-                    f"LIMIT 5"
+                    f"ORDER BY campaign.id DESC LIMIT 1"
                 )
                 logger.info("[GoogleAdsStatus] Searching by name: %s | cust_id: %s", safe_name, cust_id)
 
@@ -448,7 +460,7 @@ class GoogleAdsCampaignStatusAPIView(APIView):
                     status=status.HTTP_200_OK,
                 )
 
-            # Step 4: Mutate campaign status in Google Ads
+            # Step 4: Mutate campaign status
             new_google_status = "PAUSED" if action == "pause" else "ENABLED"
 
             mutate_resp = requests.post(
@@ -477,13 +489,12 @@ class GoogleAdsCampaignStatusAPIView(APIView):
                     status=status.HTTP_502_BAD_GATEWAY,
                 )
 
-            # ✅ FIX: Update our DB status to match what we just set in Google Ads
+            # ✅ Update our DB status to match Google Ads
             new_our_status     = "paused" if action == "pause" else "live"
             campaign.status    = new_our_status
             campaign.is_active = (action == "enable")
             campaign.save(update_fields=["status", "is_active"])
 
-            # ✅ FIX: Save google_status in platform_data too
             p_data = campaign.platform_data or {}
             if not isinstance(p_data.get("google_ads"), dict):
                 p_data["google_ads"] = {}
@@ -515,12 +526,13 @@ class GoogleAdsCampaignStatusAPIView(APIView):
 
 
 # =====================================================
-# ✅ FIXED: Google Ads Insights — reads from DB only
+# ✅ Google Ads Insights — reads from DB only
 # =====================================================
 class GoogleAdsInsightsAPIView(APIView):
     """
     GET /api/google-ads/insights/?campaign_id=<uuid>&clinic_id=<int>
     Reads saved insights from DB for THIS specific campaign only.
+    ✅ FIX: filters by clinic_id to prevent cross-clinic data leakage.
     """
     permission_classes = [IsAuthenticated]
 
@@ -532,10 +544,18 @@ class GoogleAdsInsightsAPIView(APIView):
             return Response({"error": "campaign_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
+            # ✅ FIX: filter by clinic_id so only this clinic's campaign is returned
+            filters = {"id": campaign_id}
+            if clinic_id:
+                filters["clinic_id"] = clinic_id
+
             try:
-                campaign = Campaign.objects.get(id=campaign_id)
+                campaign = Campaign.objects.get(**filters)
             except Campaign.DoesNotExist:
-                return Response({"error": f"Campaign {campaign_id} not found"}, status=status.HTTP_404_NOT_FOUND)
+                return Response(
+                    {"error": f"Campaign {campaign_id} not found for this clinic"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
             config = CampaignSocialMediaConfig.objects.filter(
                 campaign=campaign,
