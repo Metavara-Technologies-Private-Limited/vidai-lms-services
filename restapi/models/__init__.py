@@ -54,5 +54,6 @@ from .template_whatsapp_document import TemplateWhatsAppDocument
 from .lead_note import LeadNote
 from .lead_document import LeadDocument
 from .lead_mail import LeadEmail
+from .review_request_document import ReviewRequestDocument
 
 

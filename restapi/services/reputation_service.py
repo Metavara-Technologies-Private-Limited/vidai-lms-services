@@ -1,5 +1,6 @@
 from django.conf import settings
 from restapi.models.reputation import ReviewRequest, ReviewRequestLead
+from restapi.models.review_request_document import ReviewRequestDocument
 from restapi.models.lead import Lead
 from restapi.services.twilio_service import send_sms
 from restapi.services.zapier_service import _post_to_webhook
@@ -12,7 +13,7 @@ import logging
 import re
 import uuid
 from html import escape
-from django.core.mail import send_mail
+from django.core.mail import send_mail, EmailMultiAlternatives
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from urllib.parse import urlparse
@@ -451,13 +452,31 @@ def classify_provider_error(error, mode):
     return "provider_error", fallback_message, detail, provider_code
 
 
-def create_review_request(validated_data):
+def create_review_request(validated_data, attachments=None):
 
+    attachments = attachments or []
     lead_ids = validated_data.pop("lead_ids", [])
 
     # Create Review Request
     review_request = ReviewRequest.objects.create(**validated_data)
     logger.info(f"Created review request: {review_request.id} - Mode: {review_request.mode}, Collect on: {review_request.collect_on}")
+
+    saved_documents = []
+    for file_obj in attachments:
+        if not getattr(file_obj, "name", None):
+            continue
+        try:
+            document = ReviewRequestDocument.objects.create(
+                review_request=review_request,
+                file=file_obj,
+            )
+            saved_documents.append(document)
+        except Exception as save_error:
+            logger.error(
+                "Failed to save review request attachment '%s': %s",
+                getattr(file_obj, "name", "unknown"),
+                save_error,
+            )
 
     # Fetch Leads
     leads = Lead.objects.filter(id__in=lead_ids)
@@ -561,8 +580,8 @@ def create_review_request(validated_data):
 
                 smtp_error_detail = ""
 
-                # Fallback to Zapier flow when configured.
-                if zapier_configured:
+                # Prefer SMTP path first for reliability. Use Zapier fallback when SMTP is not configured.
+                if not email_configured and zapier_configured and not attachments:
                     payload = {
                         "channel": "email",
                         "recipient_email": lead.email,
@@ -597,14 +616,33 @@ def create_review_request(validated_data):
                         continue
 
                 if email_configured:
-                    send_mail(
-                        subject=review_request.subject or "Share Your Experience",
-                        message=message_text,
-                        from_email=sender_email,
-                        recipient_list=[lead.email],
-                        html_message=message_html,
-                        fail_silently=False,
-                    )
+                    if saved_documents:
+                        email_message = EmailMultiAlternatives(
+                            subject=review_request.subject or "Share Your Experience",
+                            body=message_text,
+                            from_email=sender_email,
+                            to=[lead.email],
+                        )
+                        email_message.attach_alternative(message_html, "text/html")
+                        for document in saved_documents:
+                            if not document.file:
+                                continue
+                            with document.file.open("rb") as stream:
+                                email_message.attach(
+                                    filename=document.file.name.split("/")[-1],
+                                    content=stream.read(),
+                                    mimetype="application/octet-stream",
+                                )
+                        email_message.send(fail_silently=False)
+                    else:
+                        send_mail(
+                            subject=review_request.subject or "Share Your Experience",
+                            message=message_text,
+                            from_email=sender_email,
+                            recipient_list=[lead.email],
+                            html_message=message_html,
+                            fail_silently=False,
+                        )
 
                     rr_lead.request_sent = True
                     rr_lead.sent_link = review_link
@@ -615,6 +653,8 @@ def create_review_request(validated_data):
                     continue
 
                 smtp_error_detail = email_config_error or "SMTP is not configured"
+                if attachments and not email_configured:
+                    smtp_error_detail = f"{smtp_error_detail}. Attachment delivery requires SMTP email configuration."
 
                 logger.error(
                     "Email could not be sent. Mailchimp configured=%s, Zapier configured=%s, SMTP configured=%s, SMTP detail=%s",

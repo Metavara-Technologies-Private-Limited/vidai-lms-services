@@ -29,6 +29,7 @@ class ReviewRequestCreateAPIView(APIView):
     def post(self, request):
         clinic = resolve_request_clinic(request, required=True)
         payload = request.data.copy()
+        payload.pop("attachments", None)
         payload["clinic"] = clinic.id
 
         serializer = ReviewRequestSerializer(data=payload)

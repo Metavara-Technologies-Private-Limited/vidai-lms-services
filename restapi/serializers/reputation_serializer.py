@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db import DatabaseError
 from restapi.models.reputation import ReviewRequest, ReviewRequestLead, Review
 
 
@@ -19,6 +20,7 @@ class ReviewRequestSerializer(serializers.ModelSerializer):
     reviews_submitted = serializers.SerializerMethodField()
     avg_rating = serializers.SerializerMethodField()
     conversion_rate = serializers.SerializerMethodField()
+    documents = serializers.SerializerMethodField()
 
     def _get_prefetched_items(self, obj, attr_name):
         prefetched_cache = getattr(obj, "_prefetched_objects_cache", {})
@@ -63,6 +65,21 @@ class ReviewRequestSerializer(serializers.ModelSerializer):
         reviews_submitted = self.get_reviews_submitted(obj)
         return round((reviews_submitted / requests_sent) * 100, 1)
 
+    def get_documents(self, obj):
+        try:
+            return [
+                {
+                    "id": str(doc.id),
+                    "file": doc.file.url if doc.file else None,
+                    "uploaded_at": doc.uploaded_at,
+                }
+                for doc in obj.documents.all()
+            ]
+        except DatabaseError:
+            return []
+        except Exception:
+            return []
+
     class Meta:
         model = ReviewRequest
         fields = [
@@ -84,6 +101,7 @@ class ReviewRequestSerializer(serializers.ModelSerializer):
             "reviews_submitted",
             "avg_rating",
             "conversion_rate",
+            "documents",
         ]
 
         read_only_fields = [
@@ -92,9 +110,10 @@ class ReviewRequestSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        # ✅ correct import (based on your folder)
         from restapi.services.reputation_service import create_review_request
-        return create_review_request(validated_data)
+        request = self.context.get("request")
+        attachments = request.FILES.getlist("attachments") if request else []
+        return create_review_request(validated_data, attachments=attachments)
 
 
 # =====================================================
