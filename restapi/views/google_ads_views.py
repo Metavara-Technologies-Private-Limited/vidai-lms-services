@@ -439,19 +439,25 @@ class GoogleAdsCampaignStatusAPIView(APIView):
             campaign_resource_name = None
 
             if isinstance(google_data, dict):
-                campaign_resource_name = google_data.get("campaign_resource_name")
+                campaign_resource_name = google_data.get("campaign_resource_name") or None
 
-            # Step 3: If not in DB, search by campaign name
+            # ✅ FIX: Step 3 — GAQL does not support LIKE. Fetch all active campaigns
+            #         and match locally by name (exact first, then contains).
             if not campaign_resource_name:
-                safe_name = campaign.campaign_name.strip().replace("'", "\\'")
+                safe_name = campaign.campaign_name.strip()
+                first_word = safe_name.split()[0] if safe_name.split() else safe_name
+
+                # Valid GAQL — no LIKE, no wildcard
                 query = (
-                    f"SELECT campaign.id, campaign.name, campaign.resource_name "
-                    f"FROM campaign "
-                    f"WHERE campaign.name LIKE '%{safe_name}%' "
-                    f"AND campaign.status != 'REMOVED' "
-                    f"ORDER BY campaign.id DESC LIMIT 1"
+                    "SELECT campaign.id, campaign.name, campaign.resource_name, campaign.status "
+                    "FROM campaign "
+                    "WHERE campaign.status != 'REMOVED' "
+                    "ORDER BY campaign.id DESC LIMIT 50"
                 )
-                logger.info("[GoogleAdsStatus] Searching by name: %s | cust_id: %s", safe_name, cust_id)
+                logger.info(
+                    "[GoogleAdsStatus] DB miss — fetching all Google Ads campaigns to match '%s' | cust_id=%s",
+                    safe_name, cust_id,
+                )
 
                 search_resp = requests.post(
                     f"https://googleads.googleapis.com/v17/customers/{cust_id}/googleAds:search",
@@ -466,21 +472,50 @@ class GoogleAdsCampaignStatusAPIView(APIView):
                     search_res = {}
 
                 results = search_res.get("results", [])
-                if results:
-                    campaign_resource_name = results[0].get("campaign", {}).get("resourceName")
-                    logger.info("[GoogleAdsStatus] Found resource_name: %s", campaign_resource_name)
 
+                logger.info(
+                    "[GoogleAdsStatus] Google Ads search HTTP=%s | %d campaigns returned",
+                    search_resp.status_code, len(results),
+                )
+
+                # Strategy 1: exact case-insensitive match
+                for r in results:
+                    gname = r.get("campaign", {}).get("name", "")
+                    if gname.strip().lower() == safe_name.lower():
+                        campaign_resource_name = r.get("campaign", {}).get("resourceName")
+                        logger.info("[GoogleAdsStatus] Exact match: '%s' → %s", gname, campaign_resource_name)
+                        break
+
+                # Strategy 2: contains match (our name inside Google name, or first word match)
+                if not campaign_resource_name:
+                    for r in results:
+                        gname = r.get("campaign", {}).get("name", "")
+                        if (
+                            safe_name.lower() in gname.lower()
+                            or first_word.lower() in gname.lower()
+                        ):
+                            campaign_resource_name = r.get("campaign", {}).get("resourceName")
+                            logger.info("[GoogleAdsStatus] Contains match: '%s' → %s", gname, campaign_resource_name)
+                            break
+
+                # Log all available names so mismatches are easy to spot
+                if not campaign_resource_name:
+                    all_names = [r.get("campaign", {}).get("name", "") for r in results]
+                    logger.error(
+                        "[GoogleAdsStatus] No match for '%s' | "
+                        "Available Google Ads campaign names: %s | "
+                        "HTTP=%s",
+                        safe_name, all_names, search_resp.status_code,
+                    )
+
+                # Cache in DB so next call is instant
+                if campaign_resource_name:
                     updated_platform_data = campaign.platform_data or {}
                     if not isinstance(updated_platform_data.get("google_ads"), dict):
                         updated_platform_data["google_ads"] = {}
                     updated_platform_data["google_ads"]["campaign_resource_name"] = campaign_resource_name
                     campaign.platform_data = updated_platform_data
                     campaign.save(update_fields=["platform_data"])
-                else:
-                    logger.error(
-                        "[GoogleAdsStatus] No campaign found for name: %s | http_status: %s | response: %s",
-                        safe_name, search_resp.status_code, search_res,
-                    )
 
             if not campaign_resource_name:
                 logger.info("[GoogleAdsStatus] No Google Ads campaign found for '%s' — skipping", campaign.campaign_name)
