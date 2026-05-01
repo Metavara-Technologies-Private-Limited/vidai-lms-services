@@ -43,7 +43,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ✅ Always read tokens from DB first — env is last resort only
+            # ✅ FIX: Always read tokens from DB first — env is last resort only
             google_account = SocialAccount.objects.filter(
                 clinic_id=clinic_id,
                 platform="google",
@@ -62,11 +62,12 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ✅ DB tokens are PRIMARY — env vars are LAST RESORT fallback only
+            # ✅ FIX: DB tokens are PRIMARY — env vars are LAST RESORT fallback only
             refresh_token = None
             access_token  = None
 
             if google_account:
+                # Always try DB first
                 refresh_token = google_account.user_token   or None
                 access_token  = google_account.access_token or None
                 logger.info(
@@ -74,6 +75,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                     clinic_id, bool(refresh_token), bool(access_token),
                 )
 
+            # Only fall back to env if DB has nothing
             if not refresh_token:
                 refresh_token = getattr(settings, "GOOGLE_REFRESH_TOKEN", None)
                 if refresh_token:
@@ -115,12 +117,16 @@ class GoogleAdsCampaignCreateAPIView(APIView):
             # ✅ internal_campaign_id — always a string
             internal_campaign_id = str(data.get("internal_campaign_id") or "").strip()
 
-            # ✅ login_customer_id — from payload first, then DB account, then env
-            login_customer_id = str(
-                data.get("login_customer_id")
-                or (google_account.login_customer_id if google_account and hasattr(google_account, "login_customer_id") else None)
-                or getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
-            ).replace("-", "")
+            # ✅ FIX: login_customer_id — safe resolution, avoids str(None) = "None" bug
+            _login_from_payload = data.get("login_customer_id") or None
+            _login_from_db      = (
+                getattr(google_account, "login_customer_id", None)
+                if google_account else None
+            ) or None
+            _login_from_env     = getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", None) or None
+
+            _raw_login          = _login_from_payload or _login_from_db or _login_from_env or ""
+            login_customer_id   = str(_raw_login).replace("-", "")
 
             description_2 = (
                 data.get("description_2")
@@ -161,7 +167,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 "developer_token":               settings.GOOGLE_ADS_DEVELOPER_TOKEN,
                 "client_id":                     settings.GOOGLE_CLIENT_ID,
                 "client_secret":                 settings.GOOGLE_CLIENT_SECRET,
-                # ✅ DB token is sent — not env var
+                # ✅ FIX: DB token is sent — not env var
                 "refresh_token":                 refresh_token,
                 "access_token":                  access_token or "",
                 "budget":                        int(data.get("budget", 500)),
@@ -383,7 +389,7 @@ class GoogleAdsCampaignStatusAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ✅ DB token primary, env fallback only
+            # ✅ FIX: DB token primary, env fallback only
             refresh_token = google_account.user_token or None
             if not refresh_token:
                 refresh_token = getattr(settings, "GOOGLE_REFRESH_TOKEN", None)
@@ -555,7 +561,7 @@ class GoogleAdsInsightsAPIView(APIView):
     """
     GET /api/google-ads/insights/?campaign_id=<uuid>&clinic_id=<int>
     Reads saved insights from DB for THIS specific campaign only.
-    ✅ filters by clinic_id to prevent cross-clinic data leakage.
+    ✅ FIX: filters by clinic_id to prevent cross-clinic data leakage.
     """
     permission_classes = [IsAuthenticated]
 
@@ -567,7 +573,7 @@ class GoogleAdsInsightsAPIView(APIView):
             return Response({"error": "campaign_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # ✅ filter by clinic_id so only this clinic's campaign is returned
+            # ✅ FIX: filter by clinic_id so only this clinic's campaign is returned
             filters = {"id": campaign_id}
             if clinic_id:
                 filters["clinic_id"] = clinic_id
