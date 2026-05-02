@@ -83,18 +83,54 @@ def send_to_zapier_reputation_email(data):
     return response.status_code if response else None
 
 
+# def send_to_zapier_social(data):
+#     """
+#     Send email campaign data to the unified Mailchimp Zapier webhook.
+#     Used for: EmailCampaignCreateAPIView — event: "email_campaign_created"
+#     Webhook: ZAPIER_WEBHOOK_MAILCHIMP_URL
+#     """
+#     response = _post_to_webhook(
+#         label="Zapier Social",
+#         webhook_url=getattr(settings, "ZAPIER_WEBHOOK_SOCIAL_URL", ""),
+#         payload=data,
+#         timeout=8,
+#     )
+#     return response.status_code if response else None
+
+
 def send_to_zapier_social(data):
     """
-    Send email campaign data to the unified Mailchimp Zapier webhook.
-    Used for: EmailCampaignCreateAPIView — event: "email_campaign_created"
-    Webhook: ZAPIER_WEBHOOK_MAILCHIMP_URL
+    Route social payloads to correct Zapier webhook
+    based on platform.
     """
+
+    platform = data.get("platform", "").lower()
+
+    if platform == "linkedin":
+        webhook_url = getattr(
+            settings,
+            "ZAPIER_WEBHOOK_LINKEDIN_URL",
+            ""
+        )
+        label = "Zapier LinkedIn"
+
+    else:
+        webhook_url = getattr(
+            settings,
+            "ZAPIER_WEBHOOK_SOCIAL_URL",
+            ""
+        )
+        label = "Zapier Social"
+
+    print(f"Sending {platform} payload to: {webhook_url}")
+
     response = _post_to_webhook(
-        label="Zapier Social",
-        webhook_url=getattr(settings, "ZAPIER_WEBHOOK_SOCIAL_URL", ""),
+        label=label,
+        webhook_url=webhook_url,
         payload=data,
         timeout=8,
     )
+
     return response.status_code if response else None
 
 
