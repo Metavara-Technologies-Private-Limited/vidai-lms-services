@@ -17,6 +17,7 @@ from drf_yasg.utils import swagger_auto_schema
 
 from restapi.models import Lead, Clinic
 from restapi.models.campaign import Campaign
+from restapi.models.reports import CampaignMetrics
 from restapi.serializers.campaign_social_post_serializer import (
     CampaignSocialPostCallbackSerializer,
 )
@@ -156,16 +157,51 @@ class LinkedInZapierCallbackAPIView(APIView):
             # ------------------------------------------------------
             # INSIGHTS SYNC
             # ------------------------------------------------------
+            # if action == "INSIGHTS_SYNC":
+            #     campaign.last_synced_metrics = {
+            #         "campaign_metrics": payload.get(
+            #             "metrics",
+            #             {},
+            #         ),
+            #         "ads": payload.get(
+            #             "ads",
+            #             [],
+            #         ),
+            #     }
+
+            #     campaign.last_metrics_synced_at = timezone.now()
+            #     campaign.modified_at = timezone.now()
+
+            #     campaign.save(
+            #         update_fields=[
+            #             "last_synced_metrics",
+            #             "last_metrics_synced_at",
+            #             "modified_at",
+            #         ]
+            #     )
+
+            #     return Response(
+            #         {
+            #             "status": "metrics_saved",
+            #             "campaign_id": str(campaign.id),
+            #         },
+            #         status=status.HTTP_200_OK,
+            #     )
+            
+            
             if action == "INSIGHTS_SYNC":
+                metrics = payload.get("metrics", {})
+                ads_data = payload.get("ads", [])
+
+                impressions = metrics.get("impressions", 0)
+                clicks = metrics.get("clicks", 0)
+                conversions = metrics.get("conversions", 0)
+                spend = metrics.get("spend", 0)
+
+                # Latest snapshot for frontend
                 campaign.last_synced_metrics = {
-                    "campaign_metrics": payload.get(
-                        "metrics",
-                        {},
-                    ),
-                    "ads": payload.get(
-                        "ads",
-                        [],
-                    ),
+                    "campaign_metrics": metrics,
+                    "ads": ads_data,
                 }
 
                 campaign.last_metrics_synced_at = timezone.now()
@@ -177,6 +213,27 @@ class LinkedInZapierCallbackAPIView(APIView):
                         "last_metrics_synced_at",
                         "modified_at",
                     ]
+                )
+
+                # Historical daily analytics
+                CampaignMetrics.objects.update_or_create(
+                    campaign=campaign,
+                    platform="linkedin",
+                    date=timezone.now().date(),
+                    defaults={
+                        "impressions": metrics.get("impressions", 0),
+                        "clicks": metrics.get("clicks", 0),
+                        "conversions": metrics.get("conversions", 0),
+                        "spend": metrics.get("spend", 0),
+                        "ctr": metrics.get("ctr", 0),
+                        "likes": metrics.get("likes", 0),
+                        "shares": metrics.get("shares", 0),
+                        "comments": metrics.get("comments", 0),
+                        "leads": metrics.get("leads", 0),
+                        "video_views": metrics.get("video_views", 0),
+                        "raw_metrics": metrics,
+                        "ads_data": ads_data,
+                    }
                 )
 
                 return Response(

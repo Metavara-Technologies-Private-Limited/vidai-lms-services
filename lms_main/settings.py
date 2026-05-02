@@ -16,7 +16,18 @@ import os
 # ================================
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# =====================================================
+# STAGE API
+# =====================================================
+STAGE_LOGIN_URL = os.getenv("STAGE_LOGIN_URL")
+STAGE_PROFILE_URL = os.getenv("STAGE_PROFILE_URL")
 
+STAGE_USERS_URL = os.getenv("STAGE_USERS_URL")
+
+
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL")
+FRONTEND_URL = os.getenv("FRONTEND_URL")
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL")
 
 # ================================
 # SECURITY
@@ -111,12 +122,17 @@ WSGI_APPLICATION = 'lms_main.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'stage5_db',
-        'USER': 'postgres',
-        'PASSWORD': 'saimohan',
-        'HOST': 'host.docker.internal',  # 'host.docker.internal',   #host.docker.internal
-        'PORT': '5432',
+        # 'NAME': 'stage5_db',
+        # 'USER': 'postgres',
+        # 'PASSWORD': 'saimohan',
+        # 'HOST': 'host.docker.internal',  # 'host.docker.internal',   #host.docker.internal
+        # 'PORT': '5432',
 
+        'NAME': os.getenv("DB_NAME"),
+        'USER': os.getenv("DB_USER"),
+        'PASSWORD': os.getenv("DB_PASSWORD"),
+        'HOST': os.getenv("DB_HOST"),
+        'PORT': os.getenv("DB_PORT"),
     }
 } 
 
@@ -319,6 +335,7 @@ LINKEDIN_ORG_URN = os.getenv("LINKEDIN_ORG_URN")
 LINKEDIN_CAMPAIGN_GROUP_URN = os.getenv("LINKEDIN_CAMPAIGN_GROUP_URN")
 LINKEDIN_WEBHOOK_URL = os.getenv("LINKEDIN_WEBHOOK_URL")
 LINKEDIN_REFRESH_TOKEN = os.getenv("LINKEDIN_REFRESH_TOKEN")
+LINKEDIN_CALLBACK_BASE_URL = os.getenv("LINKEDIN_CALLBACK_BASE_URL",BACKEND_BASE_URL)
 
 # =====================================================
 # MAILCHIMP
@@ -330,15 +347,4 @@ MAILCHIMP_EMAIL_LIST_ID = os.getenv("MAILCHIMP_EMAIL_LIST_ID", "")
 MAILCHIMP_AUDIENCE_ID = os.getenv("MAILCHIMP_AUDIENCE_ID", "")
 MAILCHIMP_SENDER_EMAIL = os.getenv("MAILCHIMP_SENDER_EMAIL", "")
 
-# =====================================================
-# STAGE API
-# =====================================================
-STAGE_LOGIN_URL = os.getenv("STAGE_LOGIN_URL")
-STAGE_PROFILE_URL = os.getenv("STAGE_PROFILE_URL")
 
-STAGE_USERS_URL = os.getenv("STAGE_USERS_URL")
-
-
-FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL")
-FRONTEND_URL = os.getenv("FRONTEND_URL")
-BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL")

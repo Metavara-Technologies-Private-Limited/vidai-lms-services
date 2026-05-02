@@ -333,6 +333,7 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     platform_data=raw_platform_data,
                     budget_data=filtered_budget,
                     image_url=image_url_field,
+                    status=data["status"],
                     is_active=True,
                 )
 

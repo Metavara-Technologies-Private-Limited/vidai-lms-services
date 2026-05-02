@@ -59,30 +59,88 @@ class CallLog(models.Model):
 # =========================
 # CAMPAIGN METRICS (IMPORTANT)
 # =========================
+# class CampaignMetrics(models.Model):
+
+#     campaign = models.ForeignKey(
+#         Campaign,  # ✅ USING YOUR EXISTING MODEL
+#         on_delete=models.CASCADE,
+#         related_name="metrics"
+#     )
+
+#     # 🔥 VERY IMPORTANT FIELD
+#     date = models.DateField()
+
+#     # Ads metrics
+#     impressions = models.IntegerField(default=0)
+#     clicks = models.IntegerField(default=0)
+#     conversions = models.IntegerField(default=0)
+#     spend = models.FloatField(default=0.0)
+
+#     # Email metrics
+#     sent = models.IntegerField(default=0)
+#     opened = models.IntegerField(default=0)
+#     unsubscribed = models.IntegerField(default=0)
+
+#     created_at = models.DateTimeField(auto_now_add=True)
+
+#     class Meta:
+#         db_table = "restapi_campaign_metrics"
+#         unique_together = ("campaign", "date")
+
+
 class CampaignMetrics(models.Model):
 
+    PLATFORM_CHOICES = (
+        ("linkedin", "LinkedIn"),
+        ("facebook", "Facebook"),
+        ("google", "Google"),
+        ("email", "Email"),
+    )
+
     campaign = models.ForeignKey(
-        Campaign,  # ✅ USING YOUR EXISTING MODEL
+        Campaign,
         on_delete=models.CASCADE,
         related_name="metrics"
     )
 
-    # 🔥 VERY IMPORTANT FIELD
+    platform = models.CharField(
+        max_length=50,
+        choices=PLATFORM_CHOICES
+    )
+
     date = models.DateField()
 
-    # Ads metrics
+    # Core metrics
     impressions = models.IntegerField(default=0)
     clicks = models.IntegerField(default=0)
     conversions = models.IntegerField(default=0)
     spend = models.FloatField(default=0.0)
+
+    # Social metrics
+    ctr = models.FloatField(default=0.0)
+    likes = models.IntegerField(default=0)
+    shares = models.IntegerField(default=0)
+    comments = models.IntegerField(default=0)
+
+    # Optional future metrics
+    leads = models.IntegerField(default=0)
+    video_views = models.IntegerField(default=0)
 
     # Email metrics
     sent = models.IntegerField(default=0)
     opened = models.IntegerField(default=0)
     unsubscribed = models.IntegerField(default=0)
 
+    # Raw payload backup
+    raw_metrics = models.JSONField(default=dict, blank=True)
+    ads_data = models.JSONField(default=list, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = "restapi_campaign_metrics"
-        unique_together = ("campaign", "date")
+        unique_together = (
+            "campaign",
+            "platform",
+            "date"
+        )
