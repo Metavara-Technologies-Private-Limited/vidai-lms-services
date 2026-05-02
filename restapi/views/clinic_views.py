@@ -20,17 +20,18 @@ logger = logging.getLogger(__name__)
 
 
 # -------------------------------------------------------------------
-# Create Clinic (POST)
+# Create Clinic (POST) + List Clinics (GET)
 # -------------------------------------------------------------------
 class ClinicCreateAPIView(APIView):
 
     @swagger_auto_schema(
-        operation_description="Get all clinics with departments",
+        operation_description="Get all ACTIVE clinics with departments",
         responses={200: ClinicReadSerializer(many=True)},
     )
     def get(self, request):
         try:
-            clinics = Clinic.objects.all()
+            # ✅ Only active clinics
+            clinics = Clinic.objects.filter(is_active=True)
             serializer = ClinicReadSerializer(clinics, many=True)
 
             return Response(
@@ -41,11 +42,9 @@ class ClinicCreateAPIView(APIView):
                 },
                 status=status.HTTP_200_OK,
             )
+
         except Exception:
-            logger.error(
-                "Unhandled Clinic List Error:\n" +
-                traceback.format_exc()
-            )
+            logger.error("Unhandled Clinic List Error:\n" + traceback.format_exc())
             return Response(
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -80,14 +79,12 @@ class ClinicCreateAPIView(APIView):
             )
 
         except Exception:
-            logger.error(
-                "Unhandled Clinic Create Error:\n" +
-                traceback.format_exc()
-            )
+            logger.error("Unhandled Clinic Create Error:\n" + traceback.format_exc())
             return Response(
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
 
 # -------------------------------------------------------------------
 # Update Clinic (PUT)
@@ -95,7 +92,7 @@ class ClinicCreateAPIView(APIView):
 class ClinicUpdateAPIView(APIView):
 
     @swagger_auto_schema(
-        operation_description="Update an existing clinic and its departments",
+        operation_description="Update an ACTIVE clinic and its departments",
         request_body=ClinicSerializer,
         responses={
             200: ClinicReadSerializer,
@@ -106,12 +103,10 @@ class ClinicUpdateAPIView(APIView):
     )
     def put(self, request, clinic_id):
         try:
-            clinic = Clinic.objects.get(id=clinic_id)
+            # ✅ Only update active clinic
+            clinic = Clinic.objects.get(id=clinic_id, is_active=True)
 
-            serializer = ClinicSerializer(
-                clinic,
-                data=request.data
-            )
+            serializer = ClinicSerializer(clinic, data=request.data)
             serializer.is_valid(raise_exception=True)
 
             updated_clinic = serializer.save()
@@ -122,27 +117,23 @@ class ClinicUpdateAPIView(APIView):
             )
 
         except Clinic.DoesNotExist:
-            logger.warning("Clinic not found")
+            logger.warning("Clinic not found or inactive")
             raise NotFound("Clinic not found")
 
         except ValidationError as ve:
-            logger.warning(
-                f"Clinic update validation failed: {ve.detail}"
-            )
+            logger.warning(f"Clinic update validation failed: {ve.detail}")
             return Response(
                 {"error": ve.detail},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         except Exception:
-            logger.error(
-                "Unhandled Clinic Update Error:\n" +
-                traceback.format_exc()
-            )
+            logger.error("Unhandled Clinic Update Error:\n" + traceback.format_exc())
             return Response(
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
 
 # -------------------------------------------------------------------
 # Get Clinic by ID (GET)
@@ -150,7 +141,7 @@ class ClinicUpdateAPIView(APIView):
 class GetClinicView(APIView):
 
     @swagger_auto_schema(
-        operation_description="Retrieve clinic details with departments",
+        operation_description="Retrieve ACTIVE clinic details with departments",
         responses={
             200: ClinicReadSerializer,
             404: "Clinic not found",
@@ -159,41 +150,39 @@ class GetClinicView(APIView):
     )
     def get(self, request, clinic_id):
         try:
-            clinic = Clinic.objects.get(id=clinic_id)
+            # ✅ Only active clinic
+            clinic = Clinic.objects.get(id=clinic_id, is_active=True)
 
             serializer = ClinicReadSerializer(clinic)
 
-            return Response(
-                serializer.data,
-                status=status.HTTP_200_OK,
-            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
 
         except Clinic.DoesNotExist:
             raise NotFound("Clinic not found")
 
         except Exception:
-            logger.error(
-                "Unhandled Clinic Fetch Error:\n" +
-                traceback.format_exc()
-            )
+            logger.error("Unhandled Clinic Fetch Error:\n" + traceback.format_exc())
             return Response(
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 
+# -------------------------------------------------------------------
+# Search Clinics (GET)
+# -------------------------------------------------------------------
 class ClinicSearchAPIView(APIView):
 
     @swagger_auto_schema(
-        operation_description="Search clinics by name",
-        manual_parameters=[],
+        operation_description="Search ACTIVE clinics by name",
         responses={200: ClinicReadSerializer(many=True)},
     )
     def get(self, request):
         try:
             query = request.query_params.get("q", "").strip()
 
-            clinics = Clinic.objects.all()
+            # ✅ Only active clinics
+            clinics = Clinic.objects.filter(is_active=True)
 
             if query:
                 clinics = clinics.filter(name__icontains=query)
@@ -210,14 +199,12 @@ class ClinicSearchAPIView(APIView):
             )
 
         except Exception:
-            logger.error(
-                "Unhandled Clinic Search Error:\n" +
-                traceback.format_exc()
-            )
+            logger.error("Unhandled Clinic Search Error:\n" + traceback.format_exc())
             return Response(
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
 
 # -------------------------------------------------------------------
 # Clinic Employees API View (GET)
@@ -226,36 +213,43 @@ class ClinicEmployeesAPIView(APIView):
 
     @swagger_auto_schema(
         operation_summary="Get Clinic Employees",
-        operation_description="Retrieve all employees under a specific clinic",
+        operation_description="Retrieve all employees under an ACTIVE clinic",
         responses={
             200: EmployeeReadSerializer(many=True),
-            401: "Unauthorized",
             404: "Clinic not found",
         },
         tags=["Clinic"]
     )
     def get(self, request, clinic_id):
-        get_object_or_404(Clinic, id=clinic_id)
+        # ✅ Only active clinic
+        get_object_or_404(Clinic, id=clinic_id, is_active=True)
+
         employees = Employee.objects.filter(clinic_id=clinic_id)
         serializer = EmployeeReadSerializer(employees, many=True)
         return Response(serializer.data)
 
 
 # -------------------------------------------------------------------
-# Departments by Clinic (GET /departments/?clinic_id=X)
+# Departments by Clinic
 # -------------------------------------------------------------------
 class DepartmentListAPIView(APIView):
 
     def get(self, request):
         clinic_id = request.query_params.get("clinic_id")
+
         if not clinic_id:
             return Response({"error": "clinic_id is required"}, status=400)
 
         try:
-            clinic = Clinic.objects.get(id=clinic_id)
+            # ✅ Only active clinic
+            clinic = Clinic.objects.get(id=clinic_id, is_active=True)
         except Clinic.DoesNotExist:
             return Response({"error": "Clinic not found"}, status=404)
 
+        # ✅ Only active departments
         departments = Department.objects.filter(clinic=clinic, is_active=True)
+
         serializer = DepartmentReadSerializer(departments, many=True)
         return Response(serializer.data)
+
+

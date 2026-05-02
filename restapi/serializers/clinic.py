@@ -11,7 +11,7 @@ class ClinicSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Clinic
-        fields = ["id", "name", "email", "department"]  # ✅ email added
+        fields = ["id", "name", "email","is_active", "department"]  # ✅ email added
 
     def create(self, validated_data):
         return create_clinic(validated_data)
@@ -40,4 +40,4 @@ class ClinicReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Clinic
-        fields = ["id", "name", "email", "department"]  # ✅ email added
+        fields = ["id", "name", "email","is_active", "department"]  # ✅ email and is_active added
