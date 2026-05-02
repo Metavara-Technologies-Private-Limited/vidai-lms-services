@@ -48,7 +48,9 @@ class LinkedInLoginAPIView(APIView):
         clinic_id = request.GET.get("clinic_id")
 
         if clinic_id:
-            request.session["linkedin_clinic_id"] = clinic_id
+            state_payload = base64.urlsafe_b64encode(
+                json.dumps({"clinic_id": clinic_id}).encode()
+            ).decode()
 
         # scopes = [
         #     "openid",
@@ -59,7 +61,7 @@ class LinkedInLoginAPIView(APIView):
         #     "rw_ads",
         #     "r_organization_social",
         # ]
-        
+
         scopes = [
             "openid",
             "profile",
@@ -94,6 +96,7 @@ class LinkedInLoginAPIView(APIView):
             f"&client_id={settings.LINKEDIN_CLIENT_ID}"
             f"&redirect_uri={settings.LINKEDIN_REDIRECT_URI}"
             f"&scope={scope_param}"
+            f"&state={state_payload}"
             "&prompt=login"
         )
 
@@ -147,15 +150,29 @@ class LinkedInCallbackAPIView(APIView):
                 f"{settings.FRONTEND_URL}?linkedin=error&message=no_ad_account"
             )
 
-        clinic_id = request.session.get(
-            "linkedin_clinic_id"
-        )
+        state_raw = request.GET.get("state")
 
-        clinic = (
-            Clinic.objects.filter(id=clinic_id).first()
-            if clinic_id
-            else Clinic.objects.first()
-        )
+        clinic_id = None
+        if state_raw:
+            try:
+                state_data = json.loads(
+                    base64.urlsafe_b64decode(state_raw).decode()
+                )
+                clinic_id = state_data.get("clinic_id")
+            except Exception:
+                pass
+
+        if not clinic_id:
+            return HttpResponseRedirect(
+                f"{settings.FRONTEND_URL}?linkedin=error&message=missing_clinic"
+            )
+
+        clinic = Clinic.objects.filter(id=clinic_id).first()
+
+        if not clinic:
+            return HttpResponseRedirect(
+                f"{settings.FRONTEND_URL}?linkedin=error&message=invalid_clinic"
+            )
 
         if not clinic:
             return HttpResponseRedirect(
@@ -212,7 +229,7 @@ class LinkedInCallbackAPIView(APIView):
 class LinkedInStatusAPIView(APIView):
 
     def get(self, request):
-        clinic = Clinic.objects.first()
+        clinic = resolve_request_clinic(request, required=True)
 
         social_account = SocialAccount.objects.filter(
             clinic=clinic,
@@ -253,7 +270,7 @@ class LinkedInStatusAPIView(APIView):
 class LinkedInAdsAccountsAPIView(APIView):
 
     def get(self, request):
-        clinic = Clinic.objects.first()
+        clinic = resolve_request_clinic(request, required=True)
 
         social = SocialAccount.objects.filter(
             clinic=clinic,
@@ -299,7 +316,7 @@ class LinkedInCampaignAnalyticsAPIView(APIView):
                 status=400,
             )
 
-        clinic = Clinic.objects.first()
+        clinic = resolve_request_clinic(request, required=True)
 
         social = SocialAccount.objects.filter(
             clinic=clinic,
@@ -346,10 +363,10 @@ class LinkedInCampaignAnalyticsAPIView(APIView):
             res.json(),
             status=res.status_code,
         )
-        
+
 class LinkedInCampaignsAPIView(APIView):
     def get(self, request):
-        clinic = Clinic.objects.first()
+        clinic = resolve_request_clinic(request, required=True)
 
         social = SocialAccount.objects.filter(
             clinic=clinic,
@@ -389,8 +406,8 @@ class LinkedInFullAnalyticsAPIView(APIView):
                 " endpoint for analytics"
             )
         })        
-        
-        
+
+
 class GoogleAdsCampaignCallbackAPIView(APIView):
     """
     POST /api/google-ads/callback/
@@ -470,9 +487,11 @@ class GoogleAdsCampaignCallbackAPIView(APIView):
 class FacebookLoginAPIView(APIView):
     def get(self, request):
         state = secrets.token_urlsafe(16)
-        request.session[
-            "facebook_state"
-        ] = state
+        state_payload = base64.urlsafe_b64encode(
+            json.dumps({
+                "clinic_id": request.GET.get("clinic_id")
+            }).encode()
+        ).decode()
 
         auth_url = (
             "https://www.facebook.com/v19.0/dialog/oauth"
@@ -480,7 +499,7 @@ class FacebookLoginAPIView(APIView):
             f"&client_id={settings.FACEBOOK_CLIENT_ID}"
             f"&redirect_uri={settings.FACEBOOK_REDIRECT_URI}"
             "&scope=public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts,read_insights"
-            f"&state={state}"
+            f"&state={state_payload}"
             "&auth_type=rerequest"
         )
 
@@ -525,7 +544,25 @@ class FacebookCallbackAPIView(APIView):
 
             page = pages["data"][0]
 
-            clinic = Clinic.objects.first()
+            state_raw = request.GET.get("state")
+
+            clinic_id = None
+            if state_raw:
+                try:
+                    state_data = json.loads(
+                        base64.urlsafe_b64decode(state_raw).decode()
+                    )
+                    clinic_id = state_data.get("clinic_id")
+                except Exception:
+                    pass
+
+            if not clinic_id:
+                return Response({"error": "missing clinic_id"}, status=400)
+
+            clinic = Clinic.objects.filter(id=clinic_id).first()
+
+            if not clinic:
+                return Response({"error": "invalid clinic"}, status=400)
 
             SocialAccount.objects.update_or_create(
                 clinic=clinic,
@@ -554,7 +591,7 @@ class FacebookCallbackAPIView(APIView):
 
 class FacebookStatusAPIView(APIView):
     def get(self, request):
-        clinic = Clinic.objects.first()
+        clinic = resolve_request_clinic(request, required=True)
 
         connected = SocialAccount.objects.filter(
             clinic=clinic,
@@ -571,7 +608,7 @@ class FacebookStatusAPIView(APIView):
 
 class FacebookDisconnectAPIView(APIView):
     def post(self, request):
-        clinic = Clinic.objects.first()
+        clinic = resolve_request_clinic(request, required=True)
 
         SocialAccount.objects.filter(
             clinic=clinic,
@@ -602,7 +639,8 @@ class GoogleLoginAPIView(APIView):
             base64.urlsafe_b64encode(
                 json.dumps(
                     {
-                        "customer_id": customer_id
+                        "customer_id": customer_id,
+                        "clinic_id": request.GET.get("clinic_id")
                     }
                 ).encode()
             ).decode()
@@ -680,7 +718,27 @@ class GoogleCallbackAPIView(APIView):
 
             email = user_info.get("email")
 
-            clinic = Clinic.objects.first()
+            state_raw = request.GET.get("state", "")
+
+            state_data = {}
+            if state_raw:
+                try:
+                    state_data = json.loads(
+                        base64.urlsafe_b64decode(state_raw.encode()).decode()
+                    )
+                except Exception:
+                    pass
+
+            customer_id = state_data.get("customer_id", "")
+            clinic_id = state_data.get("clinic_id")
+
+            if not clinic_id:
+                return Response({"error": "missing clinic_id"}, status=400)
+
+            clinic = Clinic.objects.filter(id=clinic_id).first()
+
+            if not clinic:
+                return Response({"error": "invalid clinic"}, status=400)
 
             SocialAccount.objects.update_or_create(
                 clinic=clinic,
@@ -792,9 +850,9 @@ class GoogleAdsCampaignCallbackAPIView(APIView):
             )
 
 
-#=====================================================
-#GOOGLE ADS — INSIGHTS
-#=====================================================
+# =====================================================
+# GOOGLE ADS — INSIGHTS
+# =====================================================
 class GoogleAdsInsightsAPIView(APIView):
     """
     GET /api/google-ads/insights/?clinic_id=1
