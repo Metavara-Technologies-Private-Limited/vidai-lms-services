@@ -68,7 +68,7 @@ class LoginProxyAPIView(APIView):
             # External login
             resp = requests.post(
                 settings.STAGE_LOGIN_URL,
-                json={"username": username, "password": password},
+                json={"username": username, "password": password, "force_login": True},
                 timeout=10
             )
 
