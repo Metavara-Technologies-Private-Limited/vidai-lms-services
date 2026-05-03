@@ -52,16 +52,6 @@ class LinkedInLoginAPIView(APIView):
                 json.dumps({"clinic_id": clinic_id}).encode()
             ).decode()
 
-        # scopes = [
-        #     "openid",
-        #     "profile",
-        #     "email",
-        #     "r_ads",
-        #     "r_ads_reporting",
-        #     "rw_ads",
-        #     "r_organization_social",
-        # ]
-
         scopes = [
             "openid",
             "profile",
@@ -199,6 +189,21 @@ class LinkedInCallbackAPIView(APIView):
                     f"{settings.FRONTEND_URL}?linkedin=error&message=campaign_group_failed"
                 )
 
+        # ✅ FIX: ensure account_id and campaign_group are saved as proper URNs
+        raw_account_id = str(linkedin_details["account_id"]).strip()
+        clean_account_id = (
+            raw_account_id
+            if raw_account_id.startswith("urn:")
+            else f"urn:li:sponsoredAccount:{raw_account_id}"
+        )
+
+        raw_campaign_group = str(campaign_group_urn).strip()
+        clean_campaign_group = (
+            raw_campaign_group
+            if raw_campaign_group.startswith("urn:")
+            else f"urn:li:sponsoredCampaignGroup:{raw_campaign_group}"
+        )
+
         SocialAccount.objects.update_or_create(
             clinic=clinic,
             platform="linkedin",
@@ -206,13 +211,10 @@ class LinkedInCallbackAPIView(APIView):
                 "access_token": access_token,
                 "refresh_token": refresh_token,
                 "expires_at": expires_at,
-                "account_id": linkedin_details[
-                    "account_id"
-                ],
-                "org_urn": linkedin_details[
-                    "org_urn"
-                ],
-                "campaign_group": campaign_group_urn,
+                # ✅ FIX: save as proper URN format
+                "account_id": clean_account_id,
+                "org_urn": linkedin_details["org_urn"],
+                "campaign_group": clean_campaign_group,
                 "is_active": True,
             },
         )
@@ -405,7 +407,7 @@ class LinkedInFullAnalyticsAPIView(APIView):
                 "/linkedin/campaign-analytics/"
                 " endpoint for analytics"
             )
-        })        
+        })
 
 
 class GoogleAdsCampaignCallbackAPIView(APIView):
@@ -477,7 +479,7 @@ class GoogleAdsCampaignCallbackAPIView(APIView):
             return Response(
                 {"error": str(e)},
                 status=500
-            )        
+            )
 
 
 # =====================================================
@@ -922,13 +924,6 @@ class GoogleAdsInsightsAPIView(APIView):
             if login_id and login_id != cust_id:
                 headers["login-customer-id"] = login_id
 
-            # -------------------------------------------------------
-            # FIXED QUERY:
-            # - Removed LAST_30_DAYS filter so newly created campaigns appear
-            # - Removed REMOVED campaigns
-            # - Order by campaign.id DESC so newest appear first
-            # - Increased LIMIT to 200
-            # -------------------------------------------------------
             query = """
                 SELECT
                     campaign.id,
