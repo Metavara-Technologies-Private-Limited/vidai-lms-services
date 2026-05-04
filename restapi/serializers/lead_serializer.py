@@ -25,10 +25,37 @@ from restapi.services.lead_service import create_lead, update_lead
 class MultiFileField(serializers.ListField):
     child = serializers.FileField()
 
+    def get_value(self, dictionary):
+        if hasattr(dictionary, "getlist"):
+            return dictionary.getlist(self.field_name)
+        return dictionary.get(self.field_name)
+
     def to_internal_value(self, data):
-        if hasattr(data, "getlist"):
-            data = data.getlist("documents")
+        if not data:
+            return []
         return super().to_internal_value(data)
+
+    def validate(self, files):
+        allowed_extensions = [
+            ".pdf",
+            ".doc", ".docx",
+            ".xls", ".xlsx",
+            ".png", ".jpg", ".jpeg",
+            ".txt", ".csv"
+        ]
+
+        max_file_size = 10 * 1024 * 1024  # 10MB
+
+        for file in files:
+            name = file.name.lower()
+
+            if not any(name.endswith(ext) for ext in allowed_extensions):
+                raise ValidationError(f"{file.name} is not a supported file type")
+
+            if file.size > max_file_size:
+                raise ValidationError(f"{file.name} exceeds 10MB limit")
+
+        return files
 
 
 # =====================================================

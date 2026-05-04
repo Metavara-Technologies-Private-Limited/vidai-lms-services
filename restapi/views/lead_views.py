@@ -114,9 +114,8 @@ class LeadCreateAPIView(APIView):
             return Response({"error": "You do not have permission to add leads."}, status=403)
 
         try:
-            clinic = get_request_clinic(request)  # 🔥 FIX ADDED
+            clinic = get_request_clinic(request)
 
-            # 🔥 OPTIONAL VALIDATION (extra safety)
             stage_id = request.data.get("stage_id")
             pipeline_id = request.data.get("pipeline_id")
 
@@ -136,7 +135,17 @@ class LeadCreateAPIView(APIView):
                 if pipeline_id and str(stage.pipeline_id) != str(pipeline_id):
                     raise ValidationError({"stage_id": "Stage does not belong to selected pipeline"})
 
-            serializer = LeadSerializer(data=request.data, context={"request": request})
+            # =====================================================
+            # 🔥 DOCUMENT FIX
+            # =====================================================
+            data = request.data.copy()
+
+            if hasattr(request, "FILES"):
+                files = request.FILES.getlist("documents")
+                if files:
+                    data.setlist("documents", files)
+
+            serializer = LeadSerializer(data=data, context={"request": request})
             serializer.is_valid(raise_exception=True)
 
             lead = serializer.save()
@@ -156,14 +165,11 @@ class LeadCreateAPIView(APIView):
             return Response(LeadReadSerializer(lead).data, status=201)
 
         except ValidationError as ve:
-            logger.warning(f"Lead validation failed: {ve.detail}")
             return Response({"error": ve.detail}, status=400)
 
         except Exception:
             logger.error("Unhandled Lead Create Error:\n" + traceback.format_exc())
             return Response({"error": "Internal Server Error"}, status=500)
-
-
 
 
 # -------------------------------------------------------------------
@@ -177,7 +183,7 @@ class LeadUpdateAPIView(APIView):
     @swagger_auto_schema(
         operation_description="Update an existing lead",
         request_body=LeadSerializer,
-        responses={200: LeadReadSerializer, 400: "Validation Error", 404: "Lead not found"},
+        responses={200: LeadReadSerializer},
         tags=["Leads"],
     )
     def put(self, request, lead_id):
@@ -191,17 +197,21 @@ class LeadUpdateAPIView(APIView):
 
             data = request.data.copy()
 
-            # ==================================================
-            # 🔥 FINAL FIX (STATUS SYNC)
-            # ==================================================
+            # =====================================================
+            # 🔥 DOCUMENT FIX
+            # =====================================================
+            if hasattr(request, "FILES"):
+                files = request.FILES.getlist("documents")
+                if files:
+                    data.setlist("documents", files)
+
+            # STATUS FIX
             if "lead_status" in data:
                 status_val = str(data.get("lead_status")).strip().lower()
                 data["lead_status"] = status_val
 
-                # 🔥 CRITICAL FIX
                 request._full_data = request.data.copy()
                 request._full_data["lead_status"] = status_val
-
                 logger.info(f"Lead Update Requested Status: {status_val}")
 
             stage_id = data.get("stage_id")
@@ -239,7 +249,6 @@ class LeadUpdateAPIView(APIView):
                 f"converted_at_stage={updated_lead.converted_at_stage_id} | "
                 f"converted_at_status={updated_lead.converted_at_status}"
             )
-
             send_to_zapier({
                 "event": "lead_updated",
                 "lead_id": str(updated_lead.id),

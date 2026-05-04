@@ -258,27 +258,34 @@ def create_lead(validated_data, request=None):
         **validated_data
     )
 
+    # 🔥🔥 ADDED: SAFE FILE SAVE + LOGGING
     for file in documents:
-        LeadDocument.objects.create(lead=lead, file=file)
+        if not file:
+            continue
+
+        logger.info(f"[CREATE] Uploading file: {file.name} | Type: {file.content_type}")
+
+        LeadDocument.objects.create(
+            lead=lead,
+            file=file
+        )
 
     return lead
 
 
 # =====================================================
-# UPDATE LEAD (🔥 FINAL PERFECT VERSION)
+# UPDATE LEAD
 # =====================================================
 @transaction.atomic
 def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # 🔥 ALWAYS GET OLD STATUS FROM DB
     old_status = Lead.objects.filter(id=instance.id)\
         .values_list("lead_status", flat=True).first()
 
     old_stage = instance.stage
 
-    # ================= PHONE =================
     if "contact_no" in validated_data:
         validated_data["contact_no"] = _validate_phone(
             validated_data.get("contact_no")
@@ -288,7 +295,6 @@ def update_lead(instance, validated_data, request=None):
     instance.updated_by_id = updated_by_id
     instance.updated_by_name = updated_by_name
 
-    # ================= STAGE =================
     stage_id = validated_data.pop("stage_id", None)
 
     if stage_id:
@@ -393,12 +399,19 @@ def update_lead(instance, validated_data, request=None):
 
     instance.save()
 
+    # 🔥🔥 ADDED: SAFE FILE SAVE + LOGGING
     for file in documents:
-        LeadDocument.objects.create(lead=instance, file=file)
+        if not file:
+            continue
+
+        logger.info(f"[UPDATE] Uploading file: {file.name} | Type: {file.content_type}")
+
+        LeadDocument.objects.create(
+            lead=instance,
+            file=file
+        )
 
     return instance
-
-
 # =====================================================
 # EMAIL HELPERS
 # =====================================================
