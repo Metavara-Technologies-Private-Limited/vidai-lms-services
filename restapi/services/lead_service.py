@@ -179,6 +179,7 @@ def create_lead(validated_data, request=None):
         validated_data.pop("assigned_to_name", None)
     )
 
+    # 🔥 IMPORTANT FIX (DO NOT REMOVE)
     referral_department = None
     referral_source = None
 
@@ -258,17 +259,20 @@ def create_lead(validated_data, request=None):
         **validated_data
     )
 
-    # 🔥🔥 ADDED: SAFE FILE SAVE + LOGGING
-    for file in documents:
-        if not file:
-            continue
+    # =====================================================
+    # DOCUMENT SAVE (OPTIONAL SAFE)
+    # =====================================================
+    if documents:
+        for file in documents:
+            if not file:
+                continue
 
-        logger.info(f"[CREATE] Uploading file: {file.name} | Type: {file.content_type}")
+            logger.info(f"[CREATE] Uploading file: {file.name}")
 
-        LeadDocument.objects.create(
-            lead=lead,
-            file=file
-        )
+            LeadDocument.objects.create(
+                lead=lead,
+                file=file
+            )
 
     return lead
 
@@ -310,7 +314,6 @@ def update_lead(instance, validated_data, request=None):
 
         instance.stage = stage
 
-    # ================= ASSIGNEE =================
     if "assigned_to_id" in validated_data:
         assigned_to_id = validated_data.pop("assigned_to_id")
         assigned_to_name = validated_data.pop("assigned_to_name", None)
@@ -321,7 +324,6 @@ def update_lead(instance, validated_data, request=None):
             assigned_to_name
         )
 
-    # ================= REFERRAL =================
     ref_dept_id = validated_data.pop("referral_department_id", None)
     ref_source_id = validated_data.pop("referral_source_id", None)
     referral_source_data = validated_data.pop("referral_source", None)
@@ -362,7 +364,6 @@ def update_lead(instance, validated_data, request=None):
                 clinic=instance.clinic
             ).first()
 
-    # ================= 🔥 CONVERSION LOGIC =================
     new_status = None
 
     if request and hasattr(request, "data"):
@@ -373,11 +374,8 @@ def update_lead(instance, validated_data, request=None):
 
     if new_status:
         new_status = str(new_status).strip().lower()
-
     logger.info(f"OLD STATUS: {old_status} | NEW STATUS: {new_status}")
-
     if new_status == "converted" and str(old_status).lower() != "converted":
-
         instance.converted_at_stage = old_stage
         instance.converted_at_status = old_status
 
@@ -393,23 +391,25 @@ def update_lead(instance, validated_data, request=None):
 
         instance.converted_at = timezone.now()
 
-    # ================= UPDATE =================
     for field, value in validated_data.items():
         setattr(instance, field, value)
 
     instance.save()
 
-    # 🔥🔥 ADDED: SAFE FILE SAVE + LOGGING
-    for file in documents:
-        if not file:
-            continue
+    # =====================================================
+    # DOCUMENT SAVE (OPTIONAL SAFE)
+    # =====================================================
+    if documents:
+        for file in documents:
+            if not file:
+                continue
 
-        logger.info(f"[UPDATE] Uploading file: {file.name} | Type: {file.content_type}")
+            logger.info(f"[UPDATE] Uploading file: {file.name}")
 
-        LeadDocument.objects.create(
-            lead=instance,
-            file=file
-        )
+            LeadDocument.objects.create(
+                lead=instance,
+                file=file
+            )
 
     return instance
 # =====================================================

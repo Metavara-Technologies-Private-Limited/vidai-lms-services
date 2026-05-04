@@ -136,14 +136,13 @@ class LeadCreateAPIView(APIView):
                     raise ValidationError({"stage_id": "Stage does not belong to selected pipeline"})
 
             # =====================================================
-            # 🔥 DOCUMENT FIX
+            # 🔥 DOCUMENT FIX (FINAL)
             # =====================================================
             data = request.data.copy()
 
             if hasattr(request, "FILES"):
                 files = request.FILES.getlist("documents")
-                if files:
-                    data.setlist("documents", files)
+                data.setlist("documents", files if files else [])  # ✅ ALWAYS SET
 
             serializer = LeadSerializer(data=data, context={"request": request})
             serializer.is_valid(raise_exception=True)
@@ -198,12 +197,11 @@ class LeadUpdateAPIView(APIView):
             data = request.data.copy()
 
             # =====================================================
-            # 🔥 DOCUMENT FIX
+            # 🔥 DOCUMENT FIX (FINAL)
             # =====================================================
             if hasattr(request, "FILES"):
                 files = request.FILES.getlist("documents")
-                if files:
-                    data.setlist("documents", files)
+                data.setlist("documents", files if files else [])  # ✅ ALWAYS SET
 
             # STATUS FIX
             if "lead_status" in data:
@@ -249,6 +247,7 @@ class LeadUpdateAPIView(APIView):
                 f"converted_at_stage={updated_lead.converted_at_stage_id} | "
                 f"converted_at_status={updated_lead.converted_at_status}"
             )
+
             send_to_zapier({
                 "event": "lead_updated",
                 "lead_id": str(updated_lead.id),
