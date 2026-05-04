@@ -117,6 +117,10 @@ def create_lead(validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
+    # 🔥🔥 CRITICAL FIX
+    if not isinstance(documents, list):
+        documents = []
+
     validated_data["contact_no"] = _validate_phone(
         validated_data.get("contact_no")
     )
@@ -179,7 +183,6 @@ def create_lead(validated_data, request=None):
         validated_data.pop("assigned_to_name", None)
     )
 
-    # 🔥 IMPORTANT FIX (DO NOT REMOVE)
     referral_department = None
     referral_source = None
 
@@ -259,23 +262,19 @@ def create_lead(validated_data, request=None):
         **validated_data
     )
 
-    # =====================================================
-    # DOCUMENT SAVE (OPTIONAL SAFE)
-    # =====================================================
-    if documents:
-        for file in documents:
-            if not file:
-                continue
+    # 🔥🔥 FINAL SAFE DOCUMENT SAVE
+    for file in documents or []:
+        if not file or not hasattr(file, "name"):
+            continue
 
-            logger.info(f"[CREATE] Uploading file: {file.name}")
+        logger.info(f"[CREATE] Uploading file: {file.name}")
 
-            LeadDocument.objects.create(
-                lead=lead,
-                file=file
-            )
+        LeadDocument.objects.create(
+            lead=lead,
+            file=file
+        )
 
     return lead
-
 
 # =====================================================
 # UPDATE LEAD
@@ -284,6 +283,10 @@ def create_lead(validated_data, request=None):
 def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
+
+    # 🔥🔥 CRITICAL FIX
+    if not isinstance(documents, list):
+        documents = []
 
     old_status = Lead.objects.filter(id=instance.id)\
         .values_list("lead_status", flat=True).first()
@@ -396,20 +399,17 @@ def update_lead(instance, validated_data, request=None):
 
     instance.save()
 
-    # =====================================================
-    # DOCUMENT SAVE (OPTIONAL SAFE)
-    # =====================================================
-    if documents:
-        for file in documents:
-            if not file:
-                continue
+    # 🔥🔥 FINAL SAFE DOCUMENT SAVE
+    for file in documents or []:
+        if not file or not hasattr(file, "name"):
+            continue
 
-            logger.info(f"[UPDATE] Uploading file: {file.name}")
+        logger.info(f"[UPDATE] Uploading file: {file.name}")
 
-            LeadDocument.objects.create(
-                lead=instance,
-                file=file
-            )
+        LeadDocument.objects.create(
+            lead=instance,
+            file=file
+        )
 
     return instance
 # =====================================================
