@@ -91,16 +91,26 @@ def send_lead_email(email_id):
             "message": body,
             "clinic_email": email_obj.clinic.email if email_obj.clinic else None,
             "sender_email": email_obj.sender_email,
-            "event_title": email_obj.subject,
-            "start_time": start_dt.isoformat(),
-            "end_time": end_dt.isoformat(),
-            "timezone": "Asia/Kolkata",
-            "attendees": [email_obj.lead.email],
             "description": body,
-            "location": (
-                email_obj.clinic.name if email_obj.clinic else "Online Consultation"
-            ),
         }
+
+        has_appointment = bool(start_time_obj and end_time_obj and date_obj)
+
+        # Only add calendar data if appointment exists
+        if has_appointment:
+            payload.update({
+                "create_calendar_event": True,
+                "event_title": email_obj.subject,
+                "start_time": start_dt.isoformat(),
+                "end_time": end_dt.isoformat(),
+                "timezone": "Asia/Kolkata",
+                "attendees": [email_obj.lead.email],
+                "location": (
+                    email_obj.clinic.name if email_obj.clinic else "Online Consultation"
+                ),
+            })
+        else:
+            payload["create_calendar_event"] = False
 
         response = requests.post(
             ZAPIER_WEBHOOK_URL,
