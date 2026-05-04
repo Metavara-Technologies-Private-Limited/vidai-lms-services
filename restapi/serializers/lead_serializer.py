@@ -26,17 +26,20 @@ class MultiFileField(serializers.ListField):
     child = serializers.FileField()
 
     def get_value(self, dictionary):
+        # 🔥 IMPORTANT FIX
         if hasattr(dictionary, "getlist"):
-            return dictionary.getlist(self.field_name)
-        return dictionary.get(self.field_name)
+            files = dictionary.getlist(self.field_name)
+            return files if files else []   # ✅ always return list
+        return dictionary.get(self.field_name, [])
 
     def to_internal_value(self, data):
-        # 🔥 IMPORTANT: HANDLE EMPTY CASES
-        if data in [None, "", []]:
+        # 🔥 HANDLE ALL EMPTY CASES
+        if data in [None, "", [], {}, "null"]:
             return []
         return super().to_internal_value(data)
 
     def validate(self, files):
+        # ✅ DOCUMENTS OPTIONAL
         if not files:
             return []
 
@@ -59,7 +62,6 @@ class MultiFileField(serializers.ListField):
                 raise ValidationError(f"{file.name} exceeds 10MB limit")
 
         return files
-
 # =====================================================
 # READ SERIALIZER
 # =====================================================
