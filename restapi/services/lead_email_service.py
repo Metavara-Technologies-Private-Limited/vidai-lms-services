@@ -1,3 +1,7 @@
+from datetime import timedelta
+import re
+from datetime import datetime
+from django.utils.timezone import make_aware
 import requests
 import logging
 from django.utils import timezone
@@ -11,6 +15,27 @@ logger = logging.getLogger(__name__)
 
 # 🔥 YOUR ZAPIER WEBHOOK
 ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/27387148/uvl9my1/"
+
+def extract_time_range(body):
+    match = re.search(r"Time:\s*(\d{1,2}:\d{2}\s*[APM]{2})\s*-\s*(\d{1,2}:\d{2}\s*[APM]{2})", body)
+    
+    if not match:
+        return None, None
+
+    start_str, end_str = match.groups()
+
+    start_time = datetime.strptime(start_str, "%I:%M %p").time()
+    end_time = datetime.strptime(end_str, "%I:%M %p").time()
+
+    return start_time, end_time
+
+def extract_date(body):
+    match = re.search(r"Date:\s*(\d{4}-\d{2}-\d{2})", body)
+
+    if not match:
+        return None
+
+    return datetime.strptime(match.group(1), "%Y-%m-%d").date()
 
 
 def _clean_email_body(text):
@@ -48,6 +73,16 @@ def send_lead_email(email_id):
 
     try:
         body = _clean_email_body(email_obj.email_body)
+        start_time_obj, end_time_obj = extract_time_range(body)
+
+        date_obj = extract_date(body)
+
+        if start_time_obj and date_obj:
+            start_dt = make_aware(datetime.combine(date_obj, start_time_obj))
+            end_dt = make_aware(datetime.combine(date_obj, end_time_obj))
+        else:
+            start_dt = email_obj.scheduled_at or timezone.now()
+            end_dt = start_dt + timedelta(minutes=30)
 
         # ✅ SEND TO ZAPIER INSTEAD OF SMTP
         payload = {
@@ -55,8 +90,27 @@ def send_lead_email(email_id):
             "subject": email_obj.subject,
             "message": body,
             "clinic_email": email_obj.clinic.email if email_obj.clinic else None,
-            "sender_email": email_obj.sender_email
+            "sender_email": email_obj.sender_email,
+            "description": body,
         }
+
+        has_appointment = bool(start_time_obj and end_time_obj and date_obj)
+
+        # Only add calendar data if appointment exists
+        if has_appointment:
+            payload.update({
+                "create_calendar_event": True,
+                "event_title": email_obj.subject,
+                "start_time": start_dt.isoformat(),
+                "end_time": end_dt.isoformat(),
+                "timezone": "Asia/Kolkata",
+                "attendees": [email_obj.lead.email],
+                "location": (
+                    email_obj.clinic.name if email_obj.clinic else "Online Consultation"
+                ),
+            })
+        else:
+            payload["create_calendar_event"] = False
 
         response = requests.post(
             ZAPIER_WEBHOOK_URL,
