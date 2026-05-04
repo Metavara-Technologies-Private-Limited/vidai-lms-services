@@ -20,22 +20,26 @@ from restapi.services.lead_service import create_lead, update_lead
 
 
 # =====================================================
-# 🔥 CUSTOM FIELD
+# 🔥 CUSTOM FIELD (FINAL FIXED)
 # =====================================================
 class MultiFileField(serializers.ListField):
     child = serializers.FileField()
 
     def get_value(self, dictionary):
-        # 🔥 IMPORTANT FIX
+        # ✅ ALWAYS RETURN LIST (FIXED)
         if hasattr(dictionary, "getlist"):
-            files = dictionary.getlist(self.field_name)
-            return files if files else []   # ✅ always return list
-        return dictionary.get(self.field_name, [])
+            return dictionary.getlist(self.field_name) or []
+        return dictionary.get(self.field_name) or []
 
     def to_internal_value(self, data):
-        # 🔥 HANDLE ALL EMPTY CASES
-        if data in [None, "", [], {}, "null"]:
+        # ✅ HANDLE ALL EMPTY CASES (CRITICAL FIX)
+        if not data or data in ["", None, "null", "undefined"]:
             return []
+
+        # if single file comes instead of list
+        if not isinstance(data, list):
+            data = [data]
+
         return super().to_internal_value(data)
 
     def validate(self, files):

@@ -142,7 +142,8 @@ class LeadCreateAPIView(APIView):
 
             if hasattr(request, "FILES"):
                 files = request.FILES.getlist("documents")
-                data.setlist("documents", files if files else [])  # ✅ ALWAYS SET
+                if files:
+                    data.setlist("documents", files)  # ✅ ALWAYS SET
 
             serializer = LeadSerializer(data=data, context={"request": request})
             serializer.is_valid(raise_exception=True)
@@ -201,7 +202,8 @@ class LeadUpdateAPIView(APIView):
             # =====================================================
             if hasattr(request, "FILES"):
                 files = request.FILES.getlist("documents")
-                data.setlist("documents", files if files else [])  # ✅ ALWAYS SET
+                if files:
+                    data.setlist("documents", files)  # ✅ ALWAYS SET
 
             # STATUS FIX
             if "lead_status" in data:
