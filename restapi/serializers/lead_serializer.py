@@ -31,14 +31,17 @@ class MultiFileField(serializers.ListField):
         return dictionary.get(self.field_name)
 
     def to_internal_value(self, data):
-        if not data:
+        # 🔥 IMPORTANT: HANDLE EMPTY CASES
+        if data in [None, "", []]:
             return []
         return super().to_internal_value(data)
 
     def validate(self, files):
+        if not files:
+            return []
+
         allowed_extensions = [
-            ".pdf",
-            ".doc", ".docx",
+            ".pdf", ".doc", ".docx",
             ".xls", ".xlsx",
             ".png", ".jpg", ".jpeg",
             ".txt", ".csv"
@@ -56,7 +59,6 @@ class MultiFileField(serializers.ListField):
                 raise ValidationError(f"{file.name} exceeds 10MB limit")
 
         return files
-
 
 # =====================================================
 # READ SERIALIZER
