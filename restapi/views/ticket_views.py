@@ -10,7 +10,7 @@ from django.db.models import Q
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 
@@ -22,6 +22,11 @@ from restapi.serializers.ticket_serializer import (
     TicketWriteSerializer,
     TicketDetailSerializer,
     TicketListSerializer,
+)
+from restapi.services.ticket_service import (
+    _build_ticket_webhook_payload,
+    _send_ticket_webhook,
+    _send_assignment_notification,
 )
 from restapi.utils.permissions import has_action_permission_for_labels
 from restapi.utils.clinic_scope import resolve_request_clinic
@@ -55,6 +60,25 @@ def _has_tickets_permission(user, action: str) -> bool:
         action,
         ["tickets", "ticket", "ticket management", "ticket_management"],
     )
+
+
+def _validate_email_list(email_list, field_name: str):
+    if email_list is None:
+        return []
+
+    if not isinstance(email_list, list):
+        raise ValidationError({field_name: ["A list of email addresses is required."]})
+
+    email_field = serializers.EmailField()
+    valid_emails = []
+
+    for item in email_list:
+        try:
+            valid_emails.append(email_field.run_validation(item))
+        except ValidationError as exc:
+            raise ValidationError({field_name: exc.detail})
+
+    return valid_emails
 
 
 def _ticket_permission_denied(action: str):
@@ -431,6 +455,12 @@ class TicketStatusUpdateAPIView(APIView):
             new_assigned = request.data.get("assigned_to")
             new_assigned_name_raw = request.data.get("assigned_to_name")
             new_type = request.data.get("type")
+            event = request.data.get("event") or "ticket_updated"
+            clinic_name = request.data.get("clinicName")
+            to = _validate_email_list(request.data.get("to"), "to")
+            cc = _validate_email_list(request.data.get("cc"), "cc")
+            email_body = request.data.get("email_body")
+
             has_assigned_field = "assigned_to" in request.data
 
             def resolve_assignee_name(assignee_id, fallback_name):
@@ -521,6 +551,24 @@ class TicketStatusUpdateAPIView(APIView):
                         done_by_id=normalized_assigned,
                         done_by_name=new_user_name,
                     )
+
+                    if normalized_assigned:
+                        _send_assignment_notification(
+                            ticket,
+                            normalized_assigned,
+                            new_user_name,
+                        )
+
+            _send_ticket_webhook(
+                _build_ticket_webhook_payload(
+                    ticket,
+                    event,
+                    clinic_name,
+                    to,
+                    cc,
+                    email_body,
+                )
+            )
 
             return Response(
                 TicketDetailSerializer(ticket).data,

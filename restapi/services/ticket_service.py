@@ -1,11 +1,125 @@
+import logging
+import requests
 import uuid
 from django.core.mail import EmailMessage
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
+from django.utils.html import strip_tags
 from rest_framework.exceptions import ValidationError
 
-from restapi.models import Ticket, Document, TicketTimeline, Lab, TicketReply
+from restapi.models import Ticket, Document, TicketTimeline, Lab, TicketReply, Employee
+
+logger = logging.getLogger(__name__)
+
+ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/27387148/uv798n7/"
+
+
+def _clean_email_body(text):
+    if not text:
+        return ""
+
+    decoded = (
+        str(text)
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+        .replace("&nbsp;", " ")
+    )
+
+    plain = strip_tags(decoded)
+    return plain.strip()
+
+
+def _build_ticket_webhook_payload(ticket, event, clinic_name, to, cc, email_body):
+    return {
+        "event": event or "ticket_created",
+        "clinicName": clinic_name,
+        "to": to or [],
+        "cc": cc or [],
+        "email_body": _clean_email_body(email_body),
+        "ticket_id": str(ticket.id),
+        "ticket_no": ticket.ticket_no,
+        "subject": ticket.subject,
+        "description": ticket.description,
+        "requested_by": ticket.requested_by,
+        "assigned_to_name": ticket.assigned_to_name,
+        "priority": ticket.priority,
+        "status": ticket.status,
+        "type": ticket.type,
+        "due_date": ticket.due_date.isoformat() if ticket.due_date else None,
+    }
+
+
+def _resolve_assignee_email(assignee_id):
+    if not assignee_id:
+        return None
+
+    employee = Employee.objects.filter(id=assignee_id).select_related("user").first()
+    if not employee:
+        return None
+
+    if employee.email:
+        return employee.email.strip()
+
+    if getattr(employee.user, "email", None):
+        return str(employee.user.email).strip()
+
+    return None
+
+
+def _send_assignment_notification(ticket, assignee_id, assignee_name=None):
+    email_address = _resolve_assignee_email(assignee_id)
+    if not email_address or "@" not in email_address:
+        return
+
+    recipient_name = assignee_name or ticket.assigned_to_name or "User"
+    subject = f"You are assigned to ticket {ticket.ticket_no}"
+    body = (
+        f"Hello {recipient_name},\n\n"
+        "You have been assigned to the following ticket:\n\n"
+        f"Ticket No: {ticket.ticket_no}\n"
+        f"Subject: {ticket.subject}\n"
+        f"Description: {ticket.description}\n"
+        f"Status: {ticket.status}\n"
+        f"Priority: {ticket.priority}\n\n"
+        "Please review the ticket and take the next steps.\n\n"
+        "Regards,\n"
+        "Support Team"
+    )
+
+    try:
+        email = EmailMessage(
+            subject=subject,
+            body=body,
+            from_email=settings.EMAIL_HOST_USER or settings.DEFAULT_FROM_EMAIL,
+            to=[email_address],
+        )
+        email.content_subtype = "plain"
+        email.send(fail_silently=True)
+    except Exception as exc:
+        logger.error(f"Failed to send assignment notification email: {str(exc)}")
+
+
+def _send_ticket_webhook(payload):
+    if not payload.get("to"):
+        return
+
+    try:
+        response = requests.post(
+            ZAPIER_WEBHOOK_URL,
+            json=payload,
+            timeout=5,
+        )
+
+        logger.info(f"Ticket Zapier webhook response: {response.status_code} - {response.text}")
+
+        if response.status_code != 200:
+            raise Exception(f"Zapier webhook failed with status code {response.status_code}")
+
+    except Exception as exc:
+        logger.error(f"Failed to send ticket webhook to Zapier: {str(exc)}")
+
 
 
 # ============================================================
@@ -42,6 +156,11 @@ def generate_ticket_number():
 def create_ticket_service(validated_data):
 
     attached_documents = validated_data.pop("documents", [])
+    event = validated_data.pop("event", None)
+    clinic_name = validated_data.pop("clinicName", None)
+    to = validated_data.pop("to", None)
+    cc = validated_data.pop("cc", [])
+    email_body = validated_data.pop("email_body", None)
 
     # Create ticket
     ticket_instance = Ticket.objects.create(
@@ -64,6 +183,21 @@ def create_ticket_service(validated_data):
         done_by_name=ticket_instance.assigned_to_name
     )
 
+    try:
+        _send_ticket_webhook(
+            _build_ticket_webhook_payload(
+                ticket_instance,
+                event,
+                clinic_name,
+                to,
+                cc,
+                email_body,
+            )
+        )
+    except Exception:
+        # Keep ticket creation successful even if Zapier delivery fails.
+        logger.warning("Ticket created but Zapier webhook failed.")
+
     return ticket_instance
 
 
@@ -74,6 +208,11 @@ def create_ticket_service(validated_data):
 def update_ticket_service(ticket_instance, validated_data):
 
     attached_documents = validated_data.pop("documents", [])
+    event = validated_data.pop("event", None)
+    clinic_name = validated_data.pop("clinicName", None)
+    to = validated_data.pop("to", None)
+    cc = validated_data.pop("cc", [])
+    email_body = validated_data.pop("email_body", None)
 
     # Update fields
     for field_name, field_value in validated_data.items():
@@ -119,6 +258,20 @@ def update_ticket_service(ticket_instance, validated_data):
             ticket_instance.closed_at = timezone.now()
 
         ticket_instance.save()
+
+    try:
+        _send_ticket_webhook(
+            _build_ticket_webhook_payload(
+                ticket_instance,
+                event,
+                clinic_name,
+                to,
+                cc,
+                email_body,
+            )
+        )
+    except Exception:
+        logger.warning("Ticket updated but Zapier webhook failed.")
 
     ticket_instance.refresh_from_db()
     return ticket_instance

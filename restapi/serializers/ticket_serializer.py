@@ -205,6 +205,22 @@ class TicketWriteSerializer(serializers.ModelSerializer):
     assigned_to_id = serializers.IntegerField(read_only=True)
     assigned_to_name = serializers.CharField(read_only=True)
 
+    event = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    clinicName = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    to = serializers.ListField(
+        child=serializers.EmailField(),
+        required=False,
+        default=list,
+        write_only=True,
+    )
+    cc = serializers.ListField(
+        child=serializers.EmailField(),
+        required=False,
+        default=list,
+        write_only=True,
+    )
+    email_body = serializers.CharField(required=False, allow_blank=True, write_only=True)
+
     class Meta:
         model = Ticket
         fields = [
@@ -220,6 +236,11 @@ class TicketWriteSerializer(serializers.ModelSerializer):
             "status",
             "due_date",
             "documents",
+            "event",
+            "clinicName",
+            "to",
+            "cc",
+            "email_body",
         ]
 
     def validate_due_date(self, value):
