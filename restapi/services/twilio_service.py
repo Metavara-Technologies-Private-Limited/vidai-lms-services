@@ -254,18 +254,20 @@ def generate_browser_call_token(identity: str) -> dict:
     )
     token.add_grant(voice_grant)
 
-    jwt = token.to_jwt().decode("utf-8")
+    jwt = token.to_jwt()
+
+    if isinstance(jwt, bytes):
+       jwt = jwt.decode("utf-8")
 
     logger.info(
-        "generate_browser_call_token: token generated for identity=%s",
-        identity
-    )
+    "generate_browser_call_token: token generated for identity=%s",
+    identity
+)
 
     return {
-        "token": jwt,
-        "identity": identity,
-    }
-
+    "token": jwt,
+    "identity": identity,
+}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Browser call — TwiML webhook
