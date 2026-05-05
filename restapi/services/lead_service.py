@@ -117,7 +117,6 @@ def create_lead(validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # 🔥🔥 CRITICAL FIX
     if not isinstance(documents, list):
         documents = []
 
@@ -152,7 +151,13 @@ def create_lead(validated_data, request=None):
         if not stage:
             raise ValidationError({"stage_id": "Invalid stage"})
 
+    # =========================
+    # ✅ FIXED DEPARTMENT BLOCK (INSIDE FUNCTION)
+    # =========================
     department_id = validated_data.pop("department_id", None)
+
+    if not department_id:
+        raise ValidationError({"department_id": "Department is required"})
 
     department = Department.objects.filter(
         id=department_id,
@@ -161,14 +166,9 @@ def create_lead(validated_data, request=None):
     ).first()
 
     if not department:
-        department = Department.objects.filter(clinic=clinic, is_active=True).first()
+        raise ValidationError({"department_id": "Invalid department for this clinic"})
 
-    if not department:
-        department = Department.objects.create(
-            clinic=clinic,
-            name="General",
-            is_active=True
-        )
+    # =========================
 
     campaign_id = validated_data.pop("campaign_id", None)
 
@@ -262,7 +262,6 @@ def create_lead(validated_data, request=None):
         **validated_data
     )
 
-    # 🔥🔥 FINAL SAFE DOCUMENT SAVE
     for file in documents or []:
         if not file or not hasattr(file, "name"):
             continue
@@ -275,7 +274,6 @@ def create_lead(validated_data, request=None):
         )
 
     return lead
-
 # =====================================================
 # UPDATE LEAD
 # =====================================================

@@ -1,5 +1,6 @@
 from django.db import transaction
 from restapi.models import Clinic, Department
+from rest_framework.exceptions import ValidationError
 
 
 # =========================
@@ -9,23 +10,16 @@ from restapi.models import Clinic, Department
 def create_clinic(validated_data):
     departments_data = validated_data.pop("department", [])
 
-    # Create clinic (email included automatically)
+    if not departments_data:
+        raise ValidationError("At least one department is required")
+
     clinic = Clinic.objects.create(**validated_data)
 
-    # Create departments
     for department_data in departments_data:
         Department.objects.create(
             clinic=clinic,
             name=department_data["name"],
             is_active=department_data.get("is_active", True),
-        )
-
-    # Auto-seed a default department if none were provided
-    if not departments_data:
-        Department.objects.create(
-            clinic=clinic,
-            name="General",
-            is_active=True,
         )
 
     return clinic
@@ -38,32 +32,26 @@ def create_clinic(validated_data):
 def update_clinic(instance, validated_data):
     departments_data = validated_data.pop("department", [])
 
-    # Update clinic fields
     instance.name = validated_data.get("name", instance.name)
-    instance.email = validated_data.get("email", instance.email)  # ✅ added
+    instance.email = validated_data.get("email", instance.email)
     instance.save()
 
-    # Handle departments
     for department_data in departments_data:
         department_id = department_data.get("id")
 
         if department_id:
-            # Update existing department
-            department = Department.objects.get(
+            department = Department.objects.filter(
                 id=department_id,
                 clinic=instance
-            )
-            department.name = department_data.get(
-                "name",
-                department.name
-            )
-            department.is_active = department_data.get(
-                "is_active",
-                department.is_active
-            )
+            ).first()
+
+            if not department:
+                raise ValidationError("Invalid department for this clinic")
+
+            department.name = department_data.get("name", department.name)
+            department.is_active = department_data.get("is_active", department.is_active)
             department.save()
         else:
-            # Create new department
             Department.objects.create(
                 clinic=instance,
                 name=department_data["name"],

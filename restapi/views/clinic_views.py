@@ -30,8 +30,8 @@ class ClinicCreateAPIView(APIView):
     )
     def get(self, request):
         try:
-            # ✅ Only active clinics
-            clinics = Clinic.objects.filter(is_active=True)
+            clinics = Clinic.objects.filter(is_active=True).order_by("-id")
+
             serializer = ClinicReadSerializer(clinics, many=True)
 
             return Response(
@@ -61,6 +61,10 @@ class ClinicCreateAPIView(APIView):
     )
     def post(self, request):
         try:
+            # 🔥 Ensure departments are passed
+            if not request.data.get("department"):
+                raise ValidationError({"department": "At least one department is required"})
+
             serializer = ClinicSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
@@ -103,7 +107,6 @@ class ClinicUpdateAPIView(APIView):
     )
     def put(self, request, clinic_id):
         try:
-            # ✅ Only update active clinic
             clinic = Clinic.objects.get(id=clinic_id, is_active=True)
 
             serializer = ClinicSerializer(clinic, data=request.data)
@@ -150,7 +153,6 @@ class GetClinicView(APIView):
     )
     def get(self, request, clinic_id):
         try:
-            # ✅ Only active clinic
             clinic = Clinic.objects.get(id=clinic_id, is_active=True)
 
             serializer = ClinicReadSerializer(clinic)
@@ -181,11 +183,12 @@ class ClinicSearchAPIView(APIView):
         try:
             query = request.query_params.get("q", "").strip()
 
-            # ✅ Only active clinics
             clinics = Clinic.objects.filter(is_active=True)
 
             if query:
                 clinics = clinics.filter(name__icontains=query)
+
+            clinics = clinics.order_by("-id")
 
             serializer = ClinicReadSerializer(clinics, many=True)
 
@@ -221,7 +224,7 @@ class ClinicEmployeesAPIView(APIView):
         tags=["Clinic"]
     )
     def get(self, request, clinic_id):
-        # ✅ Only active clinic
+
         get_object_or_404(Clinic, id=clinic_id, is_active=True)
 
         employees = Employee.objects.filter(clinic_id=clinic_id)
@@ -234,22 +237,27 @@ class ClinicEmployeesAPIView(APIView):
 # -------------------------------------------------------------------
 class DepartmentListAPIView(APIView):
 
+    @swagger_auto_schema(
+        operation_description="Get active departments by clinic",
+        responses={200: DepartmentReadSerializer(many=True)},
+        tags=["Clinic"]
+    )
     def get(self, request):
+
         clinic_id = request.query_params.get("clinic_id")
 
         if not clinic_id:
             return Response({"error": "clinic_id is required"}, status=400)
 
         try:
-            # ✅ Only active clinic
             clinic = Clinic.objects.get(id=clinic_id, is_active=True)
         except Clinic.DoesNotExist:
             return Response({"error": "Clinic not found"}, status=404)
 
-        # ✅ Only active departments
-        departments = Department.objects.filter(clinic=clinic, is_active=True)
+        departments = Department.objects.filter(
+            clinic=clinic,
+            is_active=True
+        ).order_by("name")
 
         serializer = DepartmentReadSerializer(departments, many=True)
         return Response(serializer.data)
-
-

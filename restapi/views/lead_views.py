@@ -15,7 +15,7 @@ from drf_yasg.utils import swagger_auto_schema
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 
-from restapi.models import Lead, Clinic, PipelineStage
+from restapi.models import Lead, Clinic, PipelineStage, Department
 from restapi.serializers.lead_serializer import LeadSerializer, LeadReadSerializer
 from restapi.services.zapier_service import send_to_zapier
 from restapi.utils.permissions import (
@@ -135,15 +135,32 @@ class LeadCreateAPIView(APIView):
                 if pipeline_id and str(stage.pipeline_id) != str(pipeline_id):
                     raise ValidationError({"stage_id": "Stage does not belong to selected pipeline"})
 
-            # =====================================================
-            # 🔥 DOCUMENT FIX (FINAL)
-            # =====================================================
             data = request.data.copy()
 
+            # =========================
+            # 🔥 DOCUMENT FIX
+            # =========================
             if hasattr(request, "FILES"):
                 files = request.FILES.getlist("documents")
                 if files:
-                    data.setlist("documents", files)  # ✅ ALWAYS SET
+                    data.setlist("documents", files)
+
+            # =========================
+            # 🔥 DEPARTMENT VALIDATION (NEW)
+            # =========================
+            department_id = data.get("department_id")
+
+            if not department_id:
+                raise ValidationError({"department_id": "Department is required"})
+
+            exists = Department.objects.filter(
+                id=department_id,
+                clinic=clinic,
+                is_active=True
+            ).exists()
+
+            if not exists:
+                raise ValidationError({"department_id": "Invalid department for this clinic"})
 
             serializer = LeadSerializer(data=data, context={"request": request})
             serializer.is_valid(raise_exception=True)
@@ -197,15 +214,17 @@ class LeadUpdateAPIView(APIView):
 
             data = request.data.copy()
 
-            # =====================================================
-            # 🔥 DOCUMENT FIX (FINAL)
-            # =====================================================
+            # =========================
+            # 🔥 DOCUMENT FIX
+            # =========================
             if hasattr(request, "FILES"):
                 files = request.FILES.getlist("documents")
                 if files:
-                    data.setlist("documents", files)  # ✅ ALWAYS SET
+                    data.setlist("documents", files)
 
-            # STATUS FIX
+            # =========================
+            # 🔥 STATUS FIX
+            # =========================
             if "lead_status" in data:
                 status_val = str(data.get("lead_status")).strip().lower()
                 data["lead_status"] = status_val
@@ -213,6 +232,24 @@ class LeadUpdateAPIView(APIView):
                 request._full_data = request.data.copy()
                 request._full_data["lead_status"] = status_val
                 logger.info(f"Lead Update Requested Status: {status_val}")
+
+            # =========================
+            # 🔥 DEPARTMENT VALIDATION (NEW)
+            # =========================
+            if "department_id" in data:
+                dept_id = data.get("department_id")
+
+                if not dept_id:
+                    raise ValidationError({"department_id": "Department cannot be empty"})
+
+                exists = Department.objects.filter(
+                    id=dept_id,
+                    clinic=clinic,
+                    is_active=True
+                ).exists()
+
+                if not exists:
+                    raise ValidationError({"department_id": "Invalid department for this clinic"})
 
             stage_id = data.get("stage_id")
             pipeline_id = data.get("pipeline_id")
