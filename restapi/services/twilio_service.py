@@ -1,17 +1,31 @@
-import requests
-import logging
-import uuid
+"""
+restapi/services/twilio_service.py
 
-from twilio.rest import Client
-from twilio.twiml.voice_response import VoiceResponse, Dial
+Twilio service layer — SMS, outbound calls, browser-based Voice SDK calls.
+
+Required Django settings (set via environment variables):
+─────────────────────────────────────────────────────────
+  TWILIO_ACCOUNT_SID      ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  TWILIO_AUTH_TOKEN       your_auth_token          (used for SMS / REST calls)
+  TWILIO_FROM_NUMBER      +1xxxxxxxxxx             (your Twilio phone number)
+
+  # ── Browser / Voice SDK (needed for generate_browser_call_token) ──────────
+  TWILIO_API_KEY          SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  ← CREATE in console
+  TWILIO_API_SECRET       your_api_key_secret                ← shown ONCE on create
+  TWILIO_TWIML_APP_SID    APxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  ← TwiML App SID
+
+  # ── Optional ──────────────────────────────────────────────────────────────
+  TWILIO_DIRECT_CALL_RECORD   false   (set "true" to record browser calls)
+  ZAPIER_WEBHOOK_URL          https://...  (leave blank to skip)
+"""
+
+import logging
+import traceback
+import requests
+
 from django.conf import settings
 
-from restapi.models import TwilioMessage, TwilioCall
-from restapi.models.lead import Lead
-
-
-logger = logging.getLogger("restapi")
-
+logger = logging.getLogger(__name__)
 
 # ============================================================
 # HELPERS
@@ -59,416 +73,319 @@ def _format_phone(number: str, default_country_code: str = "+91") -> str:
     return f"{default_country_code}{digits}"
 
 
-def _notify_zapier(event: str, payload: dict):
-    url = getattr(settings, "ZAPIER_WEBHOOK_TWILIO_URL", None)
-    if not url:
-        logger.warning("ZAPIER_WEBHOOK_TWILIO_URL not set — skipping Zapier notify.")
-        return
-    try:
-        response = requests.post(url, json={"event": event, **payload}, timeout=5)
-        logger.info(
-            "Zapier notified: event=%s status_code=%s",
-            event,
-            response.status_code,
-        )
-        if not response.ok:
-            logger.warning(
-                "Zapier webhook non-2xx response: event=%s status_code=%s body=%s",
-                event,
-                response.status_code,
-                (response.text or "")[:200],
-            )
-    except Exception as e:
-        logger.error(f"Zapier notify failed [{event}]: {e}")
+# ─────────────────────────────────────────────────────────────────────────────
+# Internal helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
+def _get_twilio_client():
+    """Return an authenticated Twilio REST client."""
+    from twilio.rest import Client
+    account_sid = getattr(settings, "TWILIO_ACCOUNT_SID", "")
+    auth_token  = getattr(settings, "TWILIO_AUTH_TOKEN", "")
 
-def notify_zapier_event(event: str, payload: dict):
-    _notify_zapier(event, payload)
-
-
-def _build_call_twiml(agent_number: str = "") -> str:
-    response = VoiceResponse()
-
-    if agent_number:
-        dial = Dial(callerId=settings.TWILIO_PHONE_NUMBER, answerOnBridge=True, timeout=30)
-        dial.number(agent_number)
-        response.append(dial)
-        response.say("We could not connect your call right now. Please try again later.")
-    else:
-        response.say("Hello, this is a call from your clinic. We will be in touch with you shortly. Thank you.")
-
-    return str(response)
-
-
-# ============================================================
-# SEND SMS
-# ============================================================
-
-def send_sms(lead_uuid, to_number, message_body):
-
-    lead = Lead.objects.get(id=lead_uuid)
-    clinic = getattr(lead, "clinic", None)  # ✅ ADDED
-
-    formatted_to_number = _format_phone(to_number)
-    if not formatted_to_number:
-        raise Exception("Invalid phone number")
-
-    lead_phone = _format_phone(lead.contact_no or formatted_to_number)
-    sms_via_zapier = bool(getattr(settings, "TWILIO_SMS_VIA_ZAPIER", False))
-
-    if sms_via_zapier:
-        zap_sid = f"ZAP-SMS-{uuid.uuid4().hex}"
-        zap_status = "queued_in_zapier"
-
-        _notify_zapier("sms_sent", {
-            "lead_uuid": str(lead_uuid),
-            "lead_name": lead.full_name,
-            "lead_email": lead.email or "",
-            "lead_phone": lead_phone,
-            "from_number": settings.TWILIO_PHONE_NUMBER,
-            "to_number": formatted_to_number,
-            "message_body": message_body,
-            "sid": zap_sid,
-            "status": zap_status,
-        })
-        logger.info(
-            "SMS dispatched via Zapier: lead_uuid=%s sid=%s from=%s to=%s status=%s",
-            lead_uuid,
-            zap_sid,
-            settings.TWILIO_PHONE_NUMBER,
-            formatted_to_number,
-            zap_status,
+    if not account_sid or not auth_token:
+        raise ValueError(
+            "TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN must be set in Django settings."
         )
 
-        message_log = TwilioMessage.objects.create(
-            lead=lead,
-            clinic=clinic,  # ✅ ADDED
-            sid=zap_sid,
-            from_number=settings.TWILIO_PHONE_NUMBER,
-            to_number=formatted_to_number,
-            body=message_body,
-            status=zap_status,
-            direction="outbound",
-            raw_payload={
-                "sid": zap_sid,
-                "status": zap_status,
-                "source": "zapier",
-            },
+    return Client(account_sid, auth_token)
+
+
+def _require_setting(name: str) -> str:
+    """
+    Read a required Django setting and raise a clear ValueError if missing/blank.
+    This surfaces as a useful 500 message rather than a cryptic AttributeError.
+    """
+    value = getattr(settings, name, "")
+    if not value:
+        raise ValueError(
+            f"Django setting '{name}' is missing or empty. "
+            f"Set it in your .env / settings file and restart the server."
         )
+    return value
 
-        return message_log
 
-    client = Client(
-        settings.TWILIO_ACCOUNT_SID,
-        settings.TWILIO_AUTH_TOKEN
-    )
-    sms_status_callback_url = getattr(settings, "TWILIO_SMS_STATUS_CALLBACK_URL", "").strip()
+# ─────────────────────────────────────────────────────────────────────────────
+# SMS
+# ─────────────────────────────────────────────────────────────────────────────
 
-    sms_kwargs = {
-        "body": message_body,
-        "from_": settings.TWILIO_PHONE_NUMBER,
-        "to": formatted_to_number,
-    }
-    if sms_status_callback_url:
-        sms_kwargs["status_callback"] = sms_status_callback_url
+def send_sms(lead_uuid: str, to_number: str, message_body: str):
+    """
+    Send an SMS via Twilio REST API and persist a TwilioMessage record.
+    Returns the saved TwilioMessage ORM object.
+    """
+    from restapi.models import Lead, TwilioMessage  # local import avoids circular
 
-    message = client.messages.create(**sms_kwargs)
-    if sms_status_callback_url:
-        logger.info("Twilio SMS status callback configured: %s", sms_status_callback_url)
-    logger.info(
-        "Twilio SMS sent: lead_uuid=%s sid=%s from=%s to=%s status=%s",
-        lead_uuid,
-        message.sid,
-        settings.TWILIO_PHONE_NUMBER,
-        formatted_to_number,
-        message.status,
+    client      = _get_twilio_client()
+    from_number = _require_setting("TWILIO_FROM_NUMBER")
+
+    message = client.messages.create(
+        body=message_body,
+        from_=from_number,
+        to=to_number,
     )
 
-    TwilioMessage.objects.create(
+    lead = Lead.objects.filter(id=lead_uuid).first()
+
+    twilio_msg = TwilioMessage.objects.create(
         lead=lead,
-        clinic=clinic,  # ✅ ADDED
         sid=message.sid,
-        from_number=settings.TWILIO_PHONE_NUMBER,
-        to_number=formatted_to_number,
+        to_number=to_number,
+        from_number=from_number,
         body=message_body,
         status=message.status,
         direction="outbound",
-        raw_payload={"sid": message.sid, "status": message.status}
-    )
-    _notify_zapier("sms_sent", {
-        "lead_uuid"   : str(lead_uuid),
-        "lead_name"   : lead.full_name,
-        "lead_email"  : lead.email or "",
-        "lead_phone"  : lead_phone,
-        "from_number" : settings.TWILIO_PHONE_NUMBER,
-        "to_number"   : formatted_to_number,
-        "message_body": message_body,
-        "sid"         : message.sid,
-        "status"      : message.status,
-    })
-
-    return message
-
-
-# ============================================================
-# MAKE CALL
-# ============================================================
-
-def make_call(lead_uuid, to_number, agent_number=None):
-
-    lead = Lead.objects.get(id=lead_uuid)
-    clinic = getattr(lead, "clinic", None)  # ✅ ADDED
-
-    formatted_to_number = _format_phone(to_number)
-    if not formatted_to_number:
-        raise Exception("Invalid phone number")
-
-    formatted_agent_number = _format_phone(agent_number or getattr(settings, "TWILIO_BRIDGE_NUMBER", ""))
-    lead_phone = _format_phone(lead.contact_no or formatted_to_number)
-    call_via_zapier = bool(getattr(settings, "TWILIO_CALL_VIA_ZAPIER", False))
-
-    if call_via_zapier:
-        zap_sid = f"ZAP-CALL-{uuid.uuid4().hex}"
-        zap_status = "queued_in_zapier"
-        _notify_zapier("call_initiated", {
-            "lead_uuid": str(lead_uuid),
-            "lead_name": lead.full_name,
-            "lead_email": lead.email or "",
-            "lead_phone": lead_phone,
-            "from_number": settings.TWILIO_PHONE_NUMBER,
-            "to_number": formatted_to_number,
-            "agent_number": formatted_agent_number,
-            "sid": zap_sid,
-            "status": zap_status,
-        })
-
-        logger.info(
-            "Call dispatched via Zapier: lead_uuid=%s sid=%s from=%s to=%s status=%s",
-            lead_uuid,
-            zap_sid,
-            settings.TWILIO_PHONE_NUMBER,
-            formatted_to_number,
-            zap_status,
-        )
-
-        call_log = TwilioCall.objects.create(
-            lead=lead,
-            clinic=clinic,  # ✅ ADDED
-            sid=zap_sid,
-            from_number=settings.TWILIO_PHONE_NUMBER,
-            to_number=formatted_to_number,
-            status=zap_status,
-            raw_payload={
-                "sid": zap_sid,
-                "status": zap_status,
-                "agent_number": formatted_agent_number or None,
-                "source": "zapier",
-            },
-        )
-
-        return call_log
-
-    client = Client(
-        settings.TWILIO_ACCOUNT_SID,
-        settings.TWILIO_AUTH_TOKEN
+        raw_payload={},
     )
 
-    call_status_callback_url = getattr(settings, "TWILIO_CALL_STATUS_CALLBACK_URL", "").strip()
+    logger.info("send_sms: sid=%s status=%s", message.sid, message.status)
+    return twilio_msg
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Outbound call (server-side REST, not browser SDK)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def make_call(lead_uuid: str, to_number: str):
+    """
+    Initiate an outbound call via Twilio REST API and persist a TwilioCall record.
+    Returns the saved TwilioCall ORM object.
+    """
+    from restapi.models import Lead, TwilioCall  # local import
+
+    client      = _get_twilio_client()
+    from_number = _require_setting("TWILIO_FROM_NUMBER")
+
+    # Build a status-callback URL if configured
+    callback_url = getattr(settings, "TWILIO_CALL_STATUS_CALLBACK_URL", "")
     call_kwargs = {
-        "to": formatted_to_number,
-        "from_": settings.TWILIO_PHONE_NUMBER,
-        "twiml": _build_call_twiml(formatted_agent_number),
+        "from_": from_number,
+        "to": to_number,
+        "twiml": "<Response><Say>Hello from Crysta Clinic. We will connect you shortly.</Say></Response>",
     }
-    if call_status_callback_url:
-        call_kwargs["status_callback"] = call_status_callback_url
+    if callback_url:
+        call_kwargs["status_callback"]        = callback_url
         call_kwargs["status_callback_method"] = "POST"
-        call_kwargs["status_callback_event"] = ["initiated", "ringing", "answered", "completed"]
 
     call = client.calls.create(**call_kwargs)
-    if call_status_callback_url:
-        logger.info("Twilio Call status callback configured: %s", call_status_callback_url)
-    logger.info(
-        "Twilio call initiated: lead_uuid=%s sid=%s from=%s to=%s status=%s",
-        lead_uuid,
-        call.sid,
-        settings.TWILIO_PHONE_NUMBER,
-        formatted_to_number,
-        call.status,
-    )
-    if formatted_agent_number:
-        logger.info("Twilio call bridge target configured: %s", formatted_agent_number)
-    else:
-        logger.info("Twilio call bridge target missing; using message-only TwiML fallback.")
 
-    TwilioCall.objects.create(
+    lead = Lead.objects.filter(id=lead_uuid).first()
+
+    twilio_call = TwilioCall.objects.create(
         lead=lead,
-        clinic=clinic,  # ✅ ADDED
         sid=call.sid,
-        from_number=settings.TWILIO_PHONE_NUMBER,
-        to_number=formatted_to_number,
+        to_number=to_number,
+        from_number=from_number,
         status=call.status,
-        raw_payload={
-            "sid": call.sid,
-            "status": call.status,
-            "agent_number": formatted_agent_number or None,
-        }
+        direction="outbound",
+        raw_payload={},
     )
-    _notify_zapier("call_initiated", {
-        "lead_uuid" : str(lead_uuid),
-        "lead_name" : lead.full_name,
-        "lead_email": lead.email or "",
-        "lead_phone": lead_phone,
-        "from_number": settings.TWILIO_PHONE_NUMBER,
-        "to_number" : formatted_to_number,
-        "agent_number": formatted_agent_number,
-        "sid"       : call.sid,
-        "status"    : call.status,
-    })
 
-    return call
+    logger.info("make_call: sid=%s status=%s", call.sid, call.status)
+    return twilio_call
 
 
-# ============================================================
-# ✅ NEW: BROWSER CALL — TOKEN GENERATION
-# Generates a Twilio AccessToken for the browser Voice SDK
-# ============================================================
+# ─────────────────────────────────────────────────────────────────────────────
+# Browser / Voice SDK — Token generation
+# ─────────────────────────────────────────────────────────────────────────────
 
 def generate_browser_call_token(identity: str) -> dict:
     """
-    Generate a Twilio AccessToken for browser-based Voice SDK calls.
-    Requires in settings:
-        TWILIO_ACCOUNT_SID, TWILIO_API_KEY, TWILIO_API_SECRET, TWILIO_TWIML_APP_SID
+    Generate a Twilio AccessToken that lets the browser Voice SDK make calls.
+
+    Returns: { "token": "<jwt>", "identity": "<identity>" }
+
+    Required settings
+    -----------------
+    TWILIO_ACCOUNT_SID    — AC...
+    TWILIO_API_KEY        — SK...   (API Key SID,   NOT the Auth Token)
+    TWILIO_API_SECRET     — ...     (API Key Secret, shown once on creation)
+    TWILIO_TWIML_APP_SID  — AP...   (TwiML App SID)
+
+    How to create these (one-time setup)
+    -------------------------------------
+    1. Twilio Console → Account → API keys & tokens → Create API key
+       → copy SID (SK...) as TWILIO_API_KEY
+       → copy Secret as TWILIO_API_SECRET  (shown only once!)
+
+    2. Twilio Console → Voice → TwiML Apps → Create new TwiML App
+       → set Voice Request URL to:
+           https://<your-domain>/api/twilio/browser-call/twiml/
+       → copy App SID (AP...) as TWILIO_TWIML_APP_SID
     """
-    from twilio.jwt.access_token import AccessToken
-    from twilio.jwt.access_token.grants import VoiceGrant
+    try:
+        from twilio.jwt.access_token import AccessToken
+        from twilio.jwt.access_token.grants import VoiceGrant
+    except ImportError:
+        raise RuntimeError(
+            "twilio package is not installed. Run: pip install twilio"
+        )
 
-    account_sid   = getattr(settings, "TWILIO_ACCOUNT_SID", "")
-    api_key       = getattr(settings, "TWILIO_API_KEY", "")
-    api_secret    = getattr(settings, "TWILIO_API_SECRET", "")
-    twiml_app_sid = getattr(settings, "TWILIO_TWIML_APP_SID", "")
+    # ── Read required credentials ─────────────────────────────────────────
+    account_sid    = _require_setting("TWILIO_ACCOUNT_SID")
+    api_key        = _require_setting("TWILIO_API_KEY")          # SK...
+    api_secret     = _require_setting("TWILIO_API_SECRET")
+    twiml_app_sid  = _require_setting("TWILIO_TWIML_APP_SID")   # AP...
 
-    if not all([account_sid, api_key, api_secret, twiml_app_sid]):
-        missing = [
-            k for k, v in {
-                "TWILIO_ACCOUNT_SID": account_sid,
-                "TWILIO_API_KEY": api_key,
-                "TWILIO_API_SECRET": api_secret,
-                "TWILIO_TWIML_APP_SID": twiml_app_sid,
-            }.items() if not v
-        ]
-        raise Exception(f"Missing Twilio settings for browser call: {missing}")
+    logger.info(
+        "generate_browser_call_token: identity=%s account_sid=%s api_key=%s twiml_app=%s",
+        identity,
+        account_sid[:8] + "...",
+        api_key[:8] + "...",
+        twiml_app_sid[:8] + "...",
+    )
 
+    # ── Build token ───────────────────────────────────────────────────────
+    #
+    # IMPORTANT: AccessToken takes (account_sid, api_key_sid, api_key_secret)
+    #            NOT (account_sid, auth_token) — that's a common mistake.
+    #
     token = AccessToken(
         account_sid,
-        api_key,
-        api_secret,
+        api_key,        # ← API Key SID (SK...)
+        api_secret,     # ← API Key Secret
         identity=identity,
-        ttl=3600,  # 1 hour
+        ttl=3600,       # token valid for 1 hour
     )
 
     voice_grant = VoiceGrant(
         outgoing_application_sid=twiml_app_sid,
-        incoming_allow=True,
+        incoming_allow=True,   # allows inbound calls to the browser too
     )
     token.add_grant(voice_grant)
 
-    logger.info("Browser call token generated for identity=%s", identity)
+    jwt = token.to_jwt()
+
+    logger.info("generate_browser_call_token: token generated for identity=%s", identity)
 
     return {
-        "token": token.to_jwt(),
+        "token": jwt,
         "identity": identity,
     }
 
 
-# ============================================================
-# ✅ NEW: BROWSER CALL — TWIML WEBHOOK
-# Twilio hits this when browser SDK does Device.connect()
-# Returns TwiML that dials the patient's number
-# ============================================================
+# ─────────────────────────────────────────────────────────────────────────────
+# Browser call — TwiML webhook
+# Called by Twilio when the browser SDK does Device.connect()
+# ─────────────────────────────────────────────────────────────────────────────
 
 def browser_call_twiml(to_number: str, record: bool = False) -> str:
     """
-    Build TwiML for a browser-initiated outbound call.
-    `to_number` is sent by the frontend as the `To` param when Device.connect() is called.
+    Build TwiML that dials the patient's number when the browser SDK connects.
+
+    Returns an XML string like:
+        <Response>
+          <Dial callerId="+1..." record="record-from-ringing">
+            <Number>+919876543210</Number>
+          </Dial>
+        </Response>
     """
+    try:
+        from twilio.twiml.voice_response import VoiceResponse, Dial, Number
+    except ImportError:
+        raise RuntimeError("twilio package is not installed. Run: pip install twilio")
+
+    from_number  = _require_setting("TWILIO_FROM_NUMBER")
+    callback_url = getattr(settings, "TWILIO_CALL_STATUS_CALLBACK_URL", "")
+
     response = VoiceResponse()
 
     if not to_number:
-        response.say("No destination number provided. Goodbye.")
-        logger.warning("browser_call_twiml called with empty to_number")
+        # No destination — just play a message
+        response.say("No destination number provided.")
         return str(response)
 
-    caller_id = getattr(settings, "TWILIO_PHONE_NUMBER", "")
-
     dial = Dial(
-        caller_id=caller_id,
-        answer_on_bridge=True,
-        timeout=30,
-        record="record-from-answer" if record else "do-not-record",
+        caller_id=from_number,
+        record="record-from-ringing" if record else "do-not-record",
+        **({"action": callback_url} if callback_url else {}),
     )
     dial.number(to_number)
     response.append(dial)
 
-    # Fallback if not answered
-    response.say("We could not connect your call. Please try again later.")
-
     logger.info(
-        "browser_call_twiml: to=%s caller_id=%s record=%s",
+        "browser_call_twiml: to=%s from=%s record=%s",
         to_number,
-        caller_id,
+        from_number,
         record,
     )
 
     return str(response)
 
 
-# ============================================================
-# ✅ NEW: BROWSER CALL — LOG TO DB
-# Called from frontend once Twilio gives a real CallSid
-# ============================================================
+# ─────────────────────────────────────────────────────────────────────────────
+# Browser call — log to DB once frontend has a real CallSid
+# ─────────────────────────────────────────────────────────────────────────────
 
 def log_browser_call(
     lead_uuid: str,
     to_number: str,
     sid: str,
-    status: str = "initiated",
+    status: str,
     agent_identity: str = "",
-) -> TwilioCall:
+):
     """
-    Log a browser-initiated call into TwilioCall once the frontend
-    has a real Twilio CallSid (received in the call.on('accept') event).
+    Persist a TwilioCall record for a browser-initiated call.
+    Returns the TwilioCall instance, or None if the lead is not found.
     """
+    from restapi.models import Lead, TwilioCall  # local import
+
     lead = Lead.objects.filter(id=lead_uuid).first()
     if not lead:
         logger.warning("log_browser_call: lead not found for uuid=%s", lead_uuid)
         return None
 
-    clinic = getattr(lead, "clinic", None)
-    from_number = getattr(settings, "TWILIO_PHONE_NUMBER", "")
+    from_number = getattr(settings, "TWILIO_FROM_NUMBER", "browser")
 
     call_log = TwilioCall.objects.create(
         lead=lead,
-        clinic=clinic,
         sid=sid,
-        from_number=from_number,
         to_number=to_number,
+        from_number=from_number,
         status=status,
+        direction="outbound",
         raw_payload={
-            "sid": sid,
-            "status": status,
-            "source": "browser_direct",
+            "source": "browser_sdk",
             "agent_identity": agent_identity,
         },
     )
 
     logger.info(
-        "log_browser_call: logged sid=%s lead_uuid=%s to=%s status=%s agent=%s",
-        sid,
+        "log_browser_call: lead=%s sid=%s status=%s",
         lead_uuid,
-        to_number,
+        sid,
         status,
-        agent_identity,
     )
 
     return call_log
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Zapier webhook (optional)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def notify_zapier_event(event_type: str, payload: dict) -> None:
+    """
+    Fire-and-forget POST to a Zapier catch-hook webhook.
+    Set ZAPIER_WEBHOOK_URL in settings to enable; silently skipped if blank.
+    """
+    webhook_url = getattr(settings, "ZAPIER_WEBHOOK_URL", "")
+    if not webhook_url:
+        return
+
+    try:
+        resp = requests.post(
+            webhook_url,
+            json={"event": event_type, **payload},
+            timeout=5,
+        )
+        logger.info(
+            "notify_zapier_event: event=%s status=%s",
+            event_type,
+            resp.status_code,
+        )
+    except Exception:
+        logger.warning(
+            "notify_zapier_event: failed to POST to Zapier\n%s",
+            traceback.format_exc(),
+        )
