@@ -21,6 +21,13 @@ from restapi.views.campaign_insights_views import (
     CampaignInsightsCallbackAPIView,
 )
 
+# ✅ NEW: Browser Direct Call views
+from restapi.views.twilio_views import (
+    BrowserCallTokenAPIView,
+    BrowserCallTwiMLAPIView,
+    BrowserCallLogAPIView,
+)
+
 urlpatterns = [
 
     path("login/", LoginAPIView.as_view(), name="login"),
@@ -96,6 +103,11 @@ urlpatterns = [
     path("twilio/call-status-callback/", TwilioCallStatusCallbackAPIView.as_view(), name="twilio-call-status"),
     path("twilio/sms/", TwilioMessageListAPIView.as_view(), name="twilio-sms-list"),
     path("twilio/calls/", TwilioCallListAPIView.as_view(), name="twilio-call-list"),
+
+    # ✅ NEW: Browser Direct Call endpoints
+    path("twilio/browser-call/token/", BrowserCallTokenAPIView.as_view(), name="twilio-browser-call-token"),
+    path("twilio/browser-call/twiml/", BrowserCallTwiMLAPIView.as_view(), name="twilio-browser-call-twiml"),
+    path("twilio/browser-call/log/",   BrowserCallLogAPIView.as_view(),   name="twilio-browser-call-log"),
 
     # ============================
     # CAMPAIGNS

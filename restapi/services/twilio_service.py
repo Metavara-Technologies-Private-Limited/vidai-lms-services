@@ -184,7 +184,6 @@ def send_sms(lead_uuid, to_number, message_body):
         message.status,
     )
 
-
     TwilioMessage.objects.create(
         lead=lead,
         clinic=clinic,  # ✅ ADDED
@@ -327,5 +326,149 @@ def make_call(lead_uuid, to_number, agent_number=None):
         "status"    : call.status,
     })
 
-
     return call
+
+
+# ============================================================
+# ✅ NEW: BROWSER CALL — TOKEN GENERATION
+# Generates a Twilio AccessToken for the browser Voice SDK
+# ============================================================
+
+def generate_browser_call_token(identity: str) -> dict:
+    """
+    Generate a Twilio AccessToken for browser-based Voice SDK calls.
+    Requires in settings:
+        TWILIO_ACCOUNT_SID, TWILIO_API_KEY, TWILIO_API_SECRET, TWILIO_TWIML_APP_SID
+    """
+    from twilio.jwt.access_token import AccessToken
+    from twilio.jwt.access_token.grants import VoiceGrant
+
+    account_sid   = getattr(settings, "TWILIO_ACCOUNT_SID", "")
+    api_key       = getattr(settings, "TWILIO_API_KEY", "")
+    api_secret    = getattr(settings, "TWILIO_API_SECRET", "")
+    twiml_app_sid = getattr(settings, "TWILIO_TWIML_APP_SID", "")
+
+    if not all([account_sid, api_key, api_secret, twiml_app_sid]):
+        missing = [
+            k for k, v in {
+                "TWILIO_ACCOUNT_SID": account_sid,
+                "TWILIO_API_KEY": api_key,
+                "TWILIO_API_SECRET": api_secret,
+                "TWILIO_TWIML_APP_SID": twiml_app_sid,
+            }.items() if not v
+        ]
+        raise Exception(f"Missing Twilio settings for browser call: {missing}")
+
+    token = AccessToken(
+        account_sid,
+        api_key,
+        api_secret,
+        identity=identity,
+        ttl=3600,  # 1 hour
+    )
+
+    voice_grant = VoiceGrant(
+        outgoing_application_sid=twiml_app_sid,
+        incoming_allow=True,
+    )
+    token.add_grant(voice_grant)
+
+    logger.info("Browser call token generated for identity=%s", identity)
+
+    return {
+        "token": token.to_jwt(),
+        "identity": identity,
+    }
+
+
+# ============================================================
+# ✅ NEW: BROWSER CALL — TWIML WEBHOOK
+# Twilio hits this when browser SDK does Device.connect()
+# Returns TwiML that dials the patient's number
+# ============================================================
+
+def browser_call_twiml(to_number: str, record: bool = False) -> str:
+    """
+    Build TwiML for a browser-initiated outbound call.
+    `to_number` is sent by the frontend as the `To` param when Device.connect() is called.
+    """
+    response = VoiceResponse()
+
+    if not to_number:
+        response.say("No destination number provided. Goodbye.")
+        logger.warning("browser_call_twiml called with empty to_number")
+        return str(response)
+
+    caller_id = getattr(settings, "TWILIO_PHONE_NUMBER", "")
+
+    dial = Dial(
+        caller_id=caller_id,
+        answer_on_bridge=True,
+        timeout=30,
+        record="record-from-answer" if record else "do-not-record",
+    )
+    dial.number(to_number)
+    response.append(dial)
+
+    # Fallback if not answered
+    response.say("We could not connect your call. Please try again later.")
+
+    logger.info(
+        "browser_call_twiml: to=%s caller_id=%s record=%s",
+        to_number,
+        caller_id,
+        record,
+    )
+
+    return str(response)
+
+
+# ============================================================
+# ✅ NEW: BROWSER CALL — LOG TO DB
+# Called from frontend once Twilio gives a real CallSid
+# ============================================================
+
+def log_browser_call(
+    lead_uuid: str,
+    to_number: str,
+    sid: str,
+    status: str = "initiated",
+    agent_identity: str = "",
+) -> TwilioCall:
+    """
+    Log a browser-initiated call into TwilioCall once the frontend
+    has a real Twilio CallSid (received in the call.on('accept') event).
+    """
+    lead = Lead.objects.filter(id=lead_uuid).first()
+    if not lead:
+        logger.warning("log_browser_call: lead not found for uuid=%s", lead_uuid)
+        return None
+
+    clinic = getattr(lead, "clinic", None)
+    from_number = getattr(settings, "TWILIO_PHONE_NUMBER", "")
+
+    call_log = TwilioCall.objects.create(
+        lead=lead,
+        clinic=clinic,
+        sid=sid,
+        from_number=from_number,
+        to_number=to_number,
+        status=status,
+        raw_payload={
+            "sid": sid,
+            "status": status,
+            "source": "browser_direct",
+            "agent_identity": agent_identity,
+        },
+    )
+
+    logger.info(
+        "log_browser_call: logged sid=%s lead_uuid=%s to=%s status=%s agent=%s",
+        sid,
+        lead_uuid,
+        to_number,
+        status,
+        agent_identity,
+    )
+
+    return call_log

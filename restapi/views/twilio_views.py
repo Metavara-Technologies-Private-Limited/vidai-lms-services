@@ -6,6 +6,9 @@ import traceback
 
 from django.db import transaction
 from django.utils import timezone
+from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -14,6 +17,8 @@ from rest_framework.exceptions import ValidationError
 
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
+
+from django.conf import settings
 
 from restapi.models import TwilioMessage, TwilioCall
 from restapi.serializers.twilio_serializers import (
@@ -26,6 +31,9 @@ from restapi.services.twilio_service import (
     send_sms,
     make_call,
     notify_zapier_event,
+    generate_browser_call_token,
+    browser_call_twiml,
+    log_browser_call,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,7 +62,6 @@ class SendSMSAPIView(APIView):
                 list(request.data.keys()) if hasattr(request, "data") else [],
             )
 
-            # ✅ FIX ADDED HERE
             serializer = SendSMSSerializer(
                 data=request.data,
                 context={"request": request}
@@ -124,7 +131,6 @@ class MakeCallAPIView(APIView):
                 list(request.data.keys()) if hasattr(request, "data") else [],
             )
 
-            # ✅ FIX ADDED HERE
             serializer = MakeCallSerializer(
                 data=request.data,
                 context={"request": request}
@@ -391,4 +397,151 @@ class TwilioCallListAPIView(APIView):
             return Response(
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# =====================================================
+# BROWSER CALL: TOKEN
+# GET /api/twilio/browser-call/token/?identity=agent_42
+# =====================================================
+class BrowserCallTokenAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Generate Twilio AccessToken for browser-based Voice SDK calls",
+        manual_parameters=[
+            openapi.Parameter(
+                "identity",
+                openapi.IN_QUERY,
+                type=openapi.TYPE_STRING,
+                required=True,
+                description="Unique agent/user identity string e.g. agent_42",
+            ),
+        ],
+        responses={
+            200: "{ token, identity }",
+            400: "Missing identity",
+            500: "Internal Server Error",
+        },
+        tags=["Twilio"],
+    )
+    def get(self, request):
+        identity = request.query_params.get("identity", "").strip()
+        if not identity:
+            return Response(
+                {"error": "identity query param is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            result = generate_browser_call_token(identity)
+            return Response(result, status=status.HTTP_200_OK)
+        except Exception:
+            logger.error("BrowserCallToken error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+# =====================================================
+# BROWSER CALL: TWIML WEBHOOK
+# POST /api/twilio/browser-call/twiml/
+# Twilio hits this when browser SDK does Device.connect()
+# =====================================================
+@method_decorator(csrf_exempt, name="dispatch")
+class BrowserCallTwiMLAPIView(APIView):
+
+    authentication_classes = []
+    permission_classes = []
+
+    @swagger_auto_schema(auto_schema=None)
+    def post(self, request):
+        try:
+            to_number = (
+                request.data.get("To")
+                or request.data.get("to")
+                or ""
+            ).strip()
+
+            record = bool(getattr(settings, "TWILIO_DIRECT_CALL_RECORD", False))
+            twiml_str = browser_call_twiml(to_number=to_number, record=record)
+
+            logger.info(
+                "BrowserCallTwiMLAPIView: to=%s record=%s",
+                to_number,
+                record,
+            )
+
+            return HttpResponse(twiml_str, content_type="application/xml")
+
+        except Exception:
+            logger.error("BrowserCallTwiML error:\n" + traceback.format_exc())
+            from twilio.twiml.voice_response import VoiceResponse
+            r = VoiceResponse()
+            r.say("An error occurred. Please try again.")
+            return HttpResponse(str(r), content_type="application/xml", status=500)
+
+
+# =====================================================
+# BROWSER CALL: LOG
+# POST /api/twilio/browser-call/log/
+# Call from frontend once Twilio gives a real CallSid
+# Body: { lead_uuid, to_number, sid, status, agent_identity }
+# =====================================================
+class BrowserCallLogAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Log a browser-initiated Twilio call once a real CallSid is available",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["lead_uuid", "to_number", "sid", "status"],
+            properties={
+                "lead_uuid":      openapi.Schema(type=openapi.TYPE_STRING, description="Lead UUID"),
+                "to_number":      openapi.Schema(type=openapi.TYPE_STRING, description="Patient phone E.164"),
+                "sid":            openapi.Schema(type=openapi.TYPE_STRING, description="Twilio CallSid"),
+                "status":         openapi.Schema(type=openapi.TYPE_STRING, description="Call status"),
+                "agent_identity": openapi.Schema(type=openapi.TYPE_STRING, description="Agent identity string"),
+            },
+        ),
+        responses={
+            200: "Call logged successfully",
+            400: "Bad request",
+            500: "Internal Server Error",
+        },
+        tags=["Twilio"],
+    )
+    def post(self, request):
+        lead_uuid      = request.data.get("lead_uuid")
+        to_number      = request.data.get("to_number", "")
+        sid            = request.data.get("sid", "")
+        call_status    = request.data.get("status", "initiated")
+        agent_identity = request.data.get("agent_identity", "")
+
+        if not lead_uuid or not sid:
+            return Response(
+                {"error": "lead_uuid and sid are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            call_log = log_browser_call(
+                lead_uuid=lead_uuid,
+                to_number=to_number,
+                sid=sid,
+                status=call_status,
+                agent_identity=agent_identity,
+            )
+            if not call_log:
+                return Response(
+                    {"error": "Lead not found"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return Response(
+                {"message": "Call logged successfully", "id": call_log.id},
+                status=status.HTTP_200_OK,
+            )
+        except Exception:
+            logger.error("BrowserCallLog error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
