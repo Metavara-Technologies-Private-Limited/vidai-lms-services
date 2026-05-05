@@ -22,12 +22,18 @@ from restapi.views.campaign_insights_views import (
 )
 
 # ✅ NEW: Browser Direct Call views
+# ✅ Twilio Views (FULL)
 from restapi.views.twilio_views import (
+    SendSMSAPIView,
+    MakeCallAPIView,
+    TwilioSMSStatusCallbackAPIView,
+    TwilioCallStatusCallbackAPIView,
+    TwilioMessageListAPIView,
+    TwilioCallListAPIView,
     BrowserCallTokenAPIView,
     BrowserCallTwiMLAPIView,
     BrowserCallLogAPIView,
 )
-
 urlpatterns = [
 
     path("login/", LoginAPIView.as_view(), name="login"),
