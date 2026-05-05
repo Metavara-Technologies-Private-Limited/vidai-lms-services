@@ -254,9 +254,12 @@ def generate_browser_call_token(identity: str) -> dict:
     )
     token.add_grant(voice_grant)
 
-    jwt = token.to_jwt()
+    jwt = token.to_jwt().decode("utf-8")
 
-    logger.info("generate_browser_call_token: token generated for identity=%s", identity)
+    logger.info(
+        "generate_browser_call_token: token generated for identity=%s",
+        identity
+    )
 
     return {
         "token": jwt,

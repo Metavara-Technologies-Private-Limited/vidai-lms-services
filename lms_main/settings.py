@@ -253,6 +253,12 @@ TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 TWILIO_BRIDGE_NUMBER = os.getenv("TWILIO_BRIDGE_NUMBER", "")
+TWILIO_FROM_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+
+TWILIO_API_KEY = os.getenv("TWILIO_API_KEY")
+TWILIO_API_SECRET = os.getenv("TWILIO_API_SECRET")
+TWILIO_TWIML_APP_SID = os.getenv("TWILIO_TWIML_APP_SID")
+TWILIO_DIRECT_CALL_RECORD = os.getenv("TWILIO_DIRECT_CALL_RECORD", "false").strip().lower() in ("1", "true", "yes", "on")
 
 TWILIO_SMS_VIA_ZAPIER = os.getenv("TWILIO_SMS_VIA_ZAPIER", "true").strip().lower() in ("1", "true", "yes", "on")
 TWILIO_CALL_VIA_ZAPIER = os.getenv("TWILIO_CALL_VIA_ZAPIER", "true").strip().lower() in ("1", "true", "yes", "on")
