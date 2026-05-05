@@ -254,10 +254,20 @@ def generate_browser_call_token(identity: str) -> dict:
     )
     token.add_grant(voice_grant)
 
-    jwt = token.to_jwt().decode("utf-8")
+    token_value = token.to_jwt()
 
-    logger.info(
-    "generate_browser_call_token: token generated for identity=%s",
+    if isinstance(token_value, bytes):
+       
+
+       jwt = token_value.decode("utf-8")
+
+    else:
+       
+      
+      
+       jwt = token_value
+
+    logger.info("generate_browser_call_token: token generated for identity=%s",
     identity
 )
 
@@ -265,6 +275,8 @@ def generate_browser_call_token(identity: str) -> dict:
     "token": jwt,
     "identity": identity,
 }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Browser call — TwiML webhook
 # Called by Twilio when the browser SDK does Device.connect()
