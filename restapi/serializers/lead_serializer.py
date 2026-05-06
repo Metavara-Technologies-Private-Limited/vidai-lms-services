@@ -14,6 +14,7 @@ from restapi.models import (
     ReferralDepartment,
     PipelineStage,
     Pipeline,
+    Interest,
 )
 
 from restapi.services.lead_service import create_lead, update_lead
@@ -68,6 +69,8 @@ class MultiFileField(serializers.ListField):
                 raise ValidationError(f"{file.name} exceeds 10MB limit")
 
         return files
+
+
 # =====================================================
 # READ SERIALIZER
 # =====================================================
@@ -114,6 +117,9 @@ class LeadReadSerializer(serializers.ModelSerializer):
     stage_id = serializers.UUIDField(source="stage.id", read_only=True)
     stage_name = serializers.CharField(source="stage.stage_name", read_only=True)
 
+    # ✅ INTERESTS
+    treatment_interest = serializers.SerializerMethodField()
+
     documents = serializers.SerializerMethodField()
 
     class Meta:
@@ -134,6 +140,16 @@ class LeadReadSerializer(serializers.ModelSerializer):
                 "uploaded_at": doc.uploaded_at,
             }
             for doc in obj.documents.all()
+        ]
+
+    # ✅ INTEREST RESPONSE
+    def get_treatment_interest(self, obj):
+        return [
+            {
+                "id": interest.id,
+                "name": interest.name
+            }
+            for interest in obj.treatment_interest.all()
         ]
 
 
@@ -161,6 +177,13 @@ class LeadSerializer(serializers.ModelSerializer):
 
     pipeline_id = serializers.UUIDField(required=False, allow_null=True)
     stage_id = serializers.UUIDField(required=False, allow_null=True)
+
+    # ✅ INTEREST FIELD
+    treatment_interest = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Interest.objects.filter(is_active=True),
+        required=False
+    )
 
     documents = MultiFileField(write_only=True, required=False)
 
@@ -317,6 +340,7 @@ class LeadSerializer(serializers.ModelSerializer):
                 is_deleted=False
             ).exists():
                 raise ValidationError({"pipeline_id": "Invalid pipeline"})
+
         # ================= REFERRAL =================
         ref_dept_id = attrs.get("referral_department_id")
         ref_source_id = attrs.get("referral_source_id")
@@ -381,9 +405,6 @@ class LeadSerializer(serializers.ModelSerializer):
 
         validated_data.pop("pipeline_id", None)
 
-        # if validated_data.get("full_name"):
-        #     validated_data["personal_name"] = validated_data["full_name"]
-
         return create_lead(validated_data, request=request)
 
     # =====================================================
@@ -393,9 +414,6 @@ class LeadSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
 
         validated_data.pop("pipeline_id", None)
-
-        # if validated_data.get("full_name"):
-        #     validated_data["personal_name"] = validated_data["full_name"]
 
         # =====================================================
         # 🔥 FIX 2: FORCE STATUS INTO SERVICE

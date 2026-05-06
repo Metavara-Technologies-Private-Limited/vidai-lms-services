@@ -138,7 +138,11 @@ class Lead(models.Model):
     # =============================
     # APPOINTMENT
     # =============================
-    treatment_interest = models.TextField()
+    treatment_interest = models.ManyToManyField(
+    "restapi.Interest",
+    blank=True,
+    related_name="leads"
+)
     book_appointment = models.BooleanField(default=False)
     appointment_date = models.DateField(null=True, blank=True)
     slot = models.CharField(max_length=50, blank=True)

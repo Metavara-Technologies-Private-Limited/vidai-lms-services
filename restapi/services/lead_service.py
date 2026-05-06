@@ -117,6 +117,9 @@ def create_lead(validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
+    # ✅ NEW
+    treatment_interest = validated_data.pop("treatment_interest", [])
+
     if not isinstance(documents, list):
         documents = []
 
@@ -262,6 +265,10 @@ def create_lead(validated_data, request=None):
         **validated_data
     )
 
+    # ✅ SAVE MANY TO MANY
+    if treatment_interest:
+        lead.treatment_interest.set(treatment_interest)
+
     for file in documents or []:
         if not file or not hasattr(file, "name"):
             continue
@@ -274,6 +281,8 @@ def create_lead(validated_data, request=None):
         )
 
     return lead
+
+
 # =====================================================
 # UPDATE LEAD
 # =====================================================
@@ -281,6 +290,9 @@ def create_lead(validated_data, request=None):
 def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
+
+    # ✅ NEW
+    treatment_interest = validated_data.pop("treatment_interest", None)
 
     # 🔥🔥 CRITICAL FIX
     if not isinstance(documents, list):
@@ -375,7 +387,9 @@ def update_lead(instance, validated_data, request=None):
 
     if new_status:
         new_status = str(new_status).strip().lower()
+
     logger.info(f"OLD STATUS: {old_status} | NEW STATUS: {new_status}")
+
     if new_status == "converted" and str(old_status).lower() != "converted":
         instance.converted_at_stage = old_stage
         instance.converted_at_status = old_status
@@ -396,6 +410,10 @@ def update_lead(instance, validated_data, request=None):
         setattr(instance, field, value)
 
     instance.save()
+
+    # ✅ UPDATE MANY TO MANY
+    if treatment_interest is not None:
+        instance.treatment_interest.set(treatment_interest)
 
     # 🔥🔥 FINAL SAFE DOCUMENT SAVE
     for file in documents or []:

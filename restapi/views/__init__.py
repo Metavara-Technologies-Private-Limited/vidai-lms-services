@@ -25,6 +25,8 @@ from .template_views import *
 from .social_auth_views import *
 from .auth_proxy_views import *
 
+from .usecase_view import*
+from .interest_view import*
 
 
 from .mail_insights_views import *

@@ -146,6 +146,22 @@ class LeadCreateAPIView(APIView):
                     data.setlist("documents", files)
 
             # =========================
+            # 🔥 TREATMENT INTEREST FIX
+            # =========================
+            if "treatment_interest" in data:
+
+                treatment_interest = data.getlist("treatment_interest")
+
+                # SUPPORT SINGLE VALUE ALSO
+                if not treatment_interest:
+                    single_interest = data.get("treatment_interest")
+
+                    if single_interest:
+                        treatment_interest = [single_interest]
+
+                data.setlist("treatment_interest", treatment_interest)
+
+            # =========================
             # 🔥 DEPARTMENT VALIDATION (NEW)
             # =========================
             department_id = data.get("department_id")
@@ -188,7 +204,6 @@ class LeadCreateAPIView(APIView):
             logger.error("Unhandled Lead Create Error:\n" + traceback.format_exc())
             return Response({"error": "Internal Server Error"}, status=500)
 
-
 # -------------------------------------------------------------------
 # Lead Update API View (PUT)
 # -------------------------------------------------------------------
@@ -221,6 +236,22 @@ class LeadUpdateAPIView(APIView):
                 files = request.FILES.getlist("documents")
                 if files:
                     data.setlist("documents", files)
+
+            # =========================
+            # 🔥 TREATMENT INTEREST FIX
+            # =========================
+            if "treatment_interest" in data:
+
+                treatment_interest = data.getlist("treatment_interest")
+
+                # SUPPORT SINGLE VALUE ALSO
+                if not treatment_interest:
+                    single_interest = data.get("treatment_interest")
+
+                    if single_interest:
+                        treatment_interest = [single_interest]
+
+                data.setlist("treatment_interest", treatment_interest)
 
             # =========================
             # 🔥 STATUS FIX

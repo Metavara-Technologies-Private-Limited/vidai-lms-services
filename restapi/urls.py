@@ -296,4 +296,13 @@ urlpatterns = [
     path("proxy/login/", LoginProxyAPIView.as_view(), name="login-proxy"),
     path("me/profile/", ProfileProxyAPIView.as_view(), name="profile"),
     path("users-search/", UsersProxyAPIView.as_view(), name="users"),
+
+
+    path("usecases/", UseCaseListAPIView.as_view()),
+    path("usecases/create/", UseCaseCreateAPIView.as_view()),
+    path("usecases/<uuid:pk>/update/", UseCaseUpdateAPIView.as_view()),
+
+    path("interests/", InterestListAPIView.as_view()),
+    path("interests/create/", InterestCreateAPIView.as_view()),
+    path("interests/<uuid:pk>/update/", InterestUpdateAPIView.as_view()),
 ]

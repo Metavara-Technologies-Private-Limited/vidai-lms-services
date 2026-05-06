@@ -57,4 +57,7 @@ from .lead_document import LeadDocument
 from .lead_mail import LeadEmail
 from .review_request_document import ReviewRequestDocument
 
+from .usecase import UseCase
+from .interest import Interest
+
 

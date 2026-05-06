@@ -2,6 +2,7 @@ import uuid
 from django.db import models
 from .clinic import Clinic
 from .employee import Employee
+from .usecase import UseCase
 
 class TemplateMail(models.Model):
 
@@ -15,7 +16,13 @@ class TemplateMail(models.Model):
 
     name = models.CharField(max_length=255)
 
-    use_case = models.CharField(max_length=100)
+    use_case = models.ForeignKey(
+    UseCase,
+    null=True,
+    blank=True,
+    on_delete=models.SET_NULL,
+    related_name="mail_templates"   # 👈 add this back
+)
 
     subject = models.CharField(max_length=255)
 
