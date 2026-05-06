@@ -180,10 +180,10 @@ class LeadSerializer(serializers.ModelSerializer):
 
     # ✅ INTEREST FIELD
     treatment_interest = serializers.PrimaryKeyRelatedField(
-    many=True,
-    queryset=Interest.objects.filter(is_active=True),
-    required=False,
-    allow_empty=True
+        many=True,
+        queryset=Interest.objects.filter(is_active=True),
+        required=False,
+        allow_empty=True
 )
 
     documents = MultiFileField(write_only=True, required=False)

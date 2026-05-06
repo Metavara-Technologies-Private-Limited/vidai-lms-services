@@ -163,20 +163,31 @@ class LeadCreateAPIView(APIView):
             # =====================================================
             if "treatment_interest" in data:
 
-                treatment_interest = data.getlist("treatment_interest")
+                # multipart/form-data
+                if hasattr(data, "getlist"):
 
-                # SUPPORT SINGLE VALUE ALSO
-                if not treatment_interest:
+                    treatment_interest = data.getlist("treatment_interest")
 
-                    single_interest = data.get("treatment_interest")
+                    # SUPPORT SINGLE VALUE ALSO
+                    if not treatment_interest:
 
-                    if single_interest:
-                        treatment_interest = [single_interest]
+                        single_interest = data.get("treatment_interest")
 
-                data.setlist(
-                    "treatment_interest",
-                    treatment_interest
-                )
+                        if single_interest:
+                            treatment_interest = [single_interest]
+
+                # application/json
+                else:
+
+                    treatment_interest = data.get("treatment_interest", [])
+
+                    if treatment_interest in [None, "", "null"]:
+                        treatment_interest = []
+
+                    if not isinstance(treatment_interest, list):
+                        treatment_interest = [treatment_interest]
+
+                data["treatment_interest"] = treatment_interest
 
             serializer = LeadSerializer(
                 data=data,
@@ -271,20 +282,31 @@ class LeadUpdateAPIView(APIView):
             # =====================================================
             if "treatment_interest" in data:
 
-                treatment_interest = data.getlist("treatment_interest")
+                # multipart/form-data
+                if hasattr(data, "getlist"):
 
-                # SUPPORT SINGLE VALUE ALSO
-                if not treatment_interest:
+                    treatment_interest = data.getlist("treatment_interest")
 
-                    single_interest = data.get("treatment_interest")
+                    # SUPPORT SINGLE VALUE ALSO
+                    if not treatment_interest:
 
-                    if single_interest:
-                        treatment_interest = [single_interest]
+                        single_interest = data.get("treatment_interest")
 
-                data.setlist(
-                    "treatment_interest",
-                    treatment_interest
-                )
+                        if single_interest:
+                            treatment_interest = [single_interest]
+
+                # application/json
+                else:
+
+                    treatment_interest = data.get("treatment_interest", [])
+
+                    if treatment_interest in [None, "", "null"]:
+                        treatment_interest = []
+
+                    if not isinstance(treatment_interest, list):
+                        treatment_interest = [treatment_interest]
+
+                data["treatment_interest"] = treatment_interest
 
             # =====================================================
             # STATUS FIX
