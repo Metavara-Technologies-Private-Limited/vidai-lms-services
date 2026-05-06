@@ -19,12 +19,23 @@ class LeadChoices:
         ("female", "Female"),
     )
 
+    # ── NEW ──────────────────────────────────────────────────────────────────
+    ACTION_STATUS = (
+        ("to_do", "To-do"),
+        ("in_progress", "In Progress"),
+        ("completed", "Completed"),
+    )
+
 
 class Lead(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    clinic = models.ForeignKey(Clinic, on_delete=models.CASCADE, related_name="leads")
+    clinic = models.ForeignKey(
+        Clinic,
+        on_delete=models.CASCADE,
+        related_name="leads"
+    )
 
     campaign = models.ForeignKey(
         Campaign,
@@ -34,7 +45,10 @@ class Lead(models.Model):
         related_name="leads"
     )
 
-    department = models.ForeignKey(Department, on_delete=models.CASCADE)
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.CASCADE
+    )
 
     # =============================
     # STAGE
@@ -56,7 +70,11 @@ class Lead(models.Model):
     )
 
     # 🔥 SOHAN REQUIREMENT
-    converted_at_status = models.CharField(max_length=100, null=True, blank=True)
+    converted_at_status = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True
+    )
 
     # =============================
     # EMPLOYEE DETAILS
@@ -79,8 +97,19 @@ class Lead(models.Model):
     full_name = models.CharField(max_length=255)
     age = models.IntegerField(null=True, blank=True)
 
-    gender = models.CharField(max_length=10, choices=LeadChoices.GENDER, null=True, blank=True)
-    marital_status = models.CharField(max_length=20, choices=LeadChoices.MARITAL_STATUS, null=True, blank=True)
+    gender = models.CharField(
+        max_length=10,
+        choices=LeadChoices.GENDER,
+        null=True,
+        blank=True
+    )
+
+    marital_status = models.CharField(
+        max_length=20,
+        choices=LeadChoices.MARITAL_STATUS,
+        null=True,
+        blank=True
+    )
 
     email = models.EmailField(null=True, blank=True)
     contact_no = models.CharField(max_length=20, null=True, blank=True)
@@ -101,9 +130,23 @@ class Lead(models.Model):
     # PARTNER DETAILS
     # =============================
     partner_inquiry = models.BooleanField(default=False)
-    partner_full_name = models.CharField(max_length=255, blank=True)
-    partner_age = models.IntegerField(null=True, blank=True)
-    partner_gender = models.CharField(max_length=10, choices=LeadChoices.GENDER, null=True, blank=True)
+
+    partner_full_name = models.CharField(
+        max_length=255,
+        blank=True
+    )
+
+    partner_age = models.IntegerField(
+        null=True,
+        blank=True
+    )
+
+    partner_gender = models.CharField(
+        max_length=10,
+        choices=LeadChoices.GENDER,
+        null=True,
+        blank=True
+    )
 
     # =============================
     # SOURCE
@@ -130,24 +173,60 @@ class Lead(models.Model):
     # =============================
     # STATUS
     # =============================
-    lead_status = models.CharField(max_length=100, null=True, blank=True)
-    next_action_status = models.CharField(max_length=100, null=True, blank=True)
-    next_action_type = models.CharField(max_length=200, null=True, blank=True)
-    next_action_description = models.TextField(null=True, blank=True)
+    lead_status = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True
+    )
+
+    next_action_status = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True
+    )
+
+    next_action_type = models.CharField(
+        max_length=200,
+        null=True,
+        blank=True
+    )
+
+    next_action_description = models.TextField(
+        null=True,
+        blank=True
+    )
+
+    # ── NEW: task / action status ─────────────────────────────────────────────
+    action_status = models.CharField(
+        max_length=20,
+        choices=LeadChoices.ACTION_STATUS,
+        null=True,
+        blank=True,
+        default=None,
+        db_index=True,
+    )
 
     # =============================
     # APPOINTMENT
     # =============================
     treatment_interest = models.ManyToManyField(
-    "restapi.Interest",
-    blank=True,
-    related_name="leads"
-)
-
+        "restapi.Interest",
+        blank=True,
+        related_name="leads"
+    )
 
     book_appointment = models.BooleanField(default=False)
-    appointment_date = models.DateField(null=True, blank=True)
-    slot = models.CharField(max_length=50, blank=True)
+
+    appointment_date = models.DateField(
+        null=True,
+        blank=True
+    )
+
+    slot = models.CharField(
+        max_length=50,
+        blank=True
+    )
+
     remark = models.TextField(blank=True)
 
     # =============================

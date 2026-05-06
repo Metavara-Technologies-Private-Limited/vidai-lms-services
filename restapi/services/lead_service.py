@@ -24,6 +24,39 @@ from restapi.models import (
 
 logger = logging.getLogger(__name__)
 
+# =====================================================
+# ACTION STATUS VALIDATION
+# =====================================================
+_VALID_ACTION_STATUSES = {
+    "to_do",
+    "in_progress",
+    "completed"
+}
+
+
+# =====================================================
+# HELPER: NORMALIZE ACTION STATUS
+# =====================================================
+def _normalize_action_status(value):
+
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        value = value.strip().lower()
+
+    if value == "" or value == "null":
+        return None
+
+    if value not in _VALID_ACTION_STATUSES:
+        raise ValidationError({
+            "action_status":
+            f"Invalid value '{value}'. "
+            f"Must be one of: {', '.join(sorted(_VALID_ACTION_STATUSES))}"
+        })
+
+    return value
+
 
 # =====================================================
 # HELPER: USER INFO
@@ -130,6 +163,14 @@ def create_lead(validated_data, request=None):
     validated_data["contact_no"] = _validate_phone(
         validated_data.get("contact_no")
     )
+
+    # =====================================================
+    # ACTION STATUS
+    # =====================================================
+    if "action_status" in validated_data:
+        validated_data["action_status"] = _normalize_action_status(
+            validated_data["action_status"]
+        )
 
     # =====================================================
     # CLINIC
@@ -325,22 +366,22 @@ def create_lead(validated_data, request=None):
     # =====================================================
     if treatment_interest:
         interest_ids = []
-        
+
         for interest_name in treatment_interest:
             if not interest_name:
                 continue
+
             interest_obj, _ = Interest.objects.get_or_create(
                 clinic=clinic,
-            name=str(interest_name).strip(),
-            defaults={
-                "is_active": True
-            }
-        )
-            interest_ids.append(interest_obj.id)
-          
-        lead.treatment_interest.set(interest_ids)
-        
+                name=str(interest_name).strip(),
+                defaults={
+                    "is_active": True
+                }
+            )
 
+            interest_ids.append(interest_obj.id)
+
+        lead.treatment_interest.set(interest_ids)
 
     # =====================================================
     # SAVE DOCUMENTS
@@ -390,6 +431,22 @@ def update_lead(instance, validated_data, request=None):
     if "contact_no" in validated_data:
         validated_data["contact_no"] = _validate_phone(
             validated_data.get("contact_no")
+        )
+
+    # =====================================================
+    # ACTION STATUS
+    # =====================================================
+    if request and "action_status" in request.data:
+        raw_action = request.data.get("action_status")
+
+        validated_data["action_status"] = _normalize_action_status(
+            raw_action
+        )
+
+    elif "action_status" in validated_data:
+
+        validated_data["action_status"] = _normalize_action_status(
+            validated_data["action_status"]
         )
 
     # =====================================================
@@ -571,21 +628,23 @@ def update_lead(instance, validated_data, request=None):
     if treatment_interest is not None:
 
         interest_ids = []
-       
+
         for interest_name in treatment_interest:
             if not interest_name:
                 continue
+
             interest_obj, _ = Interest.objects.get_or_create(
-                clinic= instance.clinic,
-            name=str(interest_name).strip(),
-            defaults={
-                "is_active": True
-            }
-        )
+                clinic=instance.clinic,
+                name=str(interest_name).strip(),
+                defaults={
+                    "is_active": True
+                }
+            )
+
             interest_ids.append(interest_obj.id)
-          
+
         instance.treatment_interest.set(interest_ids)
-        
+
     # =====================================================
     # SAVE DOCUMENTS
     # =====================================================
@@ -602,6 +661,8 @@ def update_lead(instance, validated_data, request=None):
         )
 
     return instance
+
+
 # =====================================================
 # EMAIL HELPERS
 # =====================================================

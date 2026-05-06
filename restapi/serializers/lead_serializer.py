@@ -14,7 +14,6 @@ from restapi.models import (
     ReferralDepartment,
     PipelineStage,
     Pipeline,
-    Interest,
 )
 
 from restapi.services.lead_service import create_lead, update_lead
@@ -116,13 +115,9 @@ class LeadReadSerializer(serializers.ModelSerializer):
     # STAGE
     stage_id = serializers.UUIDField(source="stage.id", read_only=True)
     stage_name = serializers.CharField(source="stage.stage_name", read_only=True)
-
-    # ✅ INTERESTS
     treatment_interest = serializers.SerializerMethodField()
 
     documents = serializers.SerializerMethodField()
-
-
 
     class Meta:
         model = Lead
@@ -143,8 +138,6 @@ class LeadReadSerializer(serializers.ModelSerializer):
             }
             for doc in obj.documents.all()
         ]
-
-    # ✅ INTEREST RESPONSE
     def get_treatment_interest(self, obj):
         return [
             {
@@ -179,8 +172,7 @@ class LeadSerializer(serializers.ModelSerializer):
 
     pipeline_id = serializers.UUIDField(required=False, allow_null=True)
     stage_id = serializers.UUIDField(required=False, allow_null=True)
-
-    # ✅ INTEREST FIELD
+        # ✅ INTEREST FIELD
     treatment_interest = serializers.ListField(
         child=serializers.CharField(),
         required=False,
@@ -193,6 +185,14 @@ class LeadSerializer(serializers.ModelSerializer):
     contact_designation = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     contact_phone = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     contact_email = serializers.EmailField(required=False, allow_null=True)
+
+    # ── NEW: task / action status ─────────────────────────────────────────────
+    action_status = serializers.ChoiceField(
+        choices=["to_do", "in_progress", "completed"],
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+    )
 
     class Meta:
         model = Lead
@@ -245,6 +245,9 @@ class LeadSerializer(serializers.ModelSerializer):
             "next_action_type",
             "next_action_description",
 
+            # ── NEW ──────────────────────────────────────────────────────────
+            "action_status",
+
             "treatment_interest",
             "book_appointment",
             "appointment_date",
@@ -257,7 +260,7 @@ class LeadSerializer(serializers.ModelSerializer):
         read_only_fields = ("id",)
 
     # =====================================================
-    # 🔥 FIX 1: NORMALIZE STATUS
+    # 🔥 FIX 1: NORMALIZE LEAD STATUS
     # =====================================================
     def validate_lead_status(self, value):
         if value is None:
@@ -267,6 +270,28 @@ class LeadSerializer(serializers.ModelSerializer):
 
         if value == "":
             return None
+
+        return value
+
+    # =====================================================
+    # 🔥 NEW: NORMALIZE ACTION STATUS
+    # Empty string → None so the DB stores NULL, not "".
+    # =====================================================
+    def validate_action_status(self, value):
+        if value is None:
+            return None
+
+        if isinstance(value, str):
+            value = value.strip().lower()
+
+        if value == "":
+            return None
+
+        allowed = {"to_do", "in_progress", "completed"}
+        if value not in allowed:
+            raise serializers.ValidationError(
+                f"Invalid action_status '{value}'. Must be one of: {', '.join(sorted(allowed))}"
+            )
 
         return value
 
@@ -326,7 +351,6 @@ class LeadSerializer(serializers.ModelSerializer):
     # VALIDATION
     # =====================================================
     def validate(self, attrs):
-
         request = self.context.get("request")
 
         clinic_id = attrs.get("clinic_id") or request.headers.get("X-Clinic-Id")
@@ -365,35 +389,24 @@ class LeadSerializer(serializers.ModelSerializer):
                 clinic_id=clinic_id,
                 is_active=True
             ).exists():
-                raise ValidationError({
-                    "referral_department_id": "Invalid referral department"
-                })
+                raise ValidationError({"referral_department_id": "Invalid referral department"})
 
         if ref_source_id:
-
             source = ReferralSource.objects.filter(
                 id=ref_source_id,
                 clinic_id=clinic_id
             ).first()
 
             if not source:
-                raise ValidationError({
-                    "referral_source_id": "Invalid referral source"
-                })
+                raise ValidationError({"referral_source_id": "Invalid referral source"})
 
-            if (
-                ref_dept_id and
-                source.referral_department_id != ref_dept_id
-            ):
-                raise ValidationError(
-                    "Referral Source does not belong to selected Department"
-                )
+            if ref_dept_id and source.referral_department_id != ref_dept_id:
+                raise ValidationError("Referral Source does not belong to selected Department")
 
         # ================= STAGE =================
         stage_id = attrs.get("stage_id")
 
         if stage_id:
-
             stage = PipelineStage.objects.filter(
                 id=stage_id,
                 is_active=True,
@@ -406,14 +419,8 @@ class LeadSerializer(serializers.ModelSerializer):
             if str(stage.pipeline.clinic_id) != str(clinic_id):
                 raise ValidationError({"stage_id": "Invalid clinic stage"})
 
-            if (
-                pipeline_id and
-                str(stage.pipeline_id) != str(pipeline_id)
-            ):
-                raise ValidationError({
-                    "stage_id": "Stage not in selected pipeline"
-                })
-
+            if pipeline_id and str(stage.pipeline_id) != str(pipeline_id):
+                raise ValidationError({"stage_id": "Stage not in selected pipeline"})
         # ================= INTEREST FIX =================
         treatment_interest = attrs.get("treatment_interest")
 
@@ -421,6 +428,9 @@ class LeadSerializer(serializers.ModelSerializer):
             attrs["treatment_interest"] = []
 
         return attrs
+
+        return attrs
+
     # =====================================================
     # CREATE
     # =====================================================
@@ -444,5 +454,16 @@ class LeadSerializer(serializers.ModelSerializer):
         # =====================================================
         if request and "lead_status" in request.data:
             validated_data["lead_status"] = request.data.get("lead_status")
+
+        # ── Preserve explicit action_status from request data ─────────────────
+        # The serializer field already validates it; this ensures an explicit
+        # null/empty from the request correctly clears the field on update.
+        if request and "action_status" in request.data:
+            raw = request.data.get("action_status")
+            if raw in (None, "", "null"):
+                validated_data["action_status"] = None
+            else:
+                # Already validated + normalized by validate_action_status()
+                validated_data.setdefault("action_status", raw)
 
         return update_lead(instance, validated_data, request=request)
