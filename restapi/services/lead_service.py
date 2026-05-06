@@ -365,23 +365,25 @@ def create_lead(validated_data, request=None):
     # SAVE INTERESTS
     # =====================================================
     if treatment_interest:
-        interest_ids = []
-
-        for interest_name in treatment_interest:
-            if not interest_name:
+        # Flatten: entries may be UUIDs, names, or comma-joined UUID strings
+        flat_ids = []
+        for item in treatment_interest:
+            if not item:
                 continue
+            for part in str(item).split(","):
+                cleaned = part.strip()
+                if cleaned:
+                    flat_ids.append(cleaned)
 
-            interest_obj, _ = Interest.objects.get_or_create(
-                clinic=clinic,
-                name=str(interest_name).strip(),
-                defaults={
-                    "is_active": True
-                }
-            )
+        # Look up existing interests by UUID only — never create from IDs
+        interests = Interest.objects.filter(id__in=flat_ids, clinic=clinic, is_active=True)
 
-            interest_ids.append(interest_obj.id)
+        if interests.count() != len(set(flat_ids)):
+            found_ids = set(str(i.id) for i in interests)
+            missing = [x for x in flat_ids if x not in found_ids]
+            logger.warning(f"[CREATE] Some interest IDs not found: {missing}")
 
-        lead.treatment_interest.set(interest_ids)
+        lead.treatment_interest.set(interests)
 
     # =====================================================
     # SAVE DOCUMENTS
@@ -626,24 +628,29 @@ def update_lead(instance, validated_data, request=None):
     # UPDATE INTERESTS
     # =====================================================
     if treatment_interest is not None:
-
-        interest_ids = []
-
-        for interest_name in treatment_interest:
-            if not interest_name:
+        # Flatten: entries may be UUIDs or comma-joined UUID strings
+        flat_ids = []
+        for item in treatment_interest:
+            if not item:
                 continue
+            for part in str(item).split(","):
+                cleaned = part.strip()
+                if cleaned:
+                    flat_ids.append(cleaned)
 
-            interest_obj, _ = Interest.objects.get_or_create(
-                clinic=instance.clinic,
-                name=str(interest_name).strip(),
-                defaults={
-                    "is_active": True
-                }
+        if flat_ids:
+            interests = Interest.objects.filter(
+                id__in=flat_ids, clinic=instance.clinic, is_active=True
             )
 
-            interest_ids.append(interest_obj.id)
+            if interests.count() != len(set(flat_ids)):
+                found_ids = set(str(i.id) for i in interests)
+                missing = [x for x in flat_ids if x not in found_ids]
+                logger.warning(f"[UPDATE] Some interest IDs not found: {missing}")
 
-        instance.treatment_interest.set(interest_ids)
+            instance.treatment_interest.set(interests)
+        else:
+            instance.treatment_interest.clear()
 
     # =====================================================
     # SAVE DOCUMENTS
