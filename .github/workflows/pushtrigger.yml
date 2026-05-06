@@ -54,6 +54,7 @@ jobs:
               -p 8004:8000 \
               --add-host=host.docker.internal:host-gateway \
               --env-file /root/lms.env \
+              -v /var/www/vidai-media:/app/media \
               ${{ secrets.DOCKER_USERNAME }}/vidai-backend:latest
 
             echo "Wait container boot"
