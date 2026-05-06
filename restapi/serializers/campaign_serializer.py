@@ -131,6 +131,7 @@ class CampaignReadSerializer(serializers.ModelSerializer):
 
             "campaign_mode",
             "campaign_content",
+            "image_url",
             "status",
 
             "is_active",

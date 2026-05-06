@@ -500,7 +500,7 @@ class FacebookLoginAPIView(APIView):
             "?response_type=code"
             f"&client_id={settings.FACEBOOK_CLIENT_ID}"
             f"&redirect_uri={settings.FACEBOOK_REDIRECT_URI}"
-            "&scope=public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts,read_insights"
+            "&scope=public_profile,pages_show_list,pages_read_engagement,ads_management,ads_read,business_management,instagram_basic"
             f"&state={state_payload}"
             "&auth_type=rerequest"
         )
@@ -532,6 +532,33 @@ class FacebookCallbackAPIView(APIView):
                 "access_token"
             ]
 
+            long_token = requests.get(
+                "https://graph.facebook.com/v19.0/oauth/access_token",
+                params={
+                    "grant_type": "fb_exchange_token",
+                    "client_id": settings.FACEBOOK_CLIENT_ID,
+                    "client_secret": settings.FACEBOOK_CLIENT_SECRET,
+                    "fb_exchange_token": user_token,
+                },
+            ).json()
+
+            user_token = long_token.get("access_token", user_token)
+
+            # NEW — fetch ad accounts
+            ad_accounts = requests.get(
+                "https://graph.facebook.com/v19.0/me/adaccounts",
+                params={"access_token": user_token},
+            ).json()
+
+            ad_account_id = None
+            if not ad_accounts.get("data"):
+                return Response({"error": "No ad accounts found"}, status=400)
+
+            ad_account_id = next(
+                (acc["id"] for acc in ad_accounts["data"] if acc.get("account_status") == 1),
+                ad_accounts["data"][0]["id"]
+            )
+
             pages = requests.get(
                 "https://graph.facebook.com/v19.0/me/accounts",
                 params={
@@ -545,6 +572,19 @@ class FacebookCallbackAPIView(APIView):
                 )
 
             page = pages["data"][0]
+
+            # NEW — fetch Instagram Business Account
+            ig_data = requests.get(
+                f"https://graph.facebook.com/v19.0/{page['id']}",
+                params={
+                    "fields": "instagram_business_account",
+                    "access_token": user_token,
+                },
+            ).json()
+
+            instagram_id = None
+            if ig_data.get("instagram_business_account"):
+                instagram_id = ig_data["instagram_business_account"]["id"]
 
             state_raw = request.GET.get("state")
 
@@ -570,12 +610,12 @@ class FacebookCallbackAPIView(APIView):
                 clinic=clinic,
                 platform="facebook",
                 defaults={
-                    "access_token": page[
-                        "access_token"
-                    ],
+                    "access_token": page["access_token"],
                     "user_token": user_token,
                     "page_id": page["id"],
                     "page_name": page["name"],
+                    "account_id": ad_account_id,
+                    "org_urn": instagram_id,
                     "is_active": True,
                 },
             )

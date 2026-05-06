@@ -139,6 +139,7 @@ urlpatterns = [
 
     path("campaigns/<uuid:campaign_id>/mailchimp-insights/", CampaignMailchimpInsightsAPIView.as_view(), name="mailchimp-insights"),
     path("mailchimp/insights-callback/", MailchimpInsightsCallbackAPIView.as_view(), name="mailchimp-callback"),
+    path("social-campaign/meta-callback/", MetaCampaignCallbackAPIView.as_view(), name="meta-campaign-create-callback"),
 
     # ============================
     # PIPELINE
@@ -254,6 +255,7 @@ urlpatterns = [
     path("fb/campaigns/", FBCampaignListAPIView.as_view(), name="fb-campaigns"),
     path("fb/campaigns/create/", FBCampaignCreateAPIView.as_view(), name="fb-campaign-create"),
     path("fb/campaigns/<str:campaign_id>/insights/", FBCampaignInsightsAPIView.as_view(), name="fb-insights"),
+    path("fb/campaigns/<uuid:campaign_id>/status/", FBCampaignStatusAPIView.as_view(), name="fb-campaign-status"),
 
     # ============================
     # GOOGLE ADS
