@@ -324,7 +324,9 @@ def create_lead(validated_data, request=None):
     # SAVE INTERESTS
     # =====================================================
     if treatment_interest:
-        lead.treatment_interest.set(treatment_interest)
+        lead.treatment_interest = treatment_interest
+        
+        lead.save(update_fields=["treatment_interest"])
 
     # =====================================================
     # SAVE DOCUMENTS
@@ -553,8 +555,8 @@ def update_lead(instance, validated_data, request=None):
     # UPDATE INTERESTS
     # =====================================================
     if treatment_interest is not None:
-        instance.treatment_interest.set(treatment_interest)
-
+        instance.treatment_interest = treatment_interest
+        instance.save(update_fields=["treatment_interest"])
     # =====================================================
     # SAVE DOCUMENTS
     # =====================================================

@@ -179,9 +179,8 @@ class LeadSerializer(serializers.ModelSerializer):
     stage_id = serializers.UUIDField(required=False, allow_null=True)
 
     # ✅ INTEREST FIELD
-    treatment_interest = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=Interest.objects.filter(is_active=True),
+    treatment_interest = serializers.ListField(
+        child=serializers.CharField(),
         required=False,
         allow_empty=True
 )
