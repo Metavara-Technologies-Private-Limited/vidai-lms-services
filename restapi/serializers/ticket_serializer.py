@@ -3,6 +3,8 @@ from rest_framework.exceptions import ValidationError
 from django.utils import timezone
 from restapi.utils.permissions import get_user_permissions, has_permission
 from restapi.models import Ticket, Document, TicketTimeline, Lab, TicketReply, Employee
+from django.contrib.auth import get_user_model
+User = get_user_model()
 from restapi.services.ticket_service import (
     create_ticket_service,
     update_ticket_service,
@@ -126,6 +128,7 @@ class TicketListSerializer(serializers.ModelSerializer):
     # ✅ FIXED
     assigned_to_id = serializers.IntegerField(read_only=True)
     assigned_to_name = serializers.CharField(read_only=True)
+    assigned_to_email = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
@@ -143,9 +146,33 @@ class TicketListSerializer(serializers.ModelSerializer):
             "priority",
             "assigned_to_id",
             "assigned_to_name",
+            "assigned_to_email",
             "status",
         ]
+    def get_assigned_to_email(self, obj):
+        if not obj.assigned_to_id:
+            return None
 
+        employee = Employee.objects.filter(id=obj.assigned_to_id).select_related("user").first()
+
+        if not employee:
+            return None
+
+        # 🔥 PRIORITY 1: User table (REAL SOURCE)
+        if employee.user and employee.user.email:
+            return employee.user.email.strip()
+
+        # 🔥 PRIORITY 2: Employee table fallback
+        if employee.email:
+            return employee.email.strip()
+
+        if getattr(employee, "emp_email", None):
+            return employee.emp_email.strip()
+
+        if getattr(employee, "official_email", None):
+            return employee.official_email.strip()
+
+        return None
 
 # ============================================================
 # TICKET DETAIL SERIALIZER
@@ -158,9 +185,9 @@ class TicketDetailSerializer(serializers.ModelSerializer):
     lab_name = serializers.CharField(source="lab.name", read_only=True)
     department_name = serializers.CharField(source="department.name", read_only=True)
 
-    # ✅ FIXED
     assigned_to_id = serializers.IntegerField(read_only=True)
     assigned_to_name = serializers.CharField(read_only=True)
+    assigned_to_email = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
@@ -176,6 +203,7 @@ class TicketDetailSerializer(serializers.ModelSerializer):
             "requested_by",
             "assigned_to_id",
             "assigned_to_name",
+            "assigned_to_email",
             "priority",
             "status",
             "due_date",
@@ -189,6 +217,22 @@ class TicketDetailSerializer(serializers.ModelSerializer):
             "timeline",
         ]
 
+    def get_assigned_to_email(self, obj):
+        if not obj.assigned_to_id:
+            return None
+
+        # 🔥 CORRECT: assigned_to_id is USER ID
+        user = User.objects.filter(id=obj.assigned_to_id).first()
+
+        if user and user.email:
+            return user.email.strip()
+
+        # fallback (optional)
+        employee = Employee.objects.filter(id=obj.assigned_to_id).first()
+        if employee and employee.email:
+            return employee.email.strip()
+
+        return None
 
 # ============================================================
 # TICKET WRITE SERIALIZER

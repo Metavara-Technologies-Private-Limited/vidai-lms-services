@@ -206,7 +206,7 @@ def create_ticket_service(validated_data):
 # ============================================================
 @transaction.atomic
 def update_ticket_service(ticket_instance, validated_data):
-
+    print("🔥 validated_data:", validated_data)
     attached_documents = validated_data.pop("documents", [])
     event = validated_data.pop("event", None)
     clinic_name = validated_data.pop("clinicName", None)
