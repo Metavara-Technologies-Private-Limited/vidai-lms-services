@@ -8,7 +8,7 @@ from django.utils.html import strip_tags
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
-
+from restapi.models import Interest
 from restapi.models import (
     Lead,
     Clinic,
@@ -324,9 +324,23 @@ def create_lead(validated_data, request=None):
     # SAVE INTERESTS
     # =====================================================
     if treatment_interest:
-        lead.treatment_interest = treatment_interest
+        interest_ids = []
         
-        lead.save(update_fields=["treatment_interest"])
+        for interest_name in treatment_interest:
+            if not interest_name:
+                continue
+            interest_obj, _ = Interest.objects.get_or_create(
+                clinic=clinic,
+            name=str(interest_name).strip(),
+            defaults={
+                "is_active": True
+            }
+        )
+            interest_ids.append(interest_obj.id)
+          
+        lead.treatment_interest.set(interest_ids)
+        
+
 
     # =====================================================
     # SAVE DOCUMENTS
@@ -555,8 +569,23 @@ def update_lead(instance, validated_data, request=None):
     # UPDATE INTERESTS
     # =====================================================
     if treatment_interest is not None:
-        instance.treatment_interest = treatment_interest
-        instance.save(update_fields=["treatment_interest"])
+
+        interest_ids = []
+       
+        for interest_name in treatment_interest:
+            if not interest_name:
+                continue
+            interest_obj, _ = Interest.objects.get_or_create(
+                clinic= instance.clinic,
+            name=str(interest_name).strip(),
+            defaults={
+                "is_active": True
+            }
+        )
+            interest_ids.append(interest_obj.id)
+          
+        instance.treatment_interest.set(interest_ids)
+        
     # =====================================================
     # SAVE DOCUMENTS
     # =====================================================
