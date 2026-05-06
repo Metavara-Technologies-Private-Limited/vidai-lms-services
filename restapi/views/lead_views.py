@@ -111,7 +111,10 @@ class LeadCreateAPIView(APIView):
     def post(self, request):
 
         if not has_action_permission_for_labels(request.user, "add", LEAD_LABELS):
-            return Response({"error": "You do not have permission to add leads."}, status=403)
+            return Response(
+                {"error": "You do not have permission to add leads."},
+                status=403
+            )
 
         try:
             clinic = get_request_clinic(request)
@@ -120,6 +123,7 @@ class LeadCreateAPIView(APIView):
             pipeline_id = request.data.get("pipeline_id")
 
             if stage_id:
+
                 stage = PipelineStage.objects.filter(
                     id=stage_id,
                     is_active=True,
@@ -130,55 +134,55 @@ class LeadCreateAPIView(APIView):
                     raise ValidationError({"stage_id": "Invalid stage"})
 
                 if str(stage.pipeline.clinic_id) != str(clinic.id):
-                    raise ValidationError({"stage_id": "Stage does not belong to this clinic"})
+                    raise ValidationError({
+                        "stage_id": "Stage does not belong to this clinic"
+                    })
 
                 if pipeline_id and str(stage.pipeline_id) != str(pipeline_id):
-                    raise ValidationError({"stage_id": "Stage does not belong to selected pipeline"})
+                    raise ValidationError({
+                        "stage_id": "Stage does not belong to selected pipeline"
+                    })
 
+            # =====================================================
+            # DATA COPY
+            # =====================================================
             data = request.data.copy()
 
-            # =========================
+            # =====================================================
             # 🔥 DOCUMENT FIX
-            # =========================
+            # =====================================================
             if hasattr(request, "FILES"):
+
                 files = request.FILES.getlist("documents")
+
                 if files:
                     data.setlist("documents", files)
 
-            # =========================
+            # =====================================================
             # 🔥 TREATMENT INTEREST FIX
-            # =========================
+            # =====================================================
             if "treatment_interest" in data:
 
                 treatment_interest = data.getlist("treatment_interest")
 
                 # SUPPORT SINGLE VALUE ALSO
                 if not treatment_interest:
+
                     single_interest = data.get("treatment_interest")
 
                     if single_interest:
                         treatment_interest = [single_interest]
 
-                data.setlist("treatment_interest", treatment_interest)
+                data.setlist(
+                    "treatment_interest",
+                    treatment_interest
+                )
 
-            # =========================
-            # 🔥 DEPARTMENT VALIDATION (NEW)
-            # =========================
-            department_id = data.get("department_id")
+            serializer = LeadSerializer(
+                data=data,
+                context={"request": request}
+            )
 
-            if not department_id:
-                raise ValidationError({"department_id": "Department is required"})
-
-            exists = Department.objects.filter(
-                id=department_id,
-                clinic=clinic,
-                is_active=True
-            ).exists()
-
-            if not exists:
-                raise ValidationError({"department_id": "Invalid department for this clinic"})
-
-            serializer = LeadSerializer(data=data, context={"request": request})
             serializer.is_valid(raise_exception=True)
 
             lead = serializer.save()
@@ -195,14 +199,25 @@ class LeadCreateAPIView(APIView):
                 "assigned_to_id": lead.assigned_to_id,
             })
 
-            return Response(LeadReadSerializer(lead).data, status=201)
+            return Response(
+                LeadReadSerializer(lead).data,
+                status=201
+            )
 
         except ValidationError as ve:
             return Response({"error": ve.detail}, status=400)
 
         except Exception:
-            logger.error("Unhandled Lead Create Error:\n" + traceback.format_exc())
-            return Response({"error": "Internal Server Error"}, status=500)
+            logger.error(
+                "Unhandled Lead Create Error:\n" +
+                traceback.format_exc()
+            )
+
+            return Response(
+                {"error": "Internal Server Error"},
+                status=500
+            )
+
 
 # -------------------------------------------------------------------
 # Lead Update API View (PUT)
@@ -220,72 +235,83 @@ class LeadUpdateAPIView(APIView):
     )
     def put(self, request, lead_id):
 
-        if not has_action_permission_for_labels(request.user, "edit", LEAD_LABELS):
-            return Response({"error": "You do not have permission to edit leads."}, status=403)
+        if not has_action_permission_for_labels(
+            request.user,
+            "edit",
+            LEAD_LABELS
+        ):
+            return Response(
+                {"error": "You do not have permission to edit leads."},
+                status=403
+            )
 
         try:
             clinic = get_request_clinic(request)
-            lead = get_scoped_lead_or_404(request, clinic, lead_id)
+
+            lead = get_scoped_lead_or_404(
+                request,
+                clinic,
+                lead_id
+            )
 
             data = request.data.copy()
 
-            # =========================
+            # =====================================================
             # 🔥 DOCUMENT FIX
-            # =========================
+            # =====================================================
             if hasattr(request, "FILES"):
+
                 files = request.FILES.getlist("documents")
+
                 if files:
                     data.setlist("documents", files)
 
-            # =========================
+            # =====================================================
             # 🔥 TREATMENT INTEREST FIX
-            # =========================
+            # =====================================================
             if "treatment_interest" in data:
 
                 treatment_interest = data.getlist("treatment_interest")
 
                 # SUPPORT SINGLE VALUE ALSO
                 if not treatment_interest:
+
                     single_interest = data.get("treatment_interest")
 
                     if single_interest:
                         treatment_interest = [single_interest]
 
-                data.setlist("treatment_interest", treatment_interest)
+                data.setlist(
+                    "treatment_interest",
+                    treatment_interest
+                )
 
-            # =========================
-            # 🔥 STATUS FIX
-            # =========================
+            # =====================================================
+            # STATUS FIX
+            # =====================================================
             if "lead_status" in data:
-                status_val = str(data.get("lead_status")).strip().lower()
+
+                status_val = str(
+                    data.get("lead_status")
+                ).strip().lower()
+
                 data["lead_status"] = status_val
 
                 request._full_data = request.data.copy()
                 request._full_data["lead_status"] = status_val
-                logger.info(f"Lead Update Requested Status: {status_val}")
 
-            # =========================
-            # 🔥 DEPARTMENT VALIDATION (NEW)
-            # =========================
-            if "department_id" in data:
-                dept_id = data.get("department_id")
+                logger.info(
+                    f"Lead Update Requested Status: {status_val}"
+                )
 
-                if not dept_id:
-                    raise ValidationError({"department_id": "Department cannot be empty"})
-
-                exists = Department.objects.filter(
-                    id=dept_id,
-                    clinic=clinic,
-                    is_active=True
-                ).exists()
-
-                if not exists:
-                    raise ValidationError({"department_id": "Invalid department for this clinic"})
-
+            # =====================================================
+            # STAGE VALIDATION
+            # =====================================================
             stage_id = data.get("stage_id")
             pipeline_id = data.get("pipeline_id")
 
             if stage_id:
+
                 stage = PipelineStage.objects.filter(
                     id=stage_id,
                     is_active=True,
@@ -296,10 +322,14 @@ class LeadUpdateAPIView(APIView):
                     raise ValidationError({"stage_id": "Invalid stage"})
 
                 if str(stage.pipeline.clinic_id) != str(clinic.id):
-                    raise ValidationError({"stage_id": "Stage does not belong to this clinic"})
+                    raise ValidationError({
+                        "stage_id": "Stage does not belong to this clinic"
+                    })
 
                 if pipeline_id and str(stage.pipeline_id) != str(pipeline_id):
-                    raise ValidationError({"stage_id": "Stage does not belong to selected pipeline"})
+                    raise ValidationError({
+                        "stage_id": "Stage does not belong to selected pipeline"
+                    })
 
             serializer = LeadSerializer(
                 lead,
@@ -309,6 +339,7 @@ class LeadUpdateAPIView(APIView):
             )
 
             serializer.is_valid(raise_exception=True)
+
             updated_lead = serializer.save()
 
             logger.info(
@@ -325,14 +356,25 @@ class LeadUpdateAPIView(APIView):
                 "assigned_to_id": updated_lead.assigned_to_id,
             })
 
-            return Response(LeadReadSerializer(updated_lead).data, status=200)
+            return Response(
+                LeadReadSerializer(updated_lead).data,
+                status=200
+            )
 
         except ValidationError as ve:
             return Response({"error": ve.detail}, status=400)
 
         except Exception:
-            logger.error("Unhandled Lead Update Error:\n" + traceback.format_exc())
-            return Response({"error": "Internal Server Error"}, status=500)
+
+            logger.error(
+                "Unhandled Lead Update Error:\n" +
+                traceback.format_exc()
+            )
+
+            return Response(
+                {"error": "Internal Server Error"},
+                status=500
+            )
 # -------------------------------------------------------------------
 # Lead List API View (GET)
 # -------------------------------------------------------------------

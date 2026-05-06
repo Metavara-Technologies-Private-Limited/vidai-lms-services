@@ -322,88 +322,104 @@ class LeadSerializer(serializers.ModelSerializer):
         return value
 
     # =====================================================
-# VALIDATION
-# =====================================================
-def validate(self, attrs):
-    request = self.context.get("request")
+    # VALIDATION
+    # =====================================================
+    def validate(self, attrs):
 
-    clinic_id = attrs.get("clinic_id") or request.headers.get("X-Clinic-Id")
+        request = self.context.get("request")
 
-    if not clinic_id:
-        raise ValidationError({"clinic_id": "Clinic is required"})
+        clinic_id = attrs.get("clinic_id") or request.headers.get("X-Clinic-Id")
 
-    pipeline_id = attrs.get("pipeline_id")
+        if not clinic_id:
+            raise ValidationError({"clinic_id": "Clinic is required"})
 
-    if pipeline_id:
-        if not Pipeline.objects.filter(
-            id=pipeline_id,
-            clinic_id=clinic_id,
-            is_deleted=False
-        ).exists():
-            raise ValidationError({"pipeline_id": "Invalid pipeline"})
+        pipeline_id = attrs.get("pipeline_id")
 
-    # ================= REFERRAL =================
-    ref_dept_id = attrs.get("referral_department_id")
-    ref_source_id = attrs.get("referral_source_id")
+        if pipeline_id:
+            if not Pipeline.objects.filter(
+                id=pipeline_id,
+                clinic_id=clinic_id,
+                is_deleted=False
+            ).exists():
+                raise ValidationError({"pipeline_id": "Invalid pipeline"})
 
-    referral_source_data = request.data.get("referral_source") if request else None
+        # ================= REFERRAL =================
+        ref_dept_id = attrs.get("referral_department_id")
+        ref_source_id = attrs.get("referral_source_id")
 
-    if referral_source_data:
-        if not referral_source_data.get("first_name"):
-            raise ValidationError({"referral_source": "first_name required"})
+        referral_source_data = request.data.get("referral_source") if request else None
 
-    if ref_source_id and not ref_dept_id:
-        raise ValidationError({
-            "referral_department_id": "Required when referral_source is provided"
-        })
+        if referral_source_data:
+            if not referral_source_data.get("first_name"):
+                raise ValidationError({"referral_source": "first_name required"})
 
-    if ref_dept_id:
-        if not ReferralDepartment.objects.filter(
-            id=ref_dept_id,
-            clinic_id=clinic_id,
-            is_active=True
-        ).exists():
-            raise ValidationError({"referral_department_id": "Invalid referral department"})
+        if ref_source_id and not ref_dept_id:
+            raise ValidationError({
+                "referral_department_id": "Required when referral_source is provided"
+            })
 
-    if ref_source_id:
-        source = ReferralSource.objects.filter(
-            id=ref_source_id,
-            clinic_id=clinic_id
-        ).first()
+        if ref_dept_id:
+            if not ReferralDepartment.objects.filter(
+                id=ref_dept_id,
+                clinic_id=clinic_id,
+                is_active=True
+            ).exists():
+                raise ValidationError({
+                    "referral_department_id": "Invalid referral department"
+                })
 
-        if not source:
-            raise ValidationError({"referral_source_id": "Invalid referral source"})
+        if ref_source_id:
 
-        if ref_dept_id and source.referral_department_id != ref_dept_id:
-            raise ValidationError("Referral Source does not belong to selected Department")
+            source = ReferralSource.objects.filter(
+                id=ref_source_id,
+                clinic_id=clinic_id
+            ).first()
 
-    # ================= STAGE =================
-    stage_id = attrs.get("stage_id")
+            if not source:
+                raise ValidationError({
+                    "referral_source_id": "Invalid referral source"
+                })
 
-    if stage_id:
-        stage = PipelineStage.objects.filter(
-            id=stage_id,
-            is_active=True,
-            is_deleted=False
-        ).select_related("pipeline").first()
+            if (
+                ref_dept_id and
+                source.referral_department_id != ref_dept_id
+            ):
+                raise ValidationError(
+                    "Referral Source does not belong to selected Department"
+                )
 
-        if not stage:
-            raise ValidationError({"stage_id": "Invalid stage"})
+        # ================= STAGE =================
+        stage_id = attrs.get("stage_id")
 
-        if str(stage.pipeline.clinic_id) != str(clinic_id):
-            raise ValidationError({"stage_id": "Invalid clinic stage"})
+        if stage_id:
 
-        if pipeline_id and str(stage.pipeline_id) != str(pipeline_id):
-            raise ValidationError({"stage_id": "Stage not in selected pipeline"})
+            stage = PipelineStage.objects.filter(
+                id=stage_id,
+                is_active=True,
+                is_deleted=False
+            ).select_related("pipeline").first()
 
-    # ================= INTEREST FIX =================
-    treatment_interest = attrs.get("treatment_interest")
+            if not stage:
+                raise ValidationError({"stage_id": "Invalid stage"})
 
-    if treatment_interest in [None, "", "null"]:
-        attrs["treatment_interest"] = []
+            if str(stage.pipeline.clinic_id) != str(clinic_id):
+                raise ValidationError({"stage_id": "Invalid clinic stage"})
 
-    return attrs
+            if (
+                pipeline_id and
+                str(stage.pipeline_id) != str(pipeline_id)
+            ):
+                raise ValidationError({
+                    "stage_id": "Stage not in selected pipeline"
+                })
 
+        # ================= INTEREST FIX =================
+        treatment_interest = attrs.get("treatment_interest")
+
+        if treatment_interest in [None, "", "null"]:
+            attrs["treatment_interest"] = []
+
+        return attrs
     # =====================================================
     # CREATE
     # =====================================================

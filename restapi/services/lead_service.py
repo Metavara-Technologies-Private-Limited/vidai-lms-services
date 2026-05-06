@@ -117,16 +117,23 @@ def create_lead(validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # ✅ NEW
+    # ✅ INTEREST
     treatment_interest = validated_data.pop("treatment_interest", [])
 
+    # ✅ DOCUMENT SAFETY
     if not isinstance(documents, list):
         documents = []
 
+    # =====================================================
+    # PHONE VALIDATION
+    # =====================================================
     validated_data["contact_no"] = _validate_phone(
         validated_data.get("contact_no")
     )
 
+    # =====================================================
+    # CLINIC
+    # =====================================================
     clinic_id = request.headers.get("X-Clinic-Id") if request else None
 
     if not clinic_id:
@@ -140,10 +147,15 @@ def create_lead(validated_data, request=None):
 
     created_by_id, created_by_name = _get_user_info(request)
 
+    # =====================================================
+    # STAGE
+    # =====================================================
     stage_id = validated_data.pop("stage_id", None)
+
     stage = None
 
     if stage_id:
+
         stage = PipelineStage.objects.filter(
             id=stage_id,
             is_active=True,
@@ -154,25 +166,29 @@ def create_lead(validated_data, request=None):
         if not stage:
             raise ValidationError({"stage_id": "Invalid stage"})
 
-    # =========================
-    # ✅ FIXED DEPARTMENT BLOCK (INSIDE FUNCTION)
-    # =========================
+    # =====================================================
+    # OPTIONAL DEPARTMENT FIX
+    # =====================================================
+    department = None
+
     department_id = validated_data.pop("department_id", None)
 
-    if not department_id:
-        raise ValidationError({"department_id": "Department is required"})
+    if department_id:
 
-    department = Department.objects.filter(
-        id=department_id,
-        clinic=clinic,
-        is_active=True
-    ).first()
+        department = Department.objects.filter(
+            id=department_id,
+            clinic=clinic,
+            is_active=True
+        ).first()
 
-    if not department:
-        raise ValidationError({"department_id": "Invalid department for this clinic"})
+        if not department:
+            raise ValidationError({
+                "department_id": "Invalid department for this clinic"
+            })
 
-    # =========================
-
+    # =====================================================
+    # CAMPAIGN
+    # =====================================================
     campaign_id = validated_data.pop("campaign_id", None)
 
     campaign = Campaign.objects.filter(
@@ -180,34 +196,59 @@ def create_lead(validated_data, request=None):
         clinic=clinic
     ).first() if campaign_id else None
 
+    # =====================================================
+    # ASSIGNED TO
+    # =====================================================
     assigned_to_id = validated_data.pop("assigned_to_id", None)
+
     assigned_to_name = _resolve_assignee_name(
         assigned_to_id,
         validated_data.pop("assigned_to_name", None)
     )
 
+    # =====================================================
+    # REFERRAL
+    # =====================================================
     referral_department = None
     referral_source = None
 
     ref_dept_id = validated_data.pop("referral_department_id", None)
+
     ref_source_id = validated_data.pop("referral_source_id", None)
-    referral_source_data = validated_data.pop("referral_source", None)
+
+    referral_source_data = validated_data.pop(
+        "referral_source",
+        None
+    )
 
     if referral_source_data:
-        first_name = referral_source_data.get("first_name", "").strip()
-        last_name = referral_source_data.get("last_name", "").strip()
+
+        first_name = referral_source_data.get(
+            "first_name",
+            ""
+        ).strip()
+
+        last_name = referral_source_data.get(
+            "last_name",
+            ""
+        ).strip()
+
         email = referral_source_data.get("email")
+
         role = referral_source_data.get("role")
 
         full_name = f"{first_name} {last_name}".strip()
 
         if ref_dept_id:
+
             referral_department = ReferralDepartment.objects.filter(
                 id=ref_dept_id,
                 clinic=clinic,
                 is_active=True
             ).first()
+
         elif role:
+
             referral_department = ReferralDepartment.objects.filter(
                 name__iexact=role.strip(),
                 clinic=clinic,
@@ -220,6 +261,7 @@ def create_lead(validated_data, request=None):
         ).first()
 
         if not referral_source:
+
             referral_source = ReferralSource.objects.create(
                 name=full_name,
                 email=email,
@@ -229,9 +271,14 @@ def create_lead(validated_data, request=None):
             )
 
     else:
+
         if ref_source_id and not ref_dept_id:
-            raise ValidationError({"referral_department_id": "Required"})
+            raise ValidationError({
+                "referral_department_id": "Required"
+            })
+
         if ref_dept_id:
+
             referral_department = get_object_or_404(
                 ReferralDepartment,
                 id=ref_dept_id,
@@ -240,17 +287,25 @@ def create_lead(validated_data, request=None):
             )
 
         if ref_source_id:
+
             referral_source = get_object_or_404(
                 ReferralSource,
                 id=ref_source_id,
                 clinic=clinic
             )
-            if referral_department and referral_source.referral_department_id != referral_department.id:
+
+            if (
+                referral_department and
+                referral_source.referral_department_id != referral_department.id
+            ):
                 raise ValidationError("Referral mismatch")
 
     validated_data.pop("referral_department_id", None)
     validated_data.pop("referral_source_id", None)
 
+    # =====================================================
+    # CREATE LEAD
+    # =====================================================
     lead = Lead.objects.create(
         clinic=clinic,
         department=department,
@@ -265,11 +320,17 @@ def create_lead(validated_data, request=None):
         **validated_data
     )
 
-    # ✅ SAVE MANY TO MANY
+    # =====================================================
+    # SAVE INTERESTS
+    # =====================================================
     if treatment_interest:
         lead.treatment_interest.set(treatment_interest)
 
+    # =====================================================
+    # SAVE DOCUMENTS
+    # =====================================================
     for file in documents or []:
+
         if not file or not hasattr(file, "name"):
             continue
 
