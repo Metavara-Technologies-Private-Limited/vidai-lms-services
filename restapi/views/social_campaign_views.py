@@ -1,4 +1,3 @@
-
 # =====================================================
 # restapi/views/social_campaign_views.py
 # =====================================================
@@ -6,6 +5,7 @@
 import logging
 import traceback
 import requests
+import math
 
 from django.db import transaction
 from django.utils import timezone
@@ -50,6 +50,23 @@ from restapi.utils.clinic_scope import (
 
 logger = logging.getLogger(__name__)
 
+# -----------------------------------
+# Campaign Objective Mapping
+# -----------------------------------
+CAMPAIGN_OBJECTIVES = {
+    "awareness": "OUTCOME_AWARENESS",
+    "leads": "OUTCOME_LEADS",
+}
+
+
+def get_usd_to_inr():
+    try:
+        res = requests.get(
+            "https://api.exchangerate.host/latest?base=USD&symbols=INR", timeout=3
+        )
+        return res.json()["rates"]["INR"]
+    except:
+        return 95  # fallback
 
 # =====================================================
 # SOCIAL MEDIA CAMPAIGN CREATE
@@ -361,22 +378,10 @@ class SocialMediaCampaignCreateAPIView(APIView):
                         campaign.campaign_name
                     )
 
-                formatted_message = (
-                    f"📢 {campaign.campaign_name}\n\n"
-                    f"{facebook_message}\n\n"
-                    f"📅 Campaign Duration: "
-                    f"{campaign.start_date.strftime('%d %b %Y')} – "
-                    f"{campaign.end_date.strftime('%d %b %Y')}\n"
-                    f"⏰ Scheduled Time: "
-                    f"{campaign.enter_time.strftime('%I:%M %p') if campaign.enter_time else 'N/A'}\n"
-                    f"🎯 Objective: {campaign.campaign_objective}\n"
-                    f"👥 Target Audience: {campaign.target_audience}"
-                )
-
                 # ===================================
-                # FACEBOOK
+                # FACEBOOK OR INSTAGRAM
                 # ===================================
-                if "facebook" in channels:
+                if "facebook" in channels or "instagram" in channels:
 
                     social_fb = SocialAccount.objects.filter(
                         clinic_id=clinic_id,
@@ -386,79 +391,98 @@ class SocialMediaCampaignCreateAPIView(APIView):
 
                     if not social_fb:
                         return Response(
-                            {
-                                "error": (
-                                    "Facebook not connected"
-                                )
-                            },
+                            {"error": "Facebook not connected"},
                             status=400,
                         )
 
-                    send_to_zapier_social(
-                        {
-                            "event": "social_campaign_created",
-                            "campaign_id": str(
-                                campaign.id
+                    if not social_fb.account_id:
+                        return Response(
+                            {"error": "Ad account not found"},
+                            status=400,
+                        )
+
+                    is_facebook = "facebook" in channels
+                    is_instagram = "instagram" in channels
+
+                    promoted_object = {
+                        "page_id": social_fb.page_id
+                    }
+                    if is_instagram:
+                        if not social_fb.org_urn:
+                            return Response(
+                                {"error": "Instagram not connected properly"},
+                                status=400
+                            )
+                        promoted_object["instagram_actor_id"] = social_fb.org_urn
+
+                    status = (
+                        "PAUSED"
+                        if (campaign.status or "").lower() == "draft"
+                        else "ACTIVE"
+                    )
+
+                    budget_usd = float(filtered_budget.get("facebook", 2))
+                    usd_to_inr = get_usd_to_inr()
+                    budget_inr = budget_usd * usd_to_inr
+                    daily_budget = math.ceil(budget_inr * 100) # paise conversion
+
+                    zap_payload = {
+                        "event": "meta_ads_create",
+                        # REQUIRED CORE
+                        "access_token": social_fb.access_token,
+                        "ad_account_id": social_fb.account_id,
+                        "page_id": social_fb.page_id,
+                        # ===================================
+                        # CAMPAIGN
+                        # ===================================
+                        "campaign": {
+                            "internal_campaign_id": str(campaign.id),
+                            "name": campaign.campaign_name,
+                            "objective": CAMPAIGN_OBJECTIVES.get(
+                                campaign.campaign_objective,
+                                "OUTCOME_TRAFFIC",
                             ),
-                            "platforms": channels,
-                            "content": facebook_message,
+                            "status": status,
+                            "special_ad_categories": [],
+                            "is_adset_budget_sharing_enabled": False,
+                        },
+                        # ===================================
+                        # AD SET
+                        # ===================================
+                        "adset": {
+                            "name": f"{campaign.campaign_name} AdSet",
+                            "billing_event": "IMPRESSIONS",
+                            "optimization_goal": "LINK_CLICKS",
+                            "destination_type": "WEBSITE",
+                            "daily_budget": daily_budget,
+                            "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
+                            "targeting": {
+                                "geo_locations": {"countries": ["IN"]},
+                                "publisher_platforms": (
+                                    ["facebook", "instagram"]
+                                    if is_facebook and is_instagram
+                                    else ["instagram"] if is_instagram else ["facebook"]
+                                ),
+                            },
+                            "promoted_object": promoted_object,
+                            "status": status,
+                        },
+                        # ===================================
+                        # AD
+                        # ===================================
+                        "ad": {
+                            "name": f"{campaign.campaign_name} Ad",
+                            "message": facebook_message,
+                            "link": "http://lms-vidaisolutions.metavaratechnologies.com",
                             "image_url": campaign.image_url,
-                        }
-                    )
+                        },
+                    }
+                    zap_payload["platform_flags"] = {
+                        "facebook": is_facebook,
+                        "instagram": is_instagram,
+                    }
 
-                    fb_response = post_to_facebook(
-                        page_id=social_fb.page_id,
-                        page_token=social_fb.access_token,
-                        message=formatted_message,
-                        image_url=campaign.image_url,
-                    )
-
-                    fb_post_id = (
-                        fb_response.get(
-                            "post_id"
-                        )
-                        or fb_response.get(
-                            "id"
-                        )
-                    )
-
-                    if fb_post_id:
-                        campaign.post_id = (
-                            fb_post_id
-                        )
-                        campaign.save(
-                            update_fields=[
-                                "post_id"
-                            ]
-                        )
-
-                # ===================================
-                # INSTAGRAM
-                # ===================================
-                if "instagram" in channels:
-                    social_ig = SocialAccount.objects.filter(
-                        clinic_id=clinic_id,
-                        platform="facebook",
-                        is_active=True,
-                    ).first()
-
-                    ig_user_id = getattr(
-                        social_ig,
-                        "instagram_id",
-                        None,
-                    )
-
-                    if (
-                        social_ig
-                        and ig_user_id
-                        and campaign.image_url
-                    ):
-                        post_to_instagram(
-                            ig_user_id=ig_user_id,
-                            access_token=social_ig.access_token,
-                            message=formatted_message,
-                            image_url=campaign.image_url,
-                        )
+                    send_to_zapier_social(zap_payload)
 
                 # ===================================
                 # LINKEDIN
@@ -693,7 +717,24 @@ class SocialMediaCampaignCreateAPIView(APIView):
             )
 
 
-            
+class MetaCampaignCallbackAPIView(APIView):
+
+    def post(self, request):
+
+        internal_campaign_id = request.data.get("internal_campaign_id")
+        meta_campaign_id = request.data.get("meta_campaign_id")
+
+        try:
+            campaign = Campaign.objects.get(id=internal_campaign_id)
+
+            campaign.fb_campaign_id = meta_campaign_id
+            campaign.save()
+
+            return Response({"success": True})
+
+        except Campaign.DoesNotExist:
+            return Response({"error": "Campaign not found"}, status=404)
+
 # -------------------------------------------------------------------
 # LINKEDIN CAMPAIGN INSIGHTS
 # POST /api/social/campaign/insights/
@@ -829,7 +870,7 @@ class LinkedInCampaignInsightsAPIView(APIView):
                 },
                 status=400
             )
-            
+
 # -------------------------------------------------------------------
 # LINKEDIN CAMPAIGN STATUS
 # POST /api/social/campaign/status/
@@ -951,8 +992,8 @@ class LinkedInCampaignStatusAPIView(APIView):
                 },
                 status=400
             )            
-            
-            
+
+
 class LinkedInCampaignUpdateAPIView(APIView):
 
     def post(self, request):
@@ -985,4 +1026,3 @@ class LinkedInCampaignUpdateAPIView(APIView):
            "desired_status":
                desired_status
         })            
-

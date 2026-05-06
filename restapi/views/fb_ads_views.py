@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 
 from restapi.models import Campaign, Clinic
+from restapi.models.social_account import SocialAccount
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,28 @@ class FBCampaignInsightsAPIView(APIView):
     """
     def get(self, request, campaign_id):
         try:
-            token = settings.FB_ACCESS_TOKEN
+            campaign = Campaign.objects.filter(
+                fb_campaign_id=campaign_id
+            ).first()
+
+            if not campaign:
+                return Response({
+                    "error": "Campaign not found"
+                }, status=404)
+
+            social_fb = SocialAccount.objects.filter(
+                clinic_id=campaign.clinic_id,
+                platform="facebook",
+                is_active=True,
+            ).first()
+
+            if not social_fb:
+                return Response({
+                    "error": "Facebook account not connected"
+                }, status=400)
+
+            token = social_fb.access_token
+
             date_preset = request.query_params.get('date_preset', 'maximum')
 
             r = requests.get(
@@ -176,4 +198,81 @@ class FBCampaignCreateAPIView(APIView):
 
         except Exception:
             logger.error("FB Campaign Create Error:\n" + traceback.format_exc())
+            return Response({"error": "Internal Server Error"}, status=500)
+
+
+class FBCampaignStatusAPIView(APIView):
+    """
+    POST /api/fb/campaigns/<campaign_id>/status/
+
+    Body:
+    {
+        "action": "enable"
+    }
+
+    OR
+
+    {
+        "action": "disable"
+    }
+    """
+
+    def post(self, request, campaign_id):
+
+        try:
+
+            action = request.data.get("action")
+
+            campaign = Campaign.objects.filter(id=campaign_id).first()
+
+            if not campaign:
+                return Response({"error": "Campaign not found"}, status=404)
+
+            if not campaign.fb_campaign_id:
+                return Response({"error": "Meta campaign not synced yet"}, status=400)
+
+            social_fb = SocialAccount.objects.filter(
+                clinic_id=campaign.clinic_id,
+                platform="facebook",
+                is_active=True,
+            ).first()
+
+            if not social_fb:
+                return Response({"error": "Facebook account not connected"}, status=400)
+
+            token = social_fb.access_token
+
+            meta_status = "ACTIVE" if action == "enable" else "PAUSED"
+
+            r = requests.post(
+                f"https://graph.facebook.com/v19.0/{campaign.fb_campaign_id}",
+                data={
+                    "status": meta_status,
+                    "access_token": token,
+                },
+            )
+
+            data = r.json()
+
+            if "error" in data:
+                return Response({"error": data["error"]["message"]}, status=400)
+
+            # local DB sync
+            campaign.status = "live" if meta_status == "ACTIVE" else "stopped"
+
+            campaign.is_active = meta_status == "ACTIVE"
+
+            campaign.save()
+
+            return Response(
+                {
+                    "success": True,
+                    "meta_status": meta_status,
+                    "local_status": campaign.status,
+                }
+            )
+
+        except Exception:
+            logger.error("FB Status Update Error:\n" + traceback.format_exc())
+
             return Response({"error": "Internal Server Error"}, status=500)
