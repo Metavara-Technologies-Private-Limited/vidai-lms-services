@@ -291,10 +291,14 @@ def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
 
-    # ✅ NEW
+    # ✅ INTEREST
     treatment_interest = validated_data.pop("treatment_interest", None)
 
-    # 🔥🔥 CRITICAL FIX
+    # ✅ SAFETY FIX
+    if treatment_interest in ["", "null"]:
+        treatment_interest = []
+
+    # ✅ DOCUMENT SAFETY
     if not isinstance(documents, list):
         documents = []
 
@@ -303,18 +307,29 @@ def update_lead(instance, validated_data, request=None):
 
     old_stage = instance.stage
 
+    # =====================================================
+    # PHONE VALIDATION
+    # =====================================================
     if "contact_no" in validated_data:
         validated_data["contact_no"] = _validate_phone(
             validated_data.get("contact_no")
         )
 
+    # =====================================================
+    # UPDATED BY
+    # =====================================================
     updated_by_id, updated_by_name = _get_user_info(request)
+
     instance.updated_by_id = updated_by_id
     instance.updated_by_name = updated_by_name
 
+    # =====================================================
+    # STAGE
+    # =====================================================
     stage_id = validated_data.pop("stage_id", None)
 
     if stage_id:
+
         stage = PipelineStage.objects.filter(
             id=stage_id,
             is_active=True,
@@ -327,26 +342,74 @@ def update_lead(instance, validated_data, request=None):
 
         instance.stage = stage
 
+    # =====================================================
+    # OPTIONAL DEPARTMENT FIX
+    # =====================================================
+    if "department_id" in validated_data:
+
+        department_id = validated_data.pop("department_id", None)
+
+        if department_id:
+
+            department = Department.objects.filter(
+                id=department_id,
+                clinic=instance.clinic,
+                is_active=True
+            ).first()
+
+            if not department:
+                raise ValidationError({
+                    "department_id": "Invalid department for this clinic"
+                })
+
+            instance.department = department
+
+        else:
+            instance.department = None
+
+    # =====================================================
+    # ASSIGNED TO
+    # =====================================================
     if "assigned_to_id" in validated_data:
+
         assigned_to_id = validated_data.pop("assigned_to_id")
-        assigned_to_name = validated_data.pop("assigned_to_name", None)
+
+        assigned_to_name = validated_data.pop(
+            "assigned_to_name",
+            None
+        )
 
         instance.assigned_to_id = assigned_to_id
+
         instance.assigned_to_name = _resolve_assignee_name(
             assigned_to_id,
             assigned_to_name
         )
 
+    # =====================================================
+    # REFERRAL
+    # =====================================================
     ref_dept_id = validated_data.pop("referral_department_id", None)
+
     ref_source_id = validated_data.pop("referral_source_id", None)
-    referral_source_data = validated_data.pop("referral_source", None)
+
+    referral_source_data = validated_data.pop(
+        "referral_source",
+        None
+    )
 
     if referral_source_data:
-        full_name = f"{referral_source_data.get('first_name','')} {referral_source_data.get('last_name','')}".strip()
+
+        full_name = (
+            f"{referral_source_data.get('first_name','')} "
+            f"{referral_source_data.get('last_name','')}"
+        ).strip()
+
         email = referral_source_data.get("email")
         role = referral_source_data.get("role")
 
         referral_department = None
+
         if role:
             referral_department = ReferralDepartment.objects.filter(
                 name__iexact=role,
@@ -365,6 +428,7 @@ def update_lead(instance, validated_data, request=None):
         instance.referral_department = referral_department
 
     else:
+
         if ref_dept_id:
             instance.referral_department = ReferralDepartment.objects.filter(
                 id=ref_dept_id,
@@ -377,6 +441,9 @@ def update_lead(instance, validated_data, request=None):
                 clinic=instance.clinic
             ).first()
 
+    # =====================================================
+    # STATUS
+    # =====================================================
     new_status = None
 
     if request and hasattr(request, "data"):
@@ -390,7 +457,14 @@ def update_lead(instance, validated_data, request=None):
 
     logger.info(f"OLD STATUS: {old_status} | NEW STATUS: {new_status}")
 
-    if new_status == "converted" and str(old_status).lower() != "converted":
+    # =====================================================
+    # CONVERSION LOGIC
+    # =====================================================
+    if (
+        new_status == "converted" and
+        str(old_status).lower() != "converted"
+    ):
+
         instance.converted_at_stage = old_stage
         instance.converted_at_status = old_status
 
@@ -406,17 +480,25 @@ def update_lead(instance, validated_data, request=None):
 
         instance.converted_at = timezone.now()
 
+    # =====================================================
+    # UPDATE FIELDS
+    # =====================================================
     for field, value in validated_data.items():
         setattr(instance, field, value)
 
     instance.save()
 
-    # ✅ UPDATE MANY TO MANY
+    # =====================================================
+    # UPDATE INTERESTS
+    # =====================================================
     if treatment_interest is not None:
         instance.treatment_interest.set(treatment_interest)
 
-    # 🔥🔥 FINAL SAFE DOCUMENT SAVE
+    # =====================================================
+    # SAVE DOCUMENTS
+    # =====================================================
     for file in documents or []:
+
         if not file or not hasattr(file, "name"):
             continue
 
