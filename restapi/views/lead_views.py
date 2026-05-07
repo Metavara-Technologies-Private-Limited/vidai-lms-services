@@ -187,7 +187,7 @@ class LeadCreateAPIView(APIView):
                     if not isinstance(treatment_interest, list):
                         treatment_interest = [treatment_interest]
 
-                data["treatment_interest"] = treatment_interest
+                data.setlist("treatment_interest", treatment_interest)
 
             serializer = LeadSerializer(
                 data=data,
@@ -295,6 +295,8 @@ class LeadUpdateAPIView(APIView):
                         if single_interest:
                             treatment_interest = [single_interest]
 
+                    data.setlist("treatment_interest", treatment_interest)
+
                 # application/json
                 else:
 
@@ -306,7 +308,7 @@ class LeadUpdateAPIView(APIView):
                     if not isinstance(treatment_interest, list):
                         treatment_interest = [treatment_interest]
 
-                data["treatment_interest"] = treatment_interest
+                    data["treatment_interest"] = treatment_interest
 
             # =====================================================
             # STATUS FIX
