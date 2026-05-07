@@ -125,6 +125,15 @@ class TwilioCall(models.Model):
         blank=True
     )
 
+    was_answered = models.BooleanField(default=False)
+
+    answered_by = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True)
+
+    call_duration = models.IntegerField(default=0)
+
     raw_payload = models.JSONField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)

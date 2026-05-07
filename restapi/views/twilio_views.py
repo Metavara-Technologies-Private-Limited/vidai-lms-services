@@ -298,8 +298,14 @@ class TwilioCallStatusCallbackAPIView(APIView):
                 if call_status:
                     twilio_call.status = call_status
 
+                twilio_call.call_duration = int(call_duration or 0)
+                twilio_call.answered_by = answered_by
+                twilio_call.was_answered = (
+                       call_status in ["in-progress", "completed"]
+                       and int(call_duration or 0) > 0)
                 twilio_call.raw_payload = merged_payload
-                twilio_call.save(update_fields=["status", "raw_payload"])
+                twilio_call.save(update_fields=["status", "call_duration", "answered_by", "was_answered", "raw_payload"])
+
 
             else:
                 logger.warning("TwilioCallStatusCallback SID not found in DB: sid=%s", sid)
