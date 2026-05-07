@@ -116,16 +116,17 @@ class InteractionCountsAPIView(APIView):
 
                 if (status_value == "completed"
                     and duration >= 10
-                    and answered_by not in ["machine_start", "fax"]
+                    and answered_by == "human"
                 ):
                     call_high += 1
 
                 elif (
-                    duration > 0 and duration < 10
-                    ) or status_value in ["busy", "no-answer", "canceled"]:
+                    answered_by in ["unknown", "machine_start", "fax"]
+                    or (duration > 0 and duration < 10)
+                         or status_value in ["busy", "no-answer", "canceled"]
+                ):
                     call_low += 1
-                elif status_value in ["failed"]:
-                    call_no += 1
+                
 
 
                 
