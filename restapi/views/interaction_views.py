@@ -124,10 +124,7 @@ class InteractionCountsAPIView(APIView):
             call_low  = call_counts["low"] or 0
             call_no   = call_counts["no"] or 0
 
-            # fallback
-            total_calls = call_qs.count()
-            if call_high == 0 and call_low == 0 and call_no == 0 and total_calls > 0:
-                call_high = total_calls
+
 
 
             # ───────────────── FINAL RESPONSE ─────────────────
