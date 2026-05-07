@@ -91,7 +91,9 @@ class UseCaseListAPIView(APIView):
     def get(self, request):
 
         try:
-            clinic_id = request.headers.get("X-Clinic-Id")
+            clinic_id = request.query_params.get(
+                "clinic_id"
+            )
 
             if not clinic_id:
                 raise ValidationError({
@@ -194,5 +196,3 @@ class UseCaseUpdateAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=500
             )
-
-
