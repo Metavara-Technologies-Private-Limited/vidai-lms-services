@@ -105,24 +105,34 @@ class InteractionCountsAPIView(APIView):
             # ───────────────── CALL ─────────────────
             call_qs = TwilioCall.objects.filter(lead__clinic_id=clinic_id)
 
-            call_counts = call_qs.aggregate(
-                high=Count(
-                    "id",
-                    filter=Q(status__in=["answered", "completed",])
-                ),
-                low=Count(
-                    "id",
-                    filter=Q(status__in=["busy", "no-answer", "no_answer"])
-                ),
-                no=Count(
-                    "id",
-                    filter=Q(status__in=["failed", "canceled"])
-                )
-            )
+            call_high = 0
+            call_low = 0
+            call_no = 0
 
-            call_high = call_counts["high"] or 0
-            call_low  = call_counts["low"] or 0
-            call_no   = call_counts["no"] or 0
+            for call in call_qs:
+                status_value = (call.status or "").lower()
+
+                raw_payload = (
+        call.raw_payload
+        if isinstance(call.raw_payload, dict)
+        else {}
+    )
+                duration = int(raw_payload.get("call_duration", 0) or 0)
+
+                if status_value == "completed" and duration > 0:
+                    call_high += 1
+
+                elif status_value in ["busy", "no-answer", "no_answer"]:
+                    call_low += 1
+
+                elif status_value in ["failed", "canceled"]:
+                    call_no += 1
+                
+                
+
+
+    
+
 
 
 
