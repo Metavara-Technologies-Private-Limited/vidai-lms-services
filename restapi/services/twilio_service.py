@@ -162,6 +162,7 @@ def make_call(lead_uuid: str, to_number: str):
         "from_": from_number,
         "to": to_number,
         "twiml": "<Response><Say>Hello from Crysta Clinic. We will connect you shortly.</Say></Response>",
+        "machine_detection": "Enable",
     }
     if callback_url:
         call_kwargs["status_callback"]        = callback_url
