@@ -113,10 +113,10 @@ class InteractionCountsAPIView(APIView):
                 status_value = (call.status or "").lower()
 
                 raw_payload = (
-        call.raw_payload
-        if isinstance(call.raw_payload, dict)
-        else {}
-    )
+                    call.raw_payload
+                    if isinstance(call.raw_payload, dict)
+                    else {}
+             )
                 duration = int(raw_payload.get("call_duration", 0) or 0)
 
                 if status_value == "completed" and duration > 0:
@@ -128,6 +128,8 @@ class InteractionCountsAPIView(APIView):
                 elif status_value in ["failed", "canceled"]:
                     call_no += 1
                 
+                elif status_value in ["failed", "canceled"]:
+                    call_high += 1
                 
 
 
