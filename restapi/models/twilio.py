@@ -84,13 +84,16 @@ class TwilioMessage(models.Model):
 class TwilioCall(models.Model):
 
     class StatusChoices(models.TextChoices):
+        QUEUED = "queued", "Queued"
         INITIATED = "initiated", "Initiated"
         RINGING = "ringing", "Ringing"
+        ANSWERED = "answered", "Answered"
         IN_PROGRESS = "in-progress", "In Progress"
         COMPLETED = "completed", "Completed"
         FAILED = "failed", "Failed"
         NO_ANSWER = "no-answer", "No Answer"
         BUSY = "busy", "Busy"
+        CANCELED = "canceled", "Canceled"
 
     lead = models.ForeignKey(
         Lead,

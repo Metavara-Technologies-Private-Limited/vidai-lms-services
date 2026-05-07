@@ -167,6 +167,14 @@ def make_call(lead_uuid: str, to_number: str):
         call_kwargs["status_callback"]        = callback_url
         call_kwargs["status_callback_method"] = "POST"
 
+        call_kwargs["status_callback_event"] = [
+        "initiated",
+        "ringing",
+        "answered",
+        "completed",
+    ]
+        
+
     call = client.calls.create(**call_kwargs)
 
     lead = Lead.objects.filter(id=lead_uuid).first()
@@ -177,7 +185,7 @@ def make_call(lead_uuid: str, to_number: str):
         to_number=to_number,
         from_number=from_number,
         status=call.status,
-        direction="outbound",
+        
         raw_payload={},
     )
 
@@ -356,7 +364,7 @@ def log_browser_call(
         to_number=to_number,
         from_number=from_number,
         status=status,
-        direction="outbound",
+        
         raw_payload={
             "source": "browser_sdk",
             "agent_identity": agent_identity,
