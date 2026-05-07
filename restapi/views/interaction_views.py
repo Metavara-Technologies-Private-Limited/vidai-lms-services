@@ -121,10 +121,10 @@ class InteractionCountsAPIView(APIView):
 
                 answered_by = raw_payload.get("answered_by", "")
 
-                if status_value == "completed"and answered_by == "human"or duration > 0:
+                if status_value == "completed"and answered_by == "human"or duration >= 10:
                     call_high += 1
 
-                elif duration == 0:
+                elif duration < 10:
                     call_low += 1
 
                 elif status_value in ["busy", "no-answer", "no_answer"]:
