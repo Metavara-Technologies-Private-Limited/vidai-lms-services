@@ -108,7 +108,7 @@ class InteractionCountsAPIView(APIView):
             call_counts = call_qs.aggregate(
                 high=Count(
                     "id",
-                    filter=Q(status__in=["queued", "initiated", "ringing", "answered", "in-progress", "in_progress", "completed",])
+                    filter=Q(status__in=["answered", "completed",])
                 ),
                 low=Count(
                     "id",
