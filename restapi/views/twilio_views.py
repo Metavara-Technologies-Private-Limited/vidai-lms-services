@@ -261,6 +261,7 @@ class TwilioCallStatusCallbackAPIView(APIView):
             to_number = payload.get("To")
             from_number = payload.get("From")
             direction = payload.get("Direction")
+            call_duration = payload.get("CallDuration", "0")
 
             logger.info(
                 "TwilioCallStatusCallback received: sid=%s status=%s to=%s from=%s",
@@ -290,6 +291,7 @@ class TwilioCallStatusCallbackAPIView(APIView):
 
                 merged_payload["call_status_callback"] = payload
                 merged_payload["last_status_callback_at"] = timezone.now().isoformat()
+                merged_payload["call_duration"] = call_duration
 
                 if call_status:
                     twilio_call.status = call_status
