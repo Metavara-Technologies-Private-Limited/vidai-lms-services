@@ -151,9 +151,18 @@ class GetClinicView(APIView):
             500: "Internal Server Error",
         },
     )
-    def get(self, request, clinic_id):
+    def get(self, request, clinic_id=None):
         try:
-            clinic = Clinic.objects.get(id=clinic_id, is_active=True)
+            resolved_clinic_id = (
+                request.query_params.get("clinic_id")
+                or request.headers.get("X-Clinic-Id")
+                or clinic_id
+            )
+
+            clinic = Clinic.objects.get(
+                id=resolved_clinic_id,
+                is_active=True,
+            )
 
             serializer = ClinicReadSerializer(clinic)
 
