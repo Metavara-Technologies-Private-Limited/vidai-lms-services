@@ -12,15 +12,22 @@ def _build_permission_result(permissions):
 
         result.setdefault(module, {})
 
-        # SETTINGS (WITH SUBCATEGORY)
-        if category == "settings":
+        # SETTINGS CATEGORY ROW (no subcategory) — store flags on the settings entry directly
+        if category == "settings" and not subcategory:
+            existing = result[module].setdefault(
+                "settings",
+                {
+                    "can_view": False,
+                    "can_add": False,
+                    "can_edit": False,
+                    "can_print": False,
+                },
+            )
 
-            result[module].setdefault(category, {})
-
-            if not subcategory:
-                continue
-
-            existing = result[module][category].setdefault(
+        # SETTINGS WITH SUBCATEGORY — nest under settings[subcategory]
+        elif category == "settings" and subcategory:
+            result[module].setdefault("settings", {})
+            existing = result[module]["settings"].setdefault(
                 subcategory,
                 {
                     "can_view": False,
@@ -30,9 +37,21 @@ def _build_permission_result(permissions):
                 },
             )
 
-        # OTHER MODULES
-        else:
+        # PURE SUBCATEGORY ROWS (category="_") — use subcategory as the key so
+        # the frontend can extract the label (e.g. "integration", "tickets")
+        elif category == "_" and subcategory:
+            existing = result[module].setdefault(
+                subcategory,
+                {
+                    "can_view": False,
+                    "can_add": False,
+                    "can_edit": False,
+                    "can_print": False,
+                },
+            )
 
+        # OTHER MODULES / CATEGORIES
+        else:
             existing = result[module].setdefault(
                 category,
                 {
@@ -58,7 +77,13 @@ def _build_permission_result(permissions):
 def normalize_role_name(value):
     if not value:
         return ""
-    return str(value).strip().lower().replace("-", " ").replace("_", " ")
+    normalized = str(value).strip().lower()
+
+    # Keep sentinel underscore keys intact (module/category placeholders).
+    if normalized == "_":
+        return "_"
+
+    return normalized.replace("-", " ").replace("_", " ")
 
 
 # =========================
@@ -156,6 +181,8 @@ def has_subcategory_permission(user, module, category, subcategory, action):
 # LABEL BASED PERMISSION (REQUIRED)
 # =========================
 def has_action_permission_for_labels(user, action, labels):
+    from restapi.models.user_permission import UserPermission
+
     if action not in {"view", "add", "edit", "print"}:
         return False
 
@@ -183,9 +210,30 @@ def has_action_permission_for_labels(user, action, labels):
         else:
             normalized_labels.add(f"{normalized}s")
 
-    permissions = RolePermission.objects.filter(role=role)
+    # Check individual user-level permissions first (overrides role)
+    individual_perms = UserPermission.objects.filter(user=user)
+    if individual_perms.exists():
+        for perm in individual_perms:
+            if not getattr(perm, f"can_{action}", False):
+                continue
 
-    for perm in permissions:
+            keys = {
+                normalize_role_name(perm.module_key),
+                normalize_role_name(perm.category_key),
+                normalize_role_name(perm.subcategory_key),
+            }
+            keys.discard("")
+            keys.discard("_")
+
+            if keys & normalized_labels:
+                return True
+
+        return False  # individual perms exist but none matched → deny
+
+    # Fall back to role-based permissions
+    role_perms = RolePermission.objects.filter(role=role)
+
+    for perm in role_perms:
         if not getattr(perm, f"can_{action}", False):
             continue
 
