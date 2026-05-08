@@ -206,18 +206,45 @@ def build_email_html_message(lead, message_text, review_link):
 
     body_html = (message_text or "").replace("\n", "<br>")
 
+    # Make review link clickable
+    if safe_link:
+        clickable_link = (
+            f'<a href="{safe_link}" '
+            'target="_blank" '
+            'style="color:#2563eb;text-decoration:underline;">'
+            f'{safe_link}'
+            '</a>'
+        )
+
+        body_html = body_html.replace(review_link, clickable_link)
+
     if safe_link:
         button_html = (
+            f'<div style="margin-top:20px;">'
             f'<a href="{safe_link}" '
-            'style="display:inline-block;background-color:#4CAF50;color:#ffffff;padding:10px 20px;'
-            'text-decoration:none;border-radius:6px;font-weight:600;">Open in VIDAI LMS</a>'
+            'style="display:inline-block;'
+            'background-color:#4CAF50;'
+            'color:#ffffff;'
+            'padding:10px 20px;'
+            'text-decoration:none;'
+            'border-radius:6px;'
+            'font-weight:600;">'
+            'Open in VIDAI LMS'
+            '</a>'
+            '</div>'
         )
-        plain_link_html = f'<a href="{safe_link}" style="color:#2563eb;">{safe_link}</a>'
 
-        # First occurrence becomes CTA button.
-        body_html = body_html.replace(safe_link, button_html, 1)
-        # Remaining occurrences stay as normal links (for footer copy/paste style).
-        body_html = body_html.replace(safe_link, plain_link_html)
+        body_html = f"""
+            {body_html}
+
+            <br><br>
+
+            <div>
+                Please share your valuable feedback here:
+            </div>
+
+            {button_html}
+        """
 
     return f"""
     <html>
