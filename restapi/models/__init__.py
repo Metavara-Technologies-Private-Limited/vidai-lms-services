@@ -4,6 +4,7 @@
 from .user_profile import UserProfile
 from .role import Role
 from .role_permission import RolePermission
+from .user_permission import UserPermission
 
 # Core LMS models
 from .lead import Lead
@@ -13,7 +14,7 @@ from .campaign import Campaign
 from .referral import ReferralSource
 from .referral_department import ReferralDepartment
 from .external_clinic import ExternalClinic
- 
+
 # Campaign configs
 from .campaign_social_media_config import CampaignSocialMediaConfig
 from .campaign_email_config import CampaignEmailConfig
@@ -59,5 +60,3 @@ from .review_request_document import ReviewRequestDocument
 
 from .usecase import UseCase
 from .interest import Interest
-
-

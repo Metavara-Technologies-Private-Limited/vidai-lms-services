@@ -51,6 +51,7 @@ urlpatterns = [
     path("permissions/<int:pk>/update/", RolePermissionUpdateAPIView.as_view()),
 
     path("users/permissions/", UserPermissionAPIView.as_view()),
+    path("users/individual-permissions/", UserIndividualPermissionAPIView.as_view()),
     path("me/photo/", MyProfilePhotoAPIView.as_view(), name="my-profile-photo"),
     path("media/<path:path>", MediaFileAPIView.as_view(), name="media-file"),
 
@@ -139,7 +140,6 @@ urlpatterns = [
 
     path("campaigns/<uuid:campaign_id>/mailchimp-insights/", CampaignMailchimpInsightsAPIView.as_view(), name="mailchimp-insights"),
     path("mailchimp/insights-callback/", MailchimpInsightsCallbackAPIView.as_view(), name="mailchimp-callback"),
-    path("social-campaign/meta-callback/", MetaCampaignCallbackAPIView.as_view(), name="meta-campaign-create-callback"),
 
     # ============================
     # PIPELINE
@@ -171,6 +171,7 @@ urlpatterns = [
     path("tickets/<uuid:ticket_id>/assign/", TicketAssignAPIView.as_view(), name="ticket-assign"),
     path("tickets/<uuid:ticket_id>/status/", TicketStatusUpdateAPIView.as_view(), name="ticket-status"),
     path("tickets/<uuid:ticket_id>/documents/", TicketDocumentUploadAPIView.as_view(), name="ticket-doc"),
+    path("tickets/<uuid:ticket_id>/documents/<uuid:document_id>/", TicketDocumentDeleteAPIView.as_view(), name="ticket-doc-delete"),
     path("tickets/<uuid:ticket_id>/delete/", TicketDeleteAPIView.as_view(), name="ticket-delete"),
     path("tickets/<uuid:ticket_id>/reply/", TicketReplyAPIView.as_view(), name="ticket-reply"),
 
@@ -255,7 +256,6 @@ urlpatterns = [
     path("fb/campaigns/", FBCampaignListAPIView.as_view(), name="fb-campaigns"),
     path("fb/campaigns/create/", FBCampaignCreateAPIView.as_view(), name="fb-campaign-create"),
     path("fb/campaigns/<str:campaign_id>/insights/", FBCampaignInsightsAPIView.as_view(), name="fb-insights"),
-    path("fb/campaigns/<uuid:campaign_id>/status/", FBCampaignStatusAPIView.as_view(), name="fb-campaign-status"),
 
     # ============================
     # GOOGLE ADS

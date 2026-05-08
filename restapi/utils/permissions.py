@@ -1,6 +1,57 @@
 from restapi.models import RolePermission
 
 
+def _build_permission_result(permissions):
+    """Build the nested permission dict from a queryset of permission objects."""
+    result = {}
+
+    for perm in permissions:
+        module = normalize_role_name(perm.module_key)
+        category = normalize_role_name(perm.category_key)
+        subcategory = normalize_role_name(perm.subcategory_key)
+
+        result.setdefault(module, {})
+
+        # SETTINGS (WITH SUBCATEGORY)
+        if category == "settings":
+
+            result[module].setdefault(category, {})
+
+            if not subcategory:
+                continue
+
+            existing = result[module][category].setdefault(
+                subcategory,
+                {
+                    "can_view": False,
+                    "can_add": False,
+                    "can_edit": False,
+                    "can_print": False,
+                },
+            )
+
+        # OTHER MODULES
+        else:
+
+            existing = result[module].setdefault(
+                category,
+                {
+                    "can_view": False,
+                    "can_add": False,
+                    "can_edit": False,
+                    "can_print": False,
+                },
+            )
+
+        # MERGE permissions
+        existing["can_view"] |= perm.can_view
+        existing["can_add"] |= perm.can_add
+        existing["can_edit"] |= perm.can_edit
+        existing["can_print"] |= perm.can_print
+
+    return result
+
+
 # =========================
 # NORMALIZE
 # =========================
@@ -38,52 +89,20 @@ def is_super_admin_role(role):
 # GET USER PERMISSIONS (FINAL)
 # =========================
 def get_user_permissions(user):
+    from restapi.models.user_permission import UserPermission
+
+    # Check for individual user-level permission overrides first
+    individual_perms = UserPermission.objects.filter(user=user)
+    if individual_perms.exists():
+        return _build_permission_result(individual_perms)
+
+    # Fall back to role-based permissions
     role = get_user_role(user)
     if not role:
         return {}
 
     permissions = RolePermission.objects.filter(role=role)
-    result = {}
-
-    for perm in permissions:
-        module = normalize_role_name(perm.module_key)
-        category = normalize_role_name(perm.category_key)
-        subcategory = normalize_role_name(perm.subcategory_key)
-
-        result.setdefault(module, {})
-
-        # SETTINGS (WITH SUBCATEGORY)
-        if category == "settings":
-
-            result[module].setdefault(category, {})
-
-            if not subcategory:
-                continue
-
-            existing = result[module][category].setdefault(subcategory, {
-                "can_view": False,
-                "can_add": False,
-                "can_edit": False,
-                "can_print": False,
-            })
-
-        # OTHER MODULES
-        else:
-
-            existing = result[module].setdefault(category, {
-                "can_view": False,
-                "can_add": False,
-                "can_edit": False,
-                "can_print": False,
-            })
-
-        # ✅ MERGE permissions
-        existing["can_view"] |= perm.can_view
-        existing["can_add"] |= perm.can_add
-        existing["can_edit"] |= perm.can_edit
-        existing["can_print"] |= perm.can_print
-
-    return result
+    return _build_permission_result(permissions)
 
 
 # =========================
@@ -194,9 +213,8 @@ def filter_by_clinic(queryset, request):
     if not user or not hasattr(user, "profile") or not user.profile:
         return queryset.none()
 
-    clinic_id = (
-        request.query_params.get("clinic_id")
-        or request.headers.get("X-Clinic-Id")
+    clinic_id = request.query_params.get("clinic_id") or request.headers.get(
+        "X-Clinic-Id"
     )
 
     # ✅ If clinic passed → allow ALL roles
