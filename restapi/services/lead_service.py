@@ -127,8 +127,8 @@ def _validate_phone(value):
     if not value.isdigit():
         raise ValidationError({"contact_no": "Phone must contain digits only"})
 
-    if len(value) != 10:
-        raise ValidationError({"contact_no": "Phone must be 10 digits"})
+    if not (7 <= len(value) <= 15):
+        raise ValidationError({"contact_no": "Phone number must be between 7 and 15 digits"})
 
     invalid_numbers = {
         "1111111111","2222222222","3333333333","4444444444",

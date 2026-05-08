@@ -332,8 +332,8 @@ class LeadSerializer(serializers.ModelSerializer):
         if not value.isdigit():
             raise ValidationError("Phone must contain digits only")
 
-        if len(value) != 10:
-            raise ValidationError("Phone must be 10 digits")
+        if not (7 <= len(value) <= 15):
+            raise ValidationError("Phone must be between 7 and 15 digits")
 
         invalid_numbers = {
             "1111111111","2222222222","3333333333",
