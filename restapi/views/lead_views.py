@@ -168,13 +168,13 @@ class LeadCreateAPIView(APIView):
 
                     treatment_interest = data.getlist("treatment_interest")
 
-                    # SUPPORT SINGLE VALUE ALSO
                     if not treatment_interest:
-
                         single_interest = data.get("treatment_interest")
 
                         if single_interest:
                             treatment_interest = [single_interest]
+
+                    data.setlist("treatment_interest", treatment_interest)
 
                 # application/json
                 else:
@@ -187,7 +187,7 @@ class LeadCreateAPIView(APIView):
                     if not isinstance(treatment_interest, list):
                         treatment_interest = [treatment_interest]
 
-                data.setlist("treatment_interest", treatment_interest)
+                    data["treatment_interest"] = treatment_interest
 
             serializer = LeadSerializer(
                 data=data,
