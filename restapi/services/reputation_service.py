@@ -202,10 +202,9 @@ def build_email_html_message(lead, message_text, review_link):
     Render rich email content where the first review URL becomes a button
     and any later occurrences remain normal clickable links.
     """
-    safe_text = escape(message_text or "")
     safe_link = escape(review_link or "")
 
-    body_html = safe_text.replace("\n", "<br>")
+    body_html = (message_text or "").replace("\n", "<br>")
 
     if safe_link:
         button_html = (
@@ -222,9 +221,13 @@ def build_email_html_message(lead, message_text, review_link):
 
     return f"""
     <html>
-        <body style="font-family: Arial, sans-serif; color: #232323;">
+        <body style="font-family: Arial, sans-serif; color: #232323; line-height: 1.6;">
             <p>Hi {escape(lead.full_name)},</p>
-            <p>{body_html}</p>
+
+            <div>
+                {body_html}
+            </div>
+
         </body>
     </html>
     """
