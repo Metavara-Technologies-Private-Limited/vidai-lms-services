@@ -171,7 +171,7 @@ urlpatterns = [
     path("tickets/<uuid:ticket_id>/assign/", TicketAssignAPIView.as_view(), name="ticket-assign"),
     path("tickets/<uuid:ticket_id>/status/", TicketStatusUpdateAPIView.as_view(), name="ticket-status"),
     path("tickets/<uuid:ticket_id>/documents/", TicketDocumentUploadAPIView.as_view(), name="ticket-doc"),
-    path("tickets/<uuid:ticket_id>/documents/<uuid:document_id>/", TicketDocumentDeleteAPIView.as_view(), name="ticket-doc-delete"),
+    # path("tickets/<uuid:ticket_id>/documents/<uuid:document_id>/", TicketDocumentDeleteAPIView.as_view(), name="ticket-doc-delete"),
     path("tickets/<uuid:ticket_id>/delete/", TicketDeleteAPIView.as_view(), name="ticket-delete"),
     path("tickets/<uuid:ticket_id>/reply/", TicketReplyAPIView.as_view(), name="ticket-reply"),
 
