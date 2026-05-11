@@ -60,3 +60,5 @@ from .review_request_document import ReviewRequestDocument
 
 from .usecase import UseCase
 from .interest import Interest
+
+from .whatsapp import WhatsAppMessage, WhatsAppTemplate
