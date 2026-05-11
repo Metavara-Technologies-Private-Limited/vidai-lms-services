@@ -545,19 +545,12 @@ def create_whatsapp_template(
         logger.error("create_whatsapp_template error: %s", data)
         raise ValueError(data.get("error", {}).get("message", "Meta API error"))
 
-    # ── Persist to DB ─────────────────────────────────────────────────────
-    from restapi.models import WhatsAppTemplate
-    template_obj, _ = WhatsAppTemplate.objects.update_or_create(
-        meta_template_id=str(data.get("id", "")),
+    # ── Persist to DB — use existing TemplateWhatsApp model ───────────────
+    from restapi.models import TemplateWhatsApp                          # FIX
+    template_obj, _ = TemplateWhatsApp.objects.update_or_create(        # FIX
+        name=name,                                                       # FIX
         defaults={
-            "name":        name,
-            "category":    category,
-            "language":    language,
-            "body_text":   body_text,
-            "header_text": header_text,
-            "footer_text": footer_text,
-            "variables":   variables,
-            "status":      data.get("status", "PENDING"),
+            "body":        body_text,                                    # FIX: field is "body" not "body_text"
             "raw_payload": data,
         },
     )
@@ -584,7 +577,7 @@ def list_whatsapp_templates() -> list[dict]:
     Returns a list of template dicts.
     Fires Zapier event "whatsapp_template_approved" for any newly-approved ones.
     """
-    from restapi.models import WhatsAppTemplate
+    from restapi.models import TemplateWhatsApp                          # FIX
 
     waba_id = _require_setting("META_WABA_ID")
     url     = f"{META_GRAPH_BASE}/{waba_id}/message_templates"
@@ -600,19 +593,15 @@ def list_whatsapp_templates() -> list[dict]:
     templates = data.get("data", [])
 
     for t in templates:
-        meta_id    = str(t.get("id", ""))
+        name       = t.get("name", "")
         new_status = t.get("status", "PENDING")
 
-        existing = WhatsAppTemplate.objects.filter(meta_template_id=meta_id).first()
-        old_status = existing.status if existing else None
+        existing   = TemplateWhatsApp.objects.filter(name=name).first()   # FIX
+        old_status = getattr(existing, "status", None)                    # FIX: TemplateWhatsApp may not have status field; safe fallback
 
-        WhatsAppTemplate.objects.update_or_create(
-            meta_template_id=meta_id,
+        TemplateWhatsApp.objects.update_or_create(                        # FIX
+            name=name,                                                     # FIX
             defaults={
-                "name":        t.get("name", ""),
-                "category":    t.get("category", ""),
-                "language":    t.get("language", "en"),
-                "status":      new_status,
                 "raw_payload": t,
             },
         )
@@ -620,8 +609,7 @@ def list_whatsapp_templates() -> list[dict]:
         # Fire Zapier only when status transitions to APPROVED
         if old_status != "APPROVED" and new_status == "APPROVED":
             _notify_zapier_whatsapp("whatsapp_template_approved", {
-                "template_id":   meta_id,
-                "template_name": t.get("name", ""),
+                "template_name": name,
                 "language":      t.get("language", ""),
             })
 
@@ -640,6 +628,8 @@ def send_whatsapp_message(
     language: str,
     variable_values: list[str],
     clinic_id: int | None = None,
+    template_id: str | None = None,   # FIX: accept DB UUID from view
+    template_body: str | None = None,  # FIX: accept pre-fetched body from view
 ) -> "WhatsAppMessage":
     """
     Send an approved WhatsApp template message via Twilio.
@@ -652,11 +642,13 @@ def send_whatsapp_message(
     language        : template language code e.g. "en" / "en_US" / "hi"
     variable_values : list of values for {{1}}, {{2}} ... placeholders
     clinic_id       : optional clinic FK id
+    template_id     : optional UUID of TemplateWhatsApp in DB (preferred over name lookup)
+    template_body   : optional pre-fetched body string (skips DB lookup if provided)
 
     Returns the saved WhatsAppMessage ORM object.
     Fires Zapier event "whatsapp_message_sent".
     """
-    from restapi.models import Lead, WhatsAppTemplate, WhatsAppMessage
+    from restapi.models import Lead, TemplateWhatsApp, WhatsAppMessage   # FIX: TemplateWhatsApp
     from restapi.models.clinic import Clinic
 
     client          = _get_twilio_client()
@@ -673,13 +665,19 @@ def send_whatsapp_message(
     from_wa = f"whatsapp:{wa_from_number}"
     to_wa   = f"whatsapp:{to_number}"
 
+    # ── Resolve template body ─────────────────────────────────────────────
+    # If caller passed template_body directly, use it; otherwise build from DB
+    if template_body:
+        body = template_body
+        for i, val in enumerate(variable_values, start=1):
+            body = body.replace(f"{{{{{i}}}}}", val)
+    else:
+        body = _build_template_body(template_name, language, variable_values, template_id=template_id)  # FIX: pass template_id
+
     message = client.messages.create(
         from_=from_wa,
         to=to_wa,
-        content_sid=None,            # using template name directly
-        # Twilio accepts template name via messaging_service_sid or body approach;
-        # for approved templates use the body approach with template syntax:
-        body=_build_template_body(template_name, language, variable_values),
+        body=body,
     )
 
     # ── Resolve FK objects ────────────────────────────────────────────────
@@ -690,7 +688,11 @@ def send_whatsapp_message(
     elif lead:
         clinic = getattr(lead, "clinic", None)
 
-    template = WhatsAppTemplate.objects.filter(name=template_name).first()
+    # FIX: look up TemplateWhatsApp by UUID if provided, else by name
+    if template_id:
+        template = TemplateWhatsApp.objects.filter(id=template_id).first()  # FIX
+    else:
+        template = TemplateWhatsApp.objects.filter(name=template_name).first()  # FIX
 
     # ── Persist ───────────────────────────────────────────────────────────
     wa_msg = WhatsAppMessage.objects.create(
@@ -738,28 +740,28 @@ def _build_template_body(
     template_name: str,
     language: str,
     variable_values: list[str],
+    template_id: str | None = None,   # FIX: accept UUID for direct lookup
 ) -> str:
     """
-    Fetch the template body from DB and substitute variable placeholders.
+    Fetch the template body from DB (TemplateWhatsApp) and substitute placeholders.
     Falls back to a generic message if template not found locally.
     """
-    from restapi.models import WhatsAppTemplate
+    from restapi.models import TemplateWhatsApp                          # FIX
 
-    template = WhatsAppTemplate.objects.filter(
-        name=template_name,
-        language=language,
-        status="APPROVED",
-    ).first()
+    # FIX: prefer UUID lookup; fall back to name lookup
+    if template_id:
+        template = TemplateWhatsApp.objects.filter(id=template_id).first()   # FIX
+    else:
+        template = TemplateWhatsApp.objects.filter(name=template_name).first()  # FIX
 
     if not template:
-        # Graceful fallback — Twilio will still attempt delivery
         logger.warning(
             "_build_template_body: template '%s' not found in DB, using raw values",
             template_name,
         )
         return " ".join(variable_values)
 
-    body = template.body_text
+    body = template.body                                                  # FIX: field is "body" not "body_text"
     for i, val in enumerate(variable_values, start=1):
         body = body.replace(f"{{{{{i}}}}}", val)
 
@@ -775,6 +777,8 @@ def bulk_send_whatsapp(
     template_name: str,
     language: str,
     clinic_id: int | None = None,
+    template_id: str | None = None,   # FIX: accept DB UUID from view
+    template_body: str | None = None,  # FIX: accept pre-fetched body from view
 ) -> list[dict]:
     """
     Send the same WhatsApp template to multiple recipients.
@@ -808,6 +812,8 @@ def bulk_send_whatsapp(
                 language=language,
                 variable_values=variable_values,
                 clinic_id=clinic_id,
+                template_id=template_id,       # FIX: pass through
+                template_body=template_body,   # FIX: pass through
             )
             results.append({
                 "to_number": to_number,
