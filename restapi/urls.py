@@ -34,6 +34,18 @@ from restapi.views.twilio_views import (
     BrowserCallTwiMLAPIView,
     BrowserCallLogAPIView,
 )
+
+# ✅ NEW: WhatsApp Views
+from restapi.views.whatsapp_views import (
+    WhatsAppTemplateCreateView,
+    WhatsAppTemplateListView,
+    WhatsAppTemplateSyncView,
+    WhatsAppTemplateDeleteView,
+    WhatsAppSendView,
+    WhatsAppBulkSendView,
+    WhatsAppMessageListView,
+)
+
 urlpatterns = [
 
     path("login/", LoginAPIView.as_view(), name="login"),
@@ -115,6 +127,17 @@ urlpatterns = [
     path("twilio/browser-call/token/", BrowserCallTokenAPIView.as_view(), name="twilio-browser-call-token"),
     path("twilio/browser-call/twiml/", BrowserCallTwiMLAPIView.as_view(), name="twilio-browser-call-twiml"),
     path("twilio/browser-call/log/",   BrowserCallLogAPIView.as_view(),   name="twilio-browser-call-log"),
+
+    # ============================
+    # WHATSAPP ✅ NEW
+    # ============================
+    path("whatsapp/templates/create/",      WhatsAppTemplateCreateView.as_view(),  name="whatsapp-template-create"),
+    path("whatsapp/templates/",             WhatsAppTemplateListView.as_view(),    name="whatsapp-template-list"),
+    path("whatsapp/templates/sync/",        WhatsAppTemplateSyncView.as_view(),    name="whatsapp-template-sync"),
+    path("whatsapp/templates/<int:pk>/",    WhatsAppTemplateDeleteView.as_view(),  name="whatsapp-template-delete"),
+    path("whatsapp/send/",                  WhatsAppSendView.as_view(),            name="whatsapp-send"),
+    path("whatsapp/bulk-send/",             WhatsAppBulkSendView.as_view(),        name="whatsapp-bulk-send"),
+    path("whatsapp/messages/",              WhatsAppMessageListView.as_view(),     name="whatsapp-message-list"),
 
     # ============================
     # CAMPAIGNS
