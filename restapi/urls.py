@@ -36,11 +36,8 @@ from restapi.views.twilio_views import (
 )
 
 # ✅ NEW: WhatsApp Views
+# NOTE: Template management views removed — templates already exist in DB via UI
 from restapi.views.whatsapp_views import (
-    WhatsAppTemplateCreateView,
-    WhatsAppTemplateListView,
-    WhatsAppTemplateSyncView,
-    WhatsAppTemplateDeleteView,
     WhatsAppSendView,
     WhatsAppBulkSendView,
     WhatsAppMessageListView,
@@ -131,13 +128,9 @@ urlpatterns = [
     # ============================
     # WHATSAPP ✅ NEW
     # ============================
-    path("whatsapp/templates/create/",      WhatsAppTemplateCreateView.as_view(),  name="whatsapp-template-create"),
-    path("whatsapp/templates/",             WhatsAppTemplateListView.as_view(),    name="whatsapp-template-list"),
-    path("whatsapp/templates/sync/",        WhatsAppTemplateSyncView.as_view(),    name="whatsapp-template-sync"),
-    path("whatsapp/templates/<int:pk>/",    WhatsAppTemplateDeleteView.as_view(),  name="whatsapp-template-delete"),
-    path("whatsapp/send/",                  WhatsAppSendView.as_view(),            name="whatsapp-send"),
-    path("whatsapp/bulk-send/",             WhatsAppBulkSendView.as_view(),        name="whatsapp-bulk-send"),
-    path("whatsapp/messages/",              WhatsAppMessageListView.as_view(),     name="whatsapp-message-list"),
+    path("whatsapp/send/",      WhatsAppSendView.as_view(),         name="whatsapp-send"),
+    path("whatsapp/bulk-send/", WhatsAppBulkSendView.as_view(),     name="whatsapp-bulk-send"),
+    path("whatsapp/messages/",  WhatsAppMessageListView.as_view(),  name="whatsapp-message-list"),
 
     # ============================
     # CAMPAIGNS
