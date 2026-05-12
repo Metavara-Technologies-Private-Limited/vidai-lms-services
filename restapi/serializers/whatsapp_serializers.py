@@ -9,7 +9,7 @@
 import re
 
 from rest_framework         import serializers
-from restapi.models.template import TemplateWhatsApp   # ← your existing model
+from restapi.models.template_whatsapp import TemplateWhatsApp
 from restapi.models          import WhatsAppMessage     # ← only new model
 
 

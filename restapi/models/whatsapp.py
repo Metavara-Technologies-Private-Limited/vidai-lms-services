@@ -10,7 +10,7 @@
 from django.db import models
 from restapi.models.clinic  import Clinic
 from restapi.models.lead    import Lead
-from restapi.models.template import TemplateWhatsApp   # ← your existing model
+from restapi.models.template_whatsapp import TemplateWhatsApp
 
 
 # ─────────────────────────────────────────────────────────────────────────────

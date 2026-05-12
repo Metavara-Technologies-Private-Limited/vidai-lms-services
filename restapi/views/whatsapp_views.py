@@ -22,7 +22,7 @@ from rest_framework.response    import Response
 from rest_framework             import status
 from rest_framework.permissions import IsAuthenticated
 
-from restapi.models.template    import TemplateWhatsApp   # ← your existing model
+from restapi.models.template_whatsapp import TemplateWhatsApp
 from restapi.models              import WhatsAppMessage    # ← only new model
 from restapi.serializers.whatsapp_serializers import (
     WhatsAppSendSerializer,
