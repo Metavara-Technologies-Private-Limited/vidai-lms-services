@@ -21,6 +21,24 @@ from restapi.services.template_service import (
 
 
 # =====================================================
+# INTERNAL HELPER — safe role check
+# =====================================================
+
+def _is_super_admin(user) -> bool:
+    """
+    Returns True if the user is a super admin.
+    Handles missing profile/role gracefully so it never crashes.
+    Also catches variations like "Super Admin", "superadmin", "super_admin".
+    """
+    try:
+        role_name = user.profile.role.name.lower().replace(" ", "").replace("_", "")
+        return "superadmin" in role_name or role_name == "superadmin"
+    except Exception:
+        # If profile/role is missing, fall back to is_staff / is_superuser
+        return getattr(user, "is_superuser", False) or getattr(user, "is_staff", False)
+
+
+# =====================================================
 # DOCUMENT SERIALIZERS (FIXED)
 # =====================================================
 
@@ -99,7 +117,7 @@ class TemplateMailReadSerializer(serializers.ModelSerializer):
         user = request.user
 
         # SUPER ADMIN → FULL ACCESS
-        if user.profile.role.name.lower() == "super admin":
+        if _is_super_admin(user):
             return data
 
         # NO PERMISSION
@@ -194,9 +212,11 @@ class TemplateSMSReadSerializer(serializers.ModelSerializer):
 
         user = request.user
 
-        if user.profile.role.name.lower() == "super admin":
+        # SUPER ADMIN → FULL ACCESS
+        if _is_super_admin(user):
             return data
 
+        # NO PERMISSION
         if not has_permission(user, "template", "sms", "view"):
             return {}
 
@@ -283,10 +303,12 @@ class TemplateWhatsAppReadSerializer(serializers.ModelSerializer):
 
         user = request.user
 
-        if user.profile.role.name.lower() == "super admin":
+        # SUPER ADMIN → FULL ACCESS
+        if _is_super_admin(user):
             return data
 
-        if not has_permission(user, "template", "sms", "view"):
+        # NO PERMISSION
+        if not has_permission(user, "template", "whatsapp", "view"):
             return {}
 
         allowed_fields = [
