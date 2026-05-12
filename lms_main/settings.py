@@ -265,12 +265,20 @@ TWILIO_CALL_VIA_ZAPIER = os.getenv("TWILIO_CALL_VIA_ZAPIER", "true").strip().low
 TWILIO_SMS_STATUS_CALLBACK_URL = os.getenv("TWILIO_SMS_STATUS_CALLBACK_URL", "")
 TWILIO_CALL_STATUS_CALLBACK_URL = os.getenv("TWILIO_CALL_STATUS_CALLBACK_URL", "")
 
+TWILIO_WHATSAPP_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER", "")
+META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
+META_WABA_ID = os.getenv("META_WABA_ID", "")
+
+
+
 # =====================================================
 # ZAPIER
 # =====================================================
 ZAPIER_WEBHOOK_URL = os.getenv("ZAPIER_WEBHOOK_URL")
 
 ZAPIER_WEBHOOK_TWILIO_URL = os.getenv("ZAPIER_WEBHOOK_TWILIO_URL")
+
+ZAPIER_WHATSAPP_WEBHOOK_URL = os.getenv("ZAPIER_WHATSAPP_WEBHOOK_URL", "")
 
 ZAPIER_WEBHOOK_SOCIAL_URL = os.getenv("ZAPIER_WEBHOOK_SOCIAL_URL")
 
