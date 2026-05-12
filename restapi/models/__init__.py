@@ -61,5 +61,4 @@ from .review_request_document import ReviewRequestDocument
 from .usecase import UseCase
 from .interest import Interest
 
-from .template_whatsapp import TemplateWhatsApp
-from .whatsapp import WhatsAppMessage
+from .whatsapp import WhatsAppMessage   # ✅ FIXED: removed deleted WhatsAppTemplate
