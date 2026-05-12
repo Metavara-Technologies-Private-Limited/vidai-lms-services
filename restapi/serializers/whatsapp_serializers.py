@@ -1,16 +1,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# APPEND THESE to your existing serializers file
-# Original serializers are NOT touched
-#
-# FIX: Uses your existing TemplateWhatsApp model (restapi_template_whatsapp)
-#      instead of the removed WhatsAppTemplate model.
+# restapi/serializers/whatsapp_serializers.py
 # ─────────────────────────────────────────────────────────────────────────────
 
 import re
 
-from rest_framework         import serializers
-from restapi.models.template_whatsapp import TemplateWhatsApp
-from restapi.models          import WhatsAppMessage     # ← only new model
+from rest_framework                   import serializers
+from restapi.models.template_whatsapp import TemplateWhatsApp   # ✅ FIXED
+from restapi.models                   import WhatsAppMessage
 
 
 # =====================================================
@@ -20,9 +16,9 @@ from restapi.models          import WhatsAppMessage     # ← only new model
 class WhatsAppSendSerializer(serializers.Serializer):
     """Validates payload for sending a single WhatsApp message."""
 
-    lead_uuid       = serializers.UUIDField(required=False, allow_null=True)
-    to_number       = serializers.CharField()
-    template_id     = serializers.UUIDField(
+    lead_uuid   = serializers.UUIDField(required=False, allow_null=True)
+    to_number   = serializers.CharField()
+    template_id = serializers.UUIDField(
         help_text="UUID of the TemplateWhatsApp record from your DB",
     )
     variable_values = serializers.ListField(
@@ -32,12 +28,10 @@ class WhatsAppSendSerializer(serializers.Serializer):
     )
 
     def validate_to_number(self, value):
-        """Accept E.164 or Indian 10-digit numbers."""
         from restapi.serializers.twilio_serializers import normalize_indian_number
         return normalize_indian_number(value)
 
     def validate_template_id(self, value):
-        """Ensure the TemplateWhatsApp exists, is active, and not deleted."""
         template = TemplateWhatsApp.objects.filter(
             id=value,
             is_active=True,
@@ -50,7 +44,6 @@ class WhatsAppSendSerializer(serializers.Serializer):
         return value
 
     def validate(self, data):
-        """Ensure the number of variable_values matches placeholders in body."""
         template_id = data.get("template_id")
         variables   = data.get("variable_values", [])
 
@@ -72,7 +65,7 @@ class WhatsAppBulkSendSerializer(serializers.Serializer):
     template_id = serializers.UUIDField(
         help_text="UUID of the TemplateWhatsApp record from your DB",
     )
-    recipients  = serializers.ListField(
+    recipients = serializers.ListField(
         child=serializers.DictField(),
         min_length=1,
         help_text=(

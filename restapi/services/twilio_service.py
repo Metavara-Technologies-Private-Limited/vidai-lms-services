@@ -422,7 +422,17 @@ def notify_zapier_event(event_type: str, payload: dict) -> None:
 
 # ═════════════════════════════════════════════════════════════════════════════
 
-# WhatsApp Business API — Meta Graph API + Twilio sender
+
+# WhatsApp Business API — Twilio sender
+# Uses existing TemplateWhatsApp model (restapi_template_whatsapp table)
+#
+# FIELDS on TemplateWhatsApp:
+#   id, clinic, name, use_case, body, created_by,
+#   is_active, is_deleted, created_at, modified_at
+#
+# NOTE: TemplateWhatsApp has NO fields: body_text, language, status,
+#       raw_payload, meta_template_id — these do NOT exist on the model.
+#       The deleted WhatsAppTemplate had those; TemplateWhatsApp does NOT.
 # ═════════════════════════════════════════════════════════════════════════════
 
 META_GRAPH_VERSION = "v19.0"
@@ -469,163 +479,75 @@ def _notify_zapier_whatsapp(event_type: str, payload: dict) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. CREATE & SUBMIT TEMPLATE to Meta for approval
+# INTERNAL: build final message by substituting placeholders
 # ─────────────────────────────────────────────────────────────────────────────
 
-def create_whatsapp_template(
-    name: str,
-    category: str,
-    language: str,
-    body_text: str,
-    variables: list[str],
-    header_text: str = "",
-    footer_text: str = "",
-) -> dict:
+def _build_template_body(
+    variable_values: list,
+    template_id: str = None,
+    template_name: str = "",
+    template_body: str = None,
+) -> str:
     """
-    Submit a WhatsApp message template to Meta for approval.
+    Substitute {{1}}, {{2}} … in template body with variable_values.
 
-    Parameters
-    ----------
-    name        : template name (lowercase, underscores only, e.g. "appointment_reminder")
-    category    : "MARKETING" | "UTILITY" | "AUTHENTICATION"
-    language    : BCP-47 code e.g. "en", "en_US", "hi"
-    body_text   : message body with {{1}}, {{2}} placeholders for variables
-    variables   : list of example values matching placeholders ["John", "10 AM"]
-    header_text : optional plain-text header
-    footer_text : optional footer
+    Lookup priority:
+      1. template_body  — if caller passed it directly (fastest, no DB hit)
+      2. template_id    — UUID lookup in TemplateWhatsApp
+      3. template_name  — name lookup in TemplateWhatsApp (fallback)
 
-    Returns the Meta API response dict.
-    Fires Zapier event "whatsapp_template_submitted".
+    Returns the substituted string, or joined variable_values as last resort.
     """
-    waba_id = _require_setting("META_WABA_ID")
+    from restapi.models.template_whatsapp import TemplateWhatsApp   # ✅ FIXED
 
-    # ── Build components ──────────────────────────────────────────────────
-    components = []
+    body = template_body  # may be None
 
-    if header_text:
-        components.append({
-            "type": "HEADER",
-            "format": "TEXT",
-            "text": header_text,
-        })
+    if not body and template_id:
+        tmpl = TemplateWhatsApp.objects.filter(
+            id=template_id,
+            is_active=True,
+            is_deleted=False,
+        ).first()
+        if tmpl:
+            body = tmpl.body   # ← correct field name
 
-    # Body with example values
-    body_component = {"type": "BODY", "text": body_text}
-    if variables:
-        body_component["example"] = {
-            "body_text": [variables]   # Meta expects [[val1, val2, ...]]
-        }
-    components.append(body_component)
+    if not body and template_name:
+        tmpl = TemplateWhatsApp.objects.filter(
+            name=template_name,
+            is_active=True,
+            is_deleted=False,
+        ).first()
+        if tmpl:
+            body = tmpl.body   # ← correct field name
 
-    if footer_text:
-        components.append({
-            "type": "FOOTER",
-            "text": footer_text,
-        })
-
-    payload = {
-        "name":       name,
-        "category":   category,
-        "language":   language,
-        "components": components,
-    }
-
-    url = f"{META_GRAPH_BASE}/{waba_id}/message_templates"
-    resp = requests.post(url, json=payload, headers=_meta_headers(), timeout=15)
-    data = resp.json()
-
-    logger.info("create_whatsapp_template: name=%s status=%s", name, resp.status_code)
-
-    if resp.status_code not in (200, 201):
-        logger.error("create_whatsapp_template error: %s", data)
-        raise ValueError(data.get("error", {}).get("message", "Meta API error"))
-
-    # ── Persist to DB — use existing TemplateWhatsApp model ───────────────
-    from restapi.models import TemplateWhatsApp                          # FIX
-    template_obj, _ = TemplateWhatsApp.objects.update_or_create(        # FIX
-        name=name,                                                       # FIX
-        defaults={
-            "body":        body_text,                                    # FIX: field is "body" not "body_text"
-            "raw_payload": data,
-        },
-    )
-
-    # ── Zapier ────────────────────────────────────────────────────────────
-    _notify_zapier_whatsapp("whatsapp_template_submitted", {
-        "template_name":     name,
-        "template_id":       data.get("id"),
-        "category":          category,
-        "language":          language,
-        "status":            data.get("status", "PENDING"),
-    })
-
-    return data
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. LIST TEMPLATES from Meta (and sync status to DB)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def list_whatsapp_templates() -> list[dict]:
-    """
-    Fetch all templates from Meta and sync their approval status into the DB.
-    Returns a list of template dicts.
-    Fires Zapier event "whatsapp_template_approved" for any newly-approved ones.
-    """
-    from restapi.models import TemplateWhatsApp                          # FIX
-
-    waba_id = _require_setting("META_WABA_ID")
-    url     = f"{META_GRAPH_BASE}/{waba_id}/message_templates"
-    params  = {"fields": "id,name,status,category,language,components"}
-
-    resp = requests.get(url, headers=_meta_headers(), params=params, timeout=15)
-    data = resp.json()
-
-    if resp.status_code != 200:
-        logger.error("list_whatsapp_templates error: %s", data)
-        raise ValueError(data.get("error", {}).get("message", "Meta API error"))
-
-    templates = data.get("data", [])
-
-    for t in templates:
-        name       = t.get("name", "")
-        new_status = t.get("status", "PENDING")
-
-        existing   = TemplateWhatsApp.objects.filter(name=name).first()   # FIX
-        old_status = getattr(existing, "status", None)                    # FIX: TemplateWhatsApp may not have status field; safe fallback
-
-        TemplateWhatsApp.objects.update_or_create(                        # FIX
-            name=name,                                                     # FIX
-            defaults={
-                "raw_payload": t,
-            },
+    if not body:
+        logger.warning(
+            "_build_template_body: template not found (id=%s name=%s), "
+            "falling back to raw variable values",
+            template_id, template_name,
         )
+        return " ".join(str(v) for v in variable_values)
 
-        # Fire Zapier only when status transitions to APPROVED
-        if old_status != "APPROVED" and new_status == "APPROVED":
-            _notify_zapier_whatsapp("whatsapp_template_approved", {
-                "template_name": name,
-                "language":      t.get("language", ""),
-            })
+    for i, val in enumerate(variable_values, start=1):
+        body = body.replace(f"{{{{{i}}}}}", str(val))
 
-    logger.info("list_whatsapp_templates: synced %d templates", len(templates))
-    return templates
+    return body
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3. SEND WhatsApp message via Twilio using an approved template
+# SEND — single WhatsApp message
 # ─────────────────────────────────────────────────────────────────────────────
 
 def send_whatsapp_message(
-    lead_uuid: str,
-    to_number: str,
-    template_name: str,
-    language: str,
-    variable_values: list[str],
-    clinic_id: int | None = None,
-    template_id: str | None = None,   # FIX: accept DB UUID from view
-    template_body: str | None = None,  # FIX: accept pre-fetched body from view
-) -> "WhatsAppMessage":
+    lead_uuid:       str,
+    to_number:       str,
+    template_name:   str,
+    language:        str,
+    variable_values: list,
+    clinic_id:       int  = None,
+    template_id:     str  = None,
+    template_body:   str  = None,
+):
     """
     Send an approved WhatsApp template message via Twilio.
 
@@ -633,46 +555,45 @@ def send_whatsapp_message(
     ----------
     lead_uuid       : UUID of the Lead (can be "" for bulk sends)
     to_number       : recipient E.164 number e.g. "+919876543210"
-    template_name   : exact template name as registered with Meta
-    language        : template language code e.g. "en" / "en_US" / "hi"
+    template_name   : name of the TemplateWhatsApp record (for snapshot)
+    language        : stored in WhatsAppMessage snapshot only
     variable_values : list of values for {{1}}, {{2}} ... placeholders
     clinic_id       : optional clinic FK id
-    template_id     : optional UUID of TemplateWhatsApp in DB (preferred over name lookup)
-    template_body   : optional pre-fetched body string (skips DB lookup if provided)
+    template_id     : UUID of TemplateWhatsApp in DB (preferred)
+    template_body   : pre-fetched body string (skips DB lookup if provided)
 
     Returns the saved WhatsAppMessage ORM object.
-    Fires Zapier event "whatsapp_message_sent".
+    Fires Zapier event: whatsapp_message_sent
     """
-    from restapi.models import Lead, TemplateWhatsApp, WhatsAppMessage   # FIX: TemplateWhatsApp
-    from restapi.models.clinic import Clinic
+    from restapi.models                   import WhatsAppMessage
+    from restapi.models.lead              import Lead
+    from restapi.models.clinic            import Clinic
+    from restapi.models.template_whatsapp import TemplateWhatsApp   # ✅ FIXED
 
-    client          = _get_twilio_client()
-    wa_from_number  = _require_setting("TWILIO_WHATSAPP_NUMBER")
+    client         = _get_twilio_client()
+    wa_from_number = _require_setting("TWILIO_WHATSAPP_NUMBER")
 
-    # ── Build content_variables for Twilio ────────────────────────────────
-    # Twilio expects {"1": "val1", "2": "val2", ...}
-    content_variables = {
-        str(i + 1): val
-        for i, val in enumerate(variable_values)
-    }
-
-    # Twilio WhatsApp sender format
     from_wa = f"whatsapp:{wa_from_number}"
     to_wa   = f"whatsapp:{to_number}"
 
-    # ── Resolve template body ─────────────────────────────────────────────
-    # If caller passed template_body directly, use it; otherwise build from DB
-    if template_body:
-        body = template_body
-        for i, val in enumerate(variable_values, start=1):
-            body = body.replace(f"{{{{{i}}}}}", val)
-    else:
-        body = _build_template_body(template_name, language, variable_values, template_id=template_id)  # FIX: pass template_id
+    # ── Build final message body ──────────────────────────────────────────
+    final_body = _build_template_body(
+        variable_values = variable_values,
+        template_id     = template_id,
+        template_name   = template_name,
+        template_body   = template_body,
+    )
 
+    # ── Send via Twilio ───────────────────────────────────────────────────
     message = client.messages.create(
-        from_=from_wa,
-        to=to_wa,
-        body=body,
+        from_ = from_wa,
+        to    = to_wa,
+        body  = final_body,
+    )
+
+    logger.info(
+        "send_whatsapp_message: sid=%s to=%s template=%s status=%s",
+        message.sid, to_number, template_name, message.status,
     )
 
     # ── Resolve FK objects ────────────────────────────────────────────────
@@ -683,37 +604,31 @@ def send_whatsapp_message(
     elif lead:
         clinic = getattr(lead, "clinic", None)
 
-    # FIX: look up TemplateWhatsApp by UUID if provided, else by name
+    # Prefer UUID lookup; fall back to name
     if template_id:
-        template = TemplateWhatsApp.objects.filter(id=template_id).first()  # FIX
+        template = TemplateWhatsApp.objects.filter(id=template_id).first()
     else:
-        template = TemplateWhatsApp.objects.filter(name=template_name).first()  # FIX
+        template = TemplateWhatsApp.objects.filter(name=template_name).first()
 
-    # ── Persist ───────────────────────────────────────────────────────────
+    # ── Persist to DB ─────────────────────────────────────────────────────
     wa_msg = WhatsAppMessage.objects.create(
-        lead=lead,
-        clinic=clinic,
-        template=template,
-        sid=message.sid,
-        to_number=to_number,
-        from_number=wa_from_number,
-        template_name=template_name,
-        language=language,
-        variable_values=variable_values,
-        status=message.status,
-        raw_payload={
-            "sid":        message.sid,
-            "status":     message.status,
-            "to":         to_wa,
-            "from":       from_wa,
-            "template":   template_name,
-            "variables":  content_variables,
+        lead            = lead,
+        clinic          = clinic,
+        template        = template,
+        sid             = message.sid,
+        to_number       = to_number,
+        from_number     = wa_from_number,
+        template_name   = template_name,
+        language        = language,
+        variable_values = variable_values,
+        status          = message.status,
+        raw_payload     = {
+            "sid":      message.sid,
+            "status":   message.status,
+            "to":       to_wa,
+            "from":     from_wa,
+            "template": template_name,
         },
-    )
-
-    logger.info(
-        "send_whatsapp_message: sid=%s to=%s template=%s status=%s",
-        message.sid, to_number, template_name, message.status,
     )
 
     # ── Zapier ────────────────────────────────────────────────────────────
@@ -722,75 +637,37 @@ def send_whatsapp_message(
         "to_number":     to_number,
         "template_name": template_name,
         "language":      language,
-        "variables":     content_variables,
         "status":        message.status,
         "lead_uuid":     str(lead_uuid) if lead_uuid else None,
         "clinic_id":     clinic_id,
+        "template_id":   template_id,
     })
 
     return wa_msg
 
 
-def _build_template_body(
-    template_name: str,
-    language: str,
-    variable_values: list[str],
-    template_id: str | None = None,   # FIX: accept UUID for direct lookup
-) -> str:
-    """
-    Fetch the template body from DB (TemplateWhatsApp) and substitute placeholders.
-    Falls back to a generic message if template not found locally.
-    """
-    from restapi.models import TemplateWhatsApp                          # FIX
-
-    # FIX: prefer UUID lookup; fall back to name lookup
-    if template_id:
-        template = TemplateWhatsApp.objects.filter(id=template_id).first()   # FIX
-    else:
-        template = TemplateWhatsApp.objects.filter(name=template_name).first()  # FIX
-
-    if not template:
-        logger.warning(
-            "_build_template_body: template '%s' not found in DB, using raw values",
-            template_name,
-        )
-        return " ".join(variable_values)
-
-    body = template.body                                                  # FIX: field is "body" not "body_text"
-    for i, val in enumerate(variable_values, start=1):
-        body = body.replace(f"{{{{{i}}}}}", val)
-
-    return body
-
-
 # ─────────────────────────────────────────────────────────────────────────────
-# 4. BULK SEND — send the same template to multiple numbers
+# BULK SEND — same template to multiple numbers
 # ─────────────────────────────────────────────────────────────────────────────
 
 def bulk_send_whatsapp(
-    recipients: list[dict],
+    recipients:    list,
     template_name: str,
-    language: str,
-    clinic_id: int | None = None,
-    template_id: str | None = None,   # FIX: accept DB UUID from view
-    template_body: str | None = None,  # FIX: accept pre-fetched body from view
-) -> list[dict]:
+    language:      str,
+    clinic_id:     int  = None,
+    template_id:   str  = None,
+    template_body: str  = None,
+) -> list:
     """
     Send the same WhatsApp template to multiple recipients.
 
-    Each recipient dict:
-    {
-        "lead_uuid":       "uuid-string-or-empty",
-        "to_number":       "+919876543210",
-        "variable_values": ["John", "10 AM", "Dr. Smith"],
-    }
+    Each recipient dict must contain:
+      to_number       (str, E.164)
+      variable_values (list, optional)
+      lead_uuid       (str, optional)
 
-    Returns a list of result dicts:
-    [
-        {"to_number": "+91...", "status": "queued",  "sid": "SM..."},
-        {"to_number": "+91...", "status": "error",   "error": "..."},
-        ...
-    ]
+    Returns list of result dicts — one per recipient.
+    Fires Zapier event: whatsapp_bulk_sent
     """
     results = []
 
@@ -801,14 +678,14 @@ def bulk_send_whatsapp(
 
         try:
             wa_msg = send_whatsapp_message(
-                lead_uuid=lead_uuid,
-                to_number=to_number,
-                template_name=template_name,
-                language=language,
-                variable_values=variable_values,
-                clinic_id=clinic_id,
-                template_id=template_id,       # FIX: pass through
-                template_body=template_body,   # FIX: pass through
+                lead_uuid       = lead_uuid,
+                to_number       = to_number,
+                template_name   = template_name,
+                language        = language,
+                variable_values = variable_values,
+                clinic_id       = clinic_id,
+                template_id     = template_id,
+                template_body   = template_body,
             )
             results.append({
                 "to_number": to_number,
@@ -830,13 +707,13 @@ def bulk_send_whatsapp(
         template_name, len(recipients),
     )
 
-    # ── Zapier summary event ──────────────────────────────────────────────
     _notify_zapier_whatsapp("whatsapp_bulk_sent", {
         "template_name": template_name,
+        "template_id":   template_id,
         "total":         len(recipients),
         "success":       sum(1 for r in results if r.get("status") != "error"),
         "failed":        sum(1 for r in results if r.get("status") == "error"),
         "clinic_id":     clinic_id,
     })
 
-    return results
+    return results 

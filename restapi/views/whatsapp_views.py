@@ -3,11 +3,6 @@ restapi/views/whatsapp_views.py
 
 WhatsApp Business API views — message sending + message history.
 
-FIX: Uses your existing TemplateWhatsApp model (restapi_template_whatsapp)
-     instead of a separate WhatsAppTemplate model.
-     WhatsAppTemplateCreateView / ListView / SyncView / DeleteView are REMOVED
-     because templates already exist in your DB via the UI.
-
 Endpoints
 ─────────
   POST   /api/whatsapp/send/        — send single WhatsApp message
@@ -17,13 +12,13 @@ Endpoints
 
 import logging
 
-from rest_framework.views       import APIView
-from rest_framework.response    import Response
-from rest_framework             import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.views             import APIView
+from rest_framework.response          import Response
+from rest_framework                   import status
+from rest_framework.permissions       import IsAuthenticated
 
-from restapi.models.template_whatsapp import TemplateWhatsApp
-from restapi.models              import WhatsAppMessage    # ← only new model
+from restapi.models.template_whatsapp import TemplateWhatsApp   # ✅ FIXED
+from restapi.models                   import WhatsAppMessage
 from restapi.serializers.whatsapp_serializers import (
     WhatsAppSendSerializer,
     WhatsAppBulkSendSerializer,
@@ -78,7 +73,6 @@ class WhatsAppSendView(APIView):
         d         = serializer.validated_data
         clinic_id = _clinic_id_from_request(request)
 
-        # Fetch the template to get its body (used to build the message)
         template = TemplateWhatsApp.objects.get(id=d["template_id"])
 
         try:
@@ -146,7 +140,6 @@ class WhatsAppBulkSendView(APIView):
         d         = serializer.validated_data
         clinic_id = _clinic_id_from_request(request)
 
-        # Fetch the template once for all recipients
         template = TemplateWhatsApp.objects.get(id=d["template_id"])
 
         try:
