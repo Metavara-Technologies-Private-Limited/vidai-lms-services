@@ -1,5 +1,5 @@
 from rest_framework import serializers
-
+from restapi.models import CampaignSocialPost
 
 class CampaignSocialPostCallbackSerializer(serializers.Serializer):
     """
@@ -61,3 +61,56 @@ class CampaignSocialPostCallbackSerializer(serializers.Serializer):
         required=False,
         allow_blank=True
     )
+
+class CampaignSocialPostReadSerializer(serializers.ModelSerializer):
+
+    image = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CampaignSocialPost
+
+        fields = [
+            "id",
+            "campaign",
+            "platform_name",
+            "post_id",
+            "status",
+            "error_message",
+            "requested_at",
+            "synced_at",
+            "creative_id",
+            "ads_manager_url",
+
+            # image fields
+            "uploaded_image",
+            "image_url",
+            "image",
+
+            "document_name",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_image(self, obj):
+
+        # ==========================================
+        # PRIORITY 1 → IMAGE URL
+        # ==========================================
+        if obj.image_url:
+            return obj.image_url
+
+        # ==========================================
+        # PRIORITY 2 → UPLOADED IMAGE
+        # ==========================================
+        if obj.uploaded_image:
+
+            request = self.context.get("request")
+
+            if request:
+                return request.build_absolute_uri(
+                    obj.uploaded_image.url
+                )
+
+            return obj.uploaded_image.url
+
+        return None

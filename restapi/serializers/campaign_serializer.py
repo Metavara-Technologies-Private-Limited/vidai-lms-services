@@ -110,6 +110,22 @@ class CampaignReadSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    social_posts = serializers.SerializerMethodField()
+
+    def get_social_posts(self, obj):
+
+        from restapi.serializers.campaign_social_post_serializer import (
+            CampaignSocialPostReadSerializer
+    )
+
+        posts = obj.social_posts.all().order_by("-created_at")
+
+        return CampaignSocialPostReadSerializer(
+        posts,
+        many=True,
+        context=self.context
+    ).data  
+
     class Meta:
         model = Campaign
         fields = [
@@ -145,6 +161,7 @@ class CampaignReadSerializer(serializers.ModelSerializer):
             # ----------------------------
             "platform_data",
             "budget_data",
+            "social_posts",
 
             "social_media",
             "email",
@@ -210,6 +227,7 @@ class CampaignReadSerializer(serializers.ModelSerializer):
             for k, v in data.items()
             if k in allowed_fields
         }
+    
 
 
 

@@ -427,8 +427,15 @@ def _download_image(image_url: str):
 # =====================================================
 # FACEBOOK POST HELPER
 # =====================================================
-def post_to_facebook(page_id, page_token, message, image_url=None):
+def post_to_facebook(
+    page_id,
+    page_token,
+    message,
+    image_url=None,
+    uploaded_image=None
+):
     """Post a message (with optional image) to a Facebook Page."""
+
     print("=" * 60)
     print("FACEBOOK POST DEBUG")
     print(f"Page ID    : {page_id}")
@@ -437,36 +444,98 @@ def post_to_facebook(page_id, page_token, message, image_url=None):
     print(f"Image URL  : {image_url}")
     print("=" * 60)
 
+    response = None
+
+    # =====================================================
+    # PRIORITY 1 → image_url
+    # =====================================================
     if image_url:
-        image_bytes, image_filename, content_type = _download_image(image_url)
+
+        image_bytes, image_filename, content_type = _download_image(
+            image_url
+        )
+
         if image_bytes:
+
             url = f"https://graph.facebook.com/v19.0/{page_id}/photos"
-            print(f"Posting WITH image to: {url}")
+
+            print(f"Posting WITH image URL to: {url}")
+
             response = requests.post(
                 url,
-                data={"caption": message, "access_token": page_token},
-                files={"source": (image_filename, image_bytes, content_type)},
+                data={
+                    "caption": message,
+                    "access_token": page_token
+                },
+                files={
+                    "source": (
+                        image_filename,
+                        image_bytes,
+                        content_type
+                    )
+                },
             )
+
         else:
-            print("Image download failed. Falling back to text-only post.")
+            print("Image URL download failed")
             image_url = None
 
-    if not image_url:
+    # =====================================================
+    # PRIORITY 2 → uploaded_image
+    # =====================================================
+    if response is None and uploaded_image:
+
+        url = f"https://graph.facebook.com/v19.0/{page_id}/photos"
+
+        print(f"Posting WITH uploaded image to: {url}")
+
+        response = requests.post(
+            url,
+            data={
+                "caption": message,
+                "access_token": page_token
+            },
+            files={
+                "source": (
+                    uploaded_image.name,
+                    uploaded_image.read(),
+                    getattr(uploaded_image, "content_type", "image/jpeg")
+                )
+            },
+        )
+
+    # =====================================================
+    # FALLBACK → text only
+    # =====================================================
+    if response is None:
+
         url = f"https://graph.facebook.com/v19.0/{page_id}/feed"
+
         print(f"Posting TEXT-ONLY to: {url}")
-        response = requests.post(url, data={"message": message, "access_token": page_token})
+
+        response = requests.post(
+            url,
+            data={
+                "message": message,
+                "access_token": page_token
+            }
+        )
 
     print(f"HTTP Status : {response.status_code}")
     print(f"Response    : {response.text}")
+
     try:
         result = response.json()
     except Exception:
         return {}
+
     if "id" in result:
         print(f"Facebook Post ID: {result['id']}")
     else:
         print(f"Facebook Post Failed: {result.get('error', result)}")
+
     print("=" * 60)
+
     return result
 
 

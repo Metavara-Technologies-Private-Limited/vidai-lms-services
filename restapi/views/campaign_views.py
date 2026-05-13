@@ -83,7 +83,7 @@ class CampaignCreateAPIView(APIView):
             })
 
             return Response(
-                CampaignReadSerializer(campaign).data,
+                CampaignReadSerializer(campaign, context={"request": request}).data,
                 status=status.HTTP_201_CREATED,
             )
 
@@ -154,7 +154,7 @@ class CampaignUpdateAPIView(APIView):
             })
 
             return Response(
-                CampaignReadSerializer(updated_campaign).data,
+                CampaignReadSerializer(updated_campaign, context={"request": request}).data,
                 status=status.HTTP_200_OK
             )
 
@@ -215,7 +215,7 @@ class CampaignListAPIView(APIView):
 
         data = []
         for campaign in campaigns:
-            campaign_data = CampaignReadSerializer(campaign).data
+            campaign_data = CampaignReadSerializer(campaign, context={"request": request}).data
             campaign_data["lead_generated"] = campaign.leads.count()
 
             # =====================================================
@@ -303,7 +303,7 @@ class CampaignGetAPIView(APIView):
             )
             campaign = get_object_or_404(Campaign, id=campaign_id)
 
-        data = CampaignReadSerializer(campaign).data
+        data = CampaignReadSerializer(campaign, context={"request": request}).data
         data["lead_generated"] = campaign.leads.count()
 
         # =====================================================

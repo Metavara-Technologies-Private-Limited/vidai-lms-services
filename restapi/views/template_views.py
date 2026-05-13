@@ -49,15 +49,27 @@ class TemplateListAPIView(APIView):
             clinic = resolve_request_clinic(request, required=True)
             if template_type == "mail":
                 templates = TemplateMail.objects.filter(is_deleted=False, clinic=clinic)
-                serializer = TemplateMailReadSerializer(templates, many=True)
+                serializer = TemplateMailReadSerializer(
+                    templates,
+                    many=True,
+                    context={"request": request},
+                )
 
             elif template_type == "sms":
                 templates = TemplateSMS.objects.filter(is_deleted=False, clinic=clinic)
-                serializer = TemplateSMSReadSerializer(templates, many=True)
+                serializer = TemplateSMSReadSerializer(
+                    templates,
+                    many=True,
+                    context={"request": request},
+                )
 
             elif template_type == "whatsapp":
                 templates = TemplateWhatsApp.objects.filter(is_deleted=False, clinic=clinic)
-                serializer = TemplateWhatsAppReadSerializer(templates, many=True)
+                serializer = TemplateWhatsAppReadSerializer(
+                    templates,
+                    many=True,
+                    context={"request": request},
+                )
 
             else:
                 raise ValidationError(
@@ -103,7 +115,10 @@ class TemplateDetailAPIView(APIView):
                         status=status.HTTP_404_NOT_FOUND,
                     )
 
-                serializer = TemplateMailReadSerializer(template_instance)
+                serializer = TemplateMailReadSerializer(
+                    template_instance,
+                    context={"request": request},
+                )
 
             elif template_type == "sms":
                 template_instance = TemplateSMS.objects.filter(
@@ -118,7 +133,10 @@ class TemplateDetailAPIView(APIView):
                         status=status.HTTP_404_NOT_FOUND,
                     )
 
-                serializer = TemplateSMSReadSerializer(template_instance)
+                serializer = TemplateSMSReadSerializer(
+                    template_instance,
+                    context={"request": request},
+                )
 
             elif template_type == "whatsapp":
                 template_instance = TemplateWhatsApp.objects.filter(
@@ -133,7 +151,10 @@ class TemplateDetailAPIView(APIView):
                         status=status.HTTP_404_NOT_FOUND,
                     )
 
-                serializer = TemplateWhatsAppReadSerializer(template_instance)
+                serializer = TemplateWhatsAppReadSerializer(
+                    template_instance,
+                    context={"request": request},
+                )
 
             else:
                 raise ValidationError(
