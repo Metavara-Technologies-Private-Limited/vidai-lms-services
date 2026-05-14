@@ -4,7 +4,8 @@
 import logging
 import traceback
 import requests
-
+import os
+import uuid
 from django.conf import settings
 from django.shortcuts import get_object_or_404
 
@@ -664,7 +665,8 @@ class CampaignImageUploadAPIView(APIView):
 
             return Response(
                 {
-                    "error": "Internal Server Error"
+                    "error": traceback.format_exc()
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        
