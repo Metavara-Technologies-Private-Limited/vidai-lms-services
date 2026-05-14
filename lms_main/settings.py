@@ -151,8 +151,8 @@ STATIC_ROOT = BASE_DIR / 'static'
 # ================================
 # MEDIA FILES
 # ================================
-MEDIA_URL  = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = "/media/"
+MEDIA_ROOT = "/app/media"
 
 # ================================
 # FILE UPLOAD LIMITS
