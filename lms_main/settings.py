@@ -152,8 +152,11 @@ STATIC_ROOT = BASE_DIR / 'static'
 # MEDIA FILES
 # ================================
 MEDIA_URL = "/media/"
-MEDIA_ROOT = "/app/media"
 
+if os.getenv("DOCKER_ENV") == "production":
+    MEDIA_ROOT = "/app/media"
+else:
+    MEDIA_ROOT = BASE_DIR / "media"
 # ================================
 # FILE UPLOAD LIMITS
 # ================================
