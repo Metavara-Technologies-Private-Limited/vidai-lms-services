@@ -17,7 +17,6 @@ import os
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-
 # ================================
 # SECURITY
 # ================================
@@ -69,7 +68,7 @@ ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25767405/u783kl8/"
 #    replace the URL below with the new webhook URL.
 ZAPIER_WEBHOOK_MAILCHIMP_URL = os.getenv(
     "ZAPIER_WEBHOOK_MAILCHIMP_URL",
-    "https://hooks.zapier.com/hooks/catch/25767405/uxkfmnd/"
+    "https://hooks.zapier.com/hooks/catch/27387148/4yruig1/",
 )
 
 MIDDLEWARE = [
@@ -277,7 +276,6 @@ TWILIO_CALL_STATUS_CALLBACK_URL = os.getenv("TWILIO_CALL_STATUS_CALLBACK_URL", "
 TWILIO_WHATSAPP_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER", "")
 META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
 META_WABA_ID = os.getenv("META_WABA_ID", "")
-
 
 
 # =====================================================
