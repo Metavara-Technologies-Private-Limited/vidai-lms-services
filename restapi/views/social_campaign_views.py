@@ -247,6 +247,39 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     "end_date"
                 ]
 
+                # selected_start = (
+                #     timezone.make_aware(
+                #         datetime.combine(
+                #             (
+                #                 start
+                #                 if isinstance(
+                #                     start,
+                #                     date_type,
+                #                 )
+                #                 else datetime.strptime(
+                #                     start,
+                #                     "%Y-%m-%d",
+                #                 ).date()
+                #             ),
+                #             time(0,0,0),
+                #         )
+                #     )
+                # )
+                enter_time = data.get("enter_time")
+
+                parsed_time = (
+                    enter_time
+                    if isinstance(enter_time, time)
+                    else (
+                        datetime.strptime(
+                            enter_time,
+                            "%H:%M",
+                        ).time()
+                        if enter_time
+                        else time(0, 0, 0)
+                    )
+                )
+
                 selected_start = (
                     timezone.make_aware(
                         datetime.combine(
@@ -261,7 +294,7 @@ class SocialMediaCampaignCreateAPIView(APIView):
                                     "%Y-%m-%d",
                                 ).date()
                             ),
-                            time(0,0,0),
+                            parsed_time,
                         )
                     )
                 )
@@ -432,6 +465,10 @@ class SocialMediaCampaignCreateAPIView(APIView):
                             "IN"
                         )
 
+                        fb_state = fb_platform_data.get(
+                            "state"
+                        )
+
                     else:
                         facebook_message = str(
                             fb_platform_data
@@ -442,6 +479,11 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     facebook_payload = {
                         "event": "meta_ads_create",
                         "platform": "facebook",
+                        "schedule_datetime": (
+                            campaign.selected_start.isoformat()
+                            if campaign.selected_start
+                            else None
+                        ),
                         "access_token": social_fb.access_token,
                         "ad_account_id": social_fb.account_id,
                         "page_id": social_fb.page_id,
@@ -464,7 +506,10 @@ class SocialMediaCampaignCreateAPIView(APIView):
                             "daily_budget": fb_daily_budget,
                             "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
                             "targeting": {
-                                "geo_locations": {"countries":  [fb_country]},
+                                "geo_locations": {
+                                    "countries": [fb_country],
+                                    "state": fb_state,
+                                },
                                 "publisher_platforms": ["facebook"],
                             },
                             "promoted_object": {"page_id": social_fb.page_id},
@@ -536,6 +581,7 @@ class SocialMediaCampaignCreateAPIView(APIView):
                             "country_code",
                             "IN"
                         )
+                        ig_state = ig_platform_data.get("state")
 
                     else:
                         instagram_message = str(
@@ -547,6 +593,11 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     instagram_payload = {
                         "event": "meta_ads_create",
                         "platform": "instagram",
+                        "schedule_datetime": (
+                            campaign.selected_start.isoformat()
+                            if campaign.selected_start
+                            else None
+                        ),
                         "access_token": social_ig.access_token,
                         "ad_account_id": social_ig.account_id,
                         "page_id": social_ig.page_id,
@@ -569,7 +620,10 @@ class SocialMediaCampaignCreateAPIView(APIView):
                             "daily_budget": ig_daily_budget,
                             "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
                             "targeting": {
-                                "geo_locations": {"countries": [ig_country]},
+                                "geo_locations": {
+                                    "countries": [ig_country],
+                                    "state": ig_state,
+                                },
                                 "publisher_platforms": ["instagram"],
                             },
                             "promoted_object": {
@@ -580,7 +634,7 @@ class SocialMediaCampaignCreateAPIView(APIView):
                         },
                         "ad": {
                             "name": f"{campaign.campaign_name} IG Ad",
-                            "message": facebook_message,
+                            "message": instagram_message,
                             "link": "http://lms-vidaisolutions.metavaratechnologies.com",
                             "image_url": campaign.image_url,
                         },
