@@ -142,7 +142,9 @@ urlpatterns = [
     path("campaigns/<uuid:campaign_id>/activate/", CampaignActivateAPIView.as_view(), name="campaign-activate"),
     path("campaigns/<uuid:campaign_id>/inactivate/", CampaignInactivateAPIView.as_view(), name="campaign-inactivate"),
     path("campaigns/<uuid:campaign_id>/delete/", CampaignSoftDeleteAPIView.as_view(), name="campaign-delete"),
-
+    
+    path("upload/image/", CampaignImageUploadAPIView.as_view(), name="campaign-image-upload"),
+    
     path("social-media-campaign/create/", SocialMediaCampaignCreateAPIView.as_view(), name="social-campaign-create"),
     path("campaigns/email/create/", EmailCampaignCreateAPIView.as_view(), name="email-campaign-create"),
 

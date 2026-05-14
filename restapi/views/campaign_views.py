@@ -580,3 +580,91 @@ class CampaignZapierCallbackAPIView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+# -------------------------------------------------------------------
+# Campaign Image Upload API (POST)
+# -------------------------------------------------------------------
+class CampaignImageUploadAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Upload campaign image",
+        responses={
+            200: "Image uploaded successfully",
+            400: "Validation Error",
+            500: "Internal Server Error",
+        },
+        tags=["Campaigns"],
+    )
+    def post(self, request):
+
+        try:
+
+            # =====================================================
+            # Get uploaded file
+            # =====================================================
+            file = request.FILES.get("file")
+
+            if not file:
+                return Response(
+                    {"error": "No file provided"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # =====================================================
+            # Generate unique filename
+            # =====================================================
+            extension = os.path.splitext(file.name)[1]
+
+            filename = f"{uuid.uuid4().hex}{extension}"
+
+            relative_path = f"campaign_images/{filename}"
+
+            full_path = os.path.join(
+                settings.MEDIA_ROOT,
+                relative_path
+            )
+
+            # =====================================================
+            # Create directory if not exists
+            # =====================================================
+            os.makedirs(
+                os.path.dirname(full_path),
+                exist_ok=True
+            )
+
+            # =====================================================
+            # Save image
+            # =====================================================
+            with open(full_path, "wb+") as destination:
+
+                for chunk in file.chunks():
+                    destination.write(chunk)
+
+            # =====================================================
+            # Build image URL
+            # =====================================================
+            image_url = request.build_absolute_uri(
+                f"{settings.MEDIA_URL}{relative_path}"
+            )
+
+            return Response(
+                {
+                    "message": "Image uploaded successfully",
+                    "image_url": image_url
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception:
+
+            logger.error(
+                "Unhandled Campaign Image Upload Error:\n" +
+                traceback.format_exc()
+            )
+
+            return Response(
+                {
+                    "error": "Internal Server Error"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
