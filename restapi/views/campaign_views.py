@@ -346,26 +346,113 @@ class CampaignGetAPIView(APIView):
             data["conversion_rate"]    = 0
 
         # =====================================================
-        # Facebook post insights (unchanged)
+        # Facebook Campaign/Post Insights
         # =====================================================
-        if campaign.post_id:
-            social = SocialAccount.objects.filter(
-                clinic=campaign.clinic, platform="facebook", is_active=True
-            ).first()
-            if social:
-                fb = get_facebook_post_insights(campaign.post_id, social.access_token)
-                data["fb_likes"]       = fb.get("likes", 0)
-                data["fb_comments"]    = fb.get("comments", 0)
-                data["fb_shares"]      = fb.get("shares", 0)
-                data["fb_impressions"] = fb.get("impressions", 0)
-                data["fb_reach"]       = fb.get("reach", 0)
-                data["fb_clicks"]      = fb.get("clicks", 0)
-            else:
-                data["fb_likes"] = data["fb_comments"] = data["fb_shares"] = 0
-                data["fb_impressions"] = data["fb_reach"] = data["fb_clicks"] = 0
+        social = SocialAccount.objects.filter(
+            clinic=campaign.clinic, platform="facebook", is_active=True
+        ).first()
+
+        if social:
+
+            fb_data = {}
+
+            try:
+                # ==========================================
+                # Campaign Insights
+                # ==========================================
+                if getattr(campaign, "fb_campaign_id", None):
+
+                    response = requests.get(
+                        f"https://graph.facebook.com/v19.0/{campaign.fb_campaign_id}/insights",
+                        params={
+                            "fields": ",".join(
+                                [
+                                    "impressions",
+                                    "reach",
+                                    "clicks",
+                                    "spend",
+                                    "cpc",
+                                    "cpm",
+                                    "ctr",
+                                    "frequency",
+                                    "inline_link_clicks",
+                                    "unique_clicks",
+                                    "social_spend",
+                                    "objective",
+                                    "campaign_name",
+                                    "campaign_id",
+                                    "date_start",
+                                    "date_stop",
+                                ]
+                            ),
+                            "access_token": social.access_token,
+                        },
+                        timeout=15,
+                    )
+
+                    result = response.json()
+                    print("result", result)
+
+                    if result.get("data"):
+                        insight = result["data"][0]
+
+                        impressions = int(insight.get("impressions", 0) or 0)
+                        clicks = int(insight.get("clicks", 0) or 0)
+                        reach = int(insight.get("reach", 0) or 0)
+                        spend = float(insight.get("spend", 0) or 0)
+
+                        ctr = round((clicks / impressions) * 100, 2) if impressions > 0 else 0
+
+                        cpc = round(spend / clicks, 2) if clicks > 0 else 0
+
+                        cpm = round((spend * 1000) / impressions, 2) if impressions > 0 else 0
+
+                        fb_data = {
+                            "campaign_id": insight.get("campaign_id"),
+                            "campaign_name": insight.get("campaign_name"),
+                            "objective": insight.get("objective"),
+                            "impressions": impressions,
+                            "reach": reach,
+                            "clicks": clicks,
+                            "unique_clicks": int(insight.get("unique_clicks", 0) or 0),
+                            "inline_link_clicks": int(
+                                insight.get("inline_link_clicks", 0) or 0
+                            ),
+                            "spend": spend,
+                            "social_spend": float(insight.get("social_spend", 0) or 0),
+                            "ctr": ctr,
+                            "cpc": cpc,
+                            "cpm": cpm,
+                            "frequency": float(insight.get("frequency", 0) or 0),
+                            "date_start": insight.get("date_start"),
+                            "date_stop": insight.get("date_stop"),
+                        }
+
+                # ==========================================
+                # Post Insights
+                # ==========================================
+                elif campaign.post_id:
+                    fb_data = get_facebook_post_insights(campaign.post_id, social.access_token)
+
+            except Exception:
+                logger.error("Facebook insights fetch failed:\n" + traceback.format_exc())
+
+            data["fb_likes"] = fb_data.get("likes", 0)
+            data["fb_comments"] = fb_data.get("comments", 0)
+            data["fb_shares"] = fb_data.get("shares", 0)
+            data["fb_impressions"] = fb_data.get("impressions", 0)
+            data["fb_reach"] = fb_data.get("reach", 0)
+            data["fb_clicks"] = fb_data.get("clicks", 0)
+            data["fb_spend"] = fb_data.get("spend", "0")
+
         else:
-            data["fb_likes"] = data["fb_comments"] = data["fb_shares"] = 0
-            data["fb_impressions"] = data["fb_reach"] = data["fb_clicks"] = 0
+            data["fb_likes"] = 0
+            data["fb_comments"] = 0
+            data["fb_shares"] = 0
+            data["fb_impressions"] = 0
+            data["fb_reach"] = 0
+            data["fb_clicks"] = 0
+            data["fb_spend"] = "0"
 
         return Response(data, status=status.HTTP_200_OK)
 
@@ -581,7 +668,7 @@ class CampaignZapierCallbackAPIView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
 # -------------------------------------------------------------------
 # Campaign Image Upload API (POST)
 # -------------------------------------------------------------------
@@ -669,4 +756,3 @@ class CampaignImageUploadAPIView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        

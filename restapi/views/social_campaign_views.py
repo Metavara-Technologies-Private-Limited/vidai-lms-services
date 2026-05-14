@@ -378,10 +378,10 @@ class SocialMediaCampaignCreateAPIView(APIView):
                         campaign.campaign_name
                     )
 
+                # # ===================================
+                # FACEBOOK
                 # ===================================
-                # FACEBOOK OR INSTAGRAM
-                # ===================================
-                if "facebook" in channels or "instagram" in channels:
+                if "facebook" in channels:
 
                     social_fb = SocialAccount.objects.filter(
                         clinic_id=clinic_id,
@@ -397,23 +397,9 @@ class SocialMediaCampaignCreateAPIView(APIView):
 
                     if not social_fb.account_id:
                         return Response(
-                            {"error": "Ad account not found"},
+                            {"error": "Facebook ad account not found"},
                             status=400,
                         )
-
-                    is_facebook = "facebook" in channels
-                    is_instagram = "instagram" in channels
-
-                    promoted_object = {
-                        "page_id": social_fb.page_id
-                    }
-                    if is_instagram:
-                        if not social_fb.org_urn:
-                            return Response(
-                                {"error": "Instagram not connected properly"},
-                                status=400
-                            )
-                        promoted_object["instagram_actor_id"] = social_fb.org_urn
 
                     status = (
                         "PAUSED"
@@ -421,23 +407,152 @@ class SocialMediaCampaignCreateAPIView(APIView):
                         else "ACTIVE"
                     )
 
-                    budget_usd = float(filtered_budget.get("facebook", 2))
-                    usd_to_inr = get_usd_to_inr()
-                    budget_inr = budget_usd * usd_to_inr
-                    daily_budget = math.ceil(budget_inr * 100) # paise conversion
+                    fb_budget = float(
+                        filtered_budget.get("facebook", 2)
+                    )
 
-                    zap_payload = {
+                    usd_to_inr = get_usd_to_inr()
+                    fb_daily_budget = math.ceil(
+                        (fb_budget * usd_to_inr) * 100
+                    )
+
+                    fb_platform_data = raw_platform_data.get(
+                        "facebook",
+                        {}
+                    ) or {}
+
+                    if isinstance(fb_platform_data, dict):
+                        facebook_message = fb_platform_data.get(
+                            "content",
+                            ""
+                        )
+
+                        fb_country = fb_platform_data.get(
+                            "country_code",
+                            "IN"
+                        )
+
+                    else:
+                        facebook_message = str(
+                            fb_platform_data
+                        )
+
+                        fb_country = "IN"
+
+                    facebook_payload = {
                         "event": "meta_ads_create",
-                        # REQUIRED CORE
+                        "platform": "facebook",
                         "access_token": social_fb.access_token,
                         "ad_account_id": social_fb.account_id,
                         "page_id": social_fb.page_id,
-                        # ===================================
-                        # CAMPAIGN
-                        # ===================================
                         "campaign": {
                             "internal_campaign_id": str(campaign.id),
-                            "name": campaign.campaign_name,
+                            "name": f"{campaign.campaign_name}",
+                            "objective": CAMPAIGN_OBJECTIVES.get(
+                                campaign.campaign_objective,
+                                "LEAD_GENERATION",
+                            ),
+                            "status": status,
+                            "special_ad_categories": [],
+                            "is_adset_budget_sharing_enabled": False,
+                        },
+                        "adset": {
+                            "name": f"{campaign.campaign_name} FB AdSet",
+                            "billing_event": "IMPRESSIONS",
+                            "optimization_goal": "LINK_CLICKS",
+                            "destination_type": "WEBSITE",
+                            "daily_budget": fb_daily_budget,
+                            "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
+                            "targeting": {
+                                "geo_locations": {"countries":  [fb_country]},
+                                "publisher_platforms": ["facebook"],
+                            },
+                            "promoted_object": {"page_id": social_fb.page_id},
+                            "status": status,
+                        },
+                        "ad": {
+                            "name": f"{campaign.campaign_name} FB Ad",
+                            "message": facebook_message,
+                            "link": "http://lms-vidaisolutions.metavaratechnologies.com",
+                            "image_url": campaign.image_url,
+                        },
+                    }
+
+                    send_to_zapier_social(
+                        facebook_payload
+                    )
+
+                # ===================================
+                # INSTAGRAM
+                # ===================================
+                if "instagram" in channels:
+
+                    social_ig = SocialAccount.objects.filter(
+                        clinic_id=clinic_id,
+                        platform="facebook",
+                        is_active=True,
+                    ).first()
+
+                    if not social_ig:
+                        return Response(
+                            {"error": "Instagram/Facebook not connected"},
+                            status=400,
+                        )
+
+                    if not social_ig.org_urn:
+                        return Response(
+                            {"error": "Instagram actor id missing"},
+                            status=400,
+                        )
+
+                    status = (
+                        "PAUSED"
+                        if (campaign.status or "").lower() == "draft"
+                        else "ACTIVE"
+                    )
+
+                    ig_budget = float(
+                        filtered_budget.get("instagram", 2)
+                    )
+
+                    usd_to_inr = get_usd_to_inr()
+
+                    ig_daily_budget = math.ceil(
+                        (ig_budget * usd_to_inr) * 100
+                    )
+
+                    ig_platform_data = raw_platform_data.get(
+                        "instagram",
+                        {}
+                    ) or {}
+
+                    if isinstance(ig_platform_data, dict):
+                        instagram_message = ig_platform_data.get(
+                            "content",
+                            ""
+                        )
+
+                        ig_country = ig_platform_data.get(
+                            "country_code",
+                            "IN"
+                        )
+
+                    else:
+                        instagram_message = str(
+                            ig_platform_data
+                        )
+
+                        ig_country = "IN"
+
+                    instagram_payload = {
+                        "event": "meta_ads_create",
+                        "platform": "instagram",
+                        "access_token": social_ig.access_token,
+                        "ad_account_id": social_ig.account_id,
+                        "page_id": social_ig.page_id,
+                        "campaign": {
+                            "internal_campaign_id": str(campaign.id),
+                            "name": f"{campaign.campaign_name}",
                             "objective": CAMPAIGN_OBJECTIVES.get(
                                 campaign.campaign_objective,
                                 "OUTCOME_TRAFFIC",
@@ -446,43 +561,34 @@ class SocialMediaCampaignCreateAPIView(APIView):
                             "special_ad_categories": [],
                             "is_adset_budget_sharing_enabled": False,
                         },
-                        # ===================================
-                        # AD SET
-                        # ===================================
                         "adset": {
-                            "name": f"{campaign.campaign_name} AdSet",
+                            "name": f"{campaign.campaign_name} IG AdSet",
                             "billing_event": "IMPRESSIONS",
                             "optimization_goal": "LINK_CLICKS",
                             "destination_type": "WEBSITE",
-                            "daily_budget": daily_budget,
+                            "daily_budget": ig_daily_budget,
                             "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
                             "targeting": {
-                                "geo_locations": {"countries": ["IN"]},
-                                "publisher_platforms": (
-                                    ["facebook", "instagram"]
-                                    if is_facebook and is_instagram
-                                    else ["instagram"] if is_instagram else ["facebook"]
-                                ),
+                                "geo_locations": {"countries": [ig_country]},
+                                "publisher_platforms": ["instagram"],
                             },
-                            "promoted_object": promoted_object,
+                            "promoted_object": {
+                                "page_id": social_ig.page_id,
+                                "instagram_actor_id": social_ig.org_urn,
+                            },
                             "status": status,
                         },
-                        # ===================================
-                        # AD
-                        # ===================================
                         "ad": {
-                            "name": f"{campaign.campaign_name} Ad",
+                            "name": f"{campaign.campaign_name} IG Ad",
                             "message": facebook_message,
                             "link": "http://lms-vidaisolutions.metavaratechnologies.com",
                             "image_url": campaign.image_url,
                         },
                     }
-                    zap_payload["platform_flags"] = {
-                        "facebook": is_facebook,
-                        "instagram": is_instagram,
-                    }
 
-                    send_to_zapier_social(zap_payload)
+                    send_to_zapier_social(
+                        instagram_payload
+                    )
 
                 # ===================================
                 # LINKEDIN
@@ -718,6 +824,9 @@ class SocialMediaCampaignCreateAPIView(APIView):
 
 
 class MetaCampaignCallbackAPIView(APIView):
+
+    authentication_classes = []
+    permission_classes = []
 
     def post(self, request):
 
