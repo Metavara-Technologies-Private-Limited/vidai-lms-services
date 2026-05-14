@@ -646,7 +646,7 @@ class CampaignImageUploadAPIView(APIView):
             # =====================================================
             image_url = request.build_absolute_uri(
                 f"{settings.MEDIA_URL}{relative_path}"
-            )
+            ).replace("http://", "https://")
 
             return Response(
                 {
