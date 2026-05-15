@@ -280,41 +280,41 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     )
                 )
 
-                selected_start = (
+                naive_start = datetime.combine(
+                    (
+                        start
+                        if isinstance(start, date_type)
+                        else datetime.strptime(
+                            start,
+                            "%Y-%m-%d",
+                        ).date()
+                    ),
+                    parsed_time,
+                )
+
+                selected_start = timezone.localtime(
                     timezone.make_aware(
-                        datetime.combine(
-                            (
-                                start
-                                if isinstance(
-                                    start,
-                                    date_type,
-                                )
-                                else datetime.strptime(
-                                    start,
-                                    "%Y-%m-%d",
-                                ).date()
-                            ),
-                            parsed_time,
-                        )
+                        naive_start,
+                        timezone.get_current_timezone(),
                     )
                 )
 
-                selected_end = (
+                naive_end = datetime.combine(
+                    (
+                        end
+                        if isinstance(end, date_type)
+                        else datetime.strptime(
+                            end,
+                            "%Y-%m-%d",
+                        ).date()
+                    ),
+                    time(23, 59, 59),
+                )
+
+                selected_end = timezone.localtime(
                     timezone.make_aware(
-                        datetime.combine(
-                            (
-                                end
-                                if isinstance(
-                                    end,
-                                    date_type,
-                                )
-                                else datetime.strptime(
-                                    end,
-                                    "%Y-%m-%d",
-                                ).date()
-                            ),
-                            time(23,59,59),
-                        )
+                        naive_end,
+                        timezone.get_current_timezone(),
                     )
                 )
 
@@ -890,13 +890,107 @@ class MetaCampaignCallbackAPIView(APIView):
         try:
             campaign = Campaign.objects.get(id=internal_campaign_id)
 
-            campaign.fb_campaign_id = meta_campaign_id
+            platform = request.data.get("platform")
+
+            if platform == "facebook":
+                campaign.fb_campaign_id = meta_campaign_id
+
+            elif platform == "instagram":
+                campaign.instagram_campaign_id = meta_campaign_id
             campaign.save()
 
             return Response({"success": True})
 
         except Campaign.DoesNotExist:
             return Response({"error": "Campaign not found"}, status=404)
+
+
+class FacebookCampaignStatusAPIView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, campaign_id):
+
+        try:
+            action = request.data.get("action")
+
+            if action not in ["enable", "disable"]:
+                return Response(
+                    {"error": "Invalid action"},
+                    status=400,
+                )
+
+            campaign = Campaign.objects.get(id=campaign_id)
+            platform = request.data.get("platform")
+
+            meta_campaign_id = (
+                campaign.fb_campaign_id
+                if platform == "facebook"
+                else campaign.instagram_campaign_id
+            )
+
+            if not meta_campaign_id:
+                return Response(
+                    {"error": "Facebook campaign not synced yet"},
+                    status=400,
+                )
+
+            social_fb = SocialAccount.objects.filter(
+                clinic=campaign.clinic,
+                platform="facebook",
+                is_active=True,
+            ).first()
+
+            if not social_fb:
+                return Response(
+                    {"error": "Facebook account not connected"},
+                    status=400,
+                )
+
+            fb_status = "ACTIVE" if action == "enable" else "PAUSED"
+
+            response = requests.post(
+                f"https://graph.facebook.com/v25.0/{meta_campaign_id}",
+                data={
+                    "status": fb_status,
+                    "access_token": social_fb.access_token,
+                },
+                timeout=15,
+            )
+
+            response_data = response.json()
+
+            if response.status_code >= 400:
+                return Response(
+                    {
+                        "error": "Facebook API error",
+                        "details": response_data,
+                    },
+                    status=400,
+                )
+
+            return Response(
+                {
+                    "success": True,
+                    "facebook_status": fb_status,
+                    "response": response_data,
+                }
+            )
+
+        except Campaign.DoesNotExist:
+            return Response(
+                {"error": "Campaign not found"},
+                status=404,
+            )
+
+        except Exception as e:
+            return Response(
+                {
+                    "error": str(e),
+                    "trace": traceback.format_exc(),
+                },
+                status=400,
+            )
 
 # -------------------------------------------------------------------
 # LINKEDIN CAMPAIGN INSIGHTS

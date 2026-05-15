@@ -13,7 +13,7 @@
 #         related_name="campaigns"
 #     )
 
-    
+
 #     # ---------------------------------------
 #     # LINKEDIN PROVIDER IDS / ACK STORAGE
 #     # ---------------------------------------
@@ -24,7 +24,7 @@
 #         blank=True,
 #         help_text="urn:li:sponsoredCampaign:xxx"
 #     )
-    
+
 #     linkedin_live_status = models.CharField(
 #         max_length=50,
 #         null=True,
@@ -84,7 +84,7 @@
 #         blank=True,
 #         help_text="Cached metrics from insights sync"
 #     )
-    
+
 #     last_metrics_synced_at = models.DateTimeField(
 #         null=True,
 #         blank=True
@@ -226,7 +226,6 @@ class Campaign(models.Model):
         related_name="campaigns"
     )
 
-    
     # ---------------------------------------
     # LINKEDIN PROVIDER IDS / ACK STORAGE
     # ---------------------------------------
@@ -237,7 +236,7 @@ class Campaign(models.Model):
         blank=True,
         help_text="urn:li:sponsoredCampaign:xxx"
     )
-    
+
     linkedin_live_status = models.CharField(
         max_length=50,
         null=True,
@@ -297,7 +296,7 @@ class Campaign(models.Model):
         blank=True,
         help_text="Cached metrics from insights sync"
     )
-    
+
     last_metrics_synced_at = models.DateTimeField(
         null=True,
         blank=True
@@ -389,6 +388,13 @@ class Campaign(models.Model):
         null=True,
         blank=True,
         help_text="Facebook Ad Campaign ID created via API"
+    )
+
+    instagram_campaign_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Instagram Ad Campaign ID created via API",
     )
 
     # ----------------------------

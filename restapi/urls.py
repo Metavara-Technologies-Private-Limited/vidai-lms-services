@@ -274,6 +274,7 @@ urlpatterns = [
     path("fb/campaigns/", FBCampaignListAPIView.as_view(), name="fb-campaigns"),
     path("fb/campaigns/create/", FBCampaignCreateAPIView.as_view(), name="fb-campaign-create"),
     path("fb/campaigns/<str:campaign_id>/insights/", FBCampaignInsightsAPIView.as_view(), name="fb-insights"),
+    path("fb/campaigns/<str:campaign_id>/status/", FacebookCampaignStatusAPIView.as_view(), name="fb-campaign-status"),
     path("social-campaign/meta-callback/", MetaCampaignCallbackAPIView.as_view(), name="meta-callback"),
 
     # ============================
