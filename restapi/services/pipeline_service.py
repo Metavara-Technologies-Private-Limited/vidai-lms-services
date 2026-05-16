@@ -9,6 +9,25 @@ from restapi.models import (
     Clinic,
 )
 
+
+def _assign_fallback_default(clinic):
+    fallback = (
+        Pipeline.objects
+        .filter(clinic=clinic, is_deleted=False, is_active=True)
+        .order_by("created_at")
+        .first()
+    )
+    if not fallback:
+        return None
+
+    Pipeline.objects.filter(clinic=clinic, is_default=True).exclude(id=fallback.id).update(
+        is_default=False
+    )
+    if not fallback.is_default:
+        fallback.is_default = True
+        fallback.save(update_fields=["is_default", "modified_at"])
+    return fallback
+
 # create_pipeline
 @transaction.atomic
 def create_pipeline(validated_data):
@@ -17,10 +36,25 @@ def create_pipeline(validated_data):
     except Clinic.DoesNotExist:
         raise ValidationError({"clinic_id": "Invalid clinic_id"})
 
+    has_existing_pipelines = Pipeline.objects.filter(
+        clinic=clinic,
+        is_deleted=False,
+    ).exists()
+
+    requested_default = bool(validated_data.pop("is_default", False))
+    should_be_default = (not has_existing_pipelines) or requested_default
+
     pipeline = Pipeline.objects.create(
         clinic=clinic,
+        is_default=should_be_default,
         **validated_data
     )
+
+    if should_be_default:
+        Pipeline.objects.filter(
+            clinic=clinic,
+            is_deleted=False,
+        ).exclude(id=pipeline.id).update(is_default=False)
 
     return pipeline
 
@@ -36,8 +70,45 @@ def update_pipeline(instance, validated_data):
         setattr(instance, field, value)
 
     instance.save()
+    if validated_data.get("is_default") is True:
+        Pipeline.objects.filter(
+            clinic=instance.clinic,
+            is_deleted=False,
+            is_default=True,
+        ).exclude(id=instance.id).update(is_default=False)
+
+    if instance.is_default is False:
+        has_any_default = Pipeline.objects.filter(
+            clinic=instance.clinic,
+            is_deleted=False,
+            is_default=True,
+        ).exists()
+        if not has_any_default:
+            instance.is_default = True
+            instance.save(update_fields=["is_default", "modified_at"])
+
     instance.refresh_from_db()
     return instance
+
+
+@transaction.atomic
+def set_default_pipeline(pipeline_id):
+    try:
+        pipeline = Pipeline.objects.select_related("clinic").get(id=pipeline_id, is_deleted=False)
+    except Pipeline.DoesNotExist:
+        raise ValidationError({"pipeline_id": "Pipeline not found"})
+
+    Pipeline.objects.filter(
+        clinic=pipeline.clinic,
+        is_deleted=False,
+        is_default=True,
+    ).exclude(id=pipeline.id).update(is_default=False)
+
+    if not pipeline.is_default:
+        pipeline.is_default = True
+        pipeline.save(update_fields=["is_default", "modified_at"])
+
+    return pipeline
 
 
 # add_stage
@@ -171,6 +242,7 @@ def duplicate_pipeline(pipeline_id):
         pipeline_name=f"{original.pipeline_name} (Copy)",
         industry_type=original.industry_type,
         is_active=original.is_active,
+        is_default=False,
     )
 
     for stage in original.stages.all():
@@ -219,7 +291,11 @@ def archive_pipeline(pipeline_id):
         raise ValidationError({"pipeline_id": "Pipeline not found"})
 
     pipeline.is_active = False
+    was_default = pipeline.is_default
+    pipeline.is_default = False
     pipeline.save()
+    if was_default:
+        _assign_fallback_default(pipeline.clinic)
     return pipeline
 
 
@@ -231,7 +307,11 @@ def delete_pipeline(pipeline_id):
     except Pipeline.DoesNotExist:
         raise ValidationError({"pipeline_id": "Pipeline not found"})
 
+    clinic = pipeline.clinic
+    was_default = pipeline.is_default
     pipeline.delete()
+    if was_default:
+        _assign_fallback_default(clinic)
 
 
 # duplicate_stage

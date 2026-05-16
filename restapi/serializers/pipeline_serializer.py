@@ -143,6 +143,7 @@ class PipelineReadSerializer(serializers.ModelSerializer):
             "pipeline_name",
             "industry_type",
             "is_active",
+            "is_default",
             "stages",
         ]
 
@@ -165,6 +166,7 @@ class PipelineSerializer(serializers.ModelSerializer):
             "pipeline_name",
             "industry_type",
             "is_active",
+            "is_default",
         ]
         read_only_fields = ("id",)
 

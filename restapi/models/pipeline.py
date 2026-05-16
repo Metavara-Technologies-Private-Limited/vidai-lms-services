@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from django.db.models import Q
 
 
 class Pipeline(models.Model):
@@ -29,11 +30,18 @@ class Pipeline(models.Model):
     industry_type = models.CharField(max_length=50, choices=INDUSTRY_CHOICES)
 
     is_active = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        
+        constraints = [
+            models.UniqueConstraint(
+                fields=["clinic"],
+                condition=Q(is_default=True),
+                name="uniq_default_pipeline_per_clinic",
+            )
+        ]
         db_table = "restapi_pipeline"

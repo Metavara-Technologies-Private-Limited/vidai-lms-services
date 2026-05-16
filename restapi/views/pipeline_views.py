@@ -27,6 +27,7 @@ from restapi.services.pipeline_service import (
     delete_stage,
     archive_stage,
     duplicate_stage,
+    set_default_pipeline,
 )
 from restapi.utils.clinic_scope import resolve_request_clinic
 
@@ -524,6 +525,47 @@ class PipelineArchiveAPIView(APIView):
         except Exception:
             logger.error(
                 "Unhandled Pipeline Archive Error:\n" + traceback.format_exc()
+            )
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+# -------------------------------------------------------------------
+# SET DEFAULT PIPELINE (POST)
+# -------------------------------------------------------------------
+class PipelineSetDefaultAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Set a pipeline as default for its clinic",
+        responses={200: PipelineReadSerializer},
+        tags=["Pipelines"],
+    )
+    def post(self, request, pipeline_id):
+        try:
+            _get_scoped_pipeline(request, pipeline_id)
+            pipeline = set_default_pipeline(pipeline_id)
+            return Response(
+                PipelineReadSerializer(pipeline, context={"request": request}).data,
+                status=status.HTTP_200_OK,
+            )
+
+        except Pipeline.DoesNotExist:
+            return Response(
+                {"error": "Pipeline not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        except ValidationError as ve:
+            return Response(
+                {"error": ve.detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.error(
+                "Unhandled Pipeline Set Default Error:\n" + traceback.format_exc()
             )
             return Response(
                 {"error": "Internal Server Error"},
