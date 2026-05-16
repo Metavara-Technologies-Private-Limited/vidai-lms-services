@@ -61,8 +61,19 @@ class FBCampaignInsightsAPIView(APIView):
     """
     def get(self, request, campaign_id):
         try:
+            platform = request.query_params.get(
+                "platform",
+                "facebook",
+            )
+
+            lookup_field = (
+                "fb_campaign_id"
+                if platform == "facebook"
+                else "instagram_campaign_id"
+            )
+
             campaign = Campaign.objects.filter(
-                fb_campaign_id=campaign_id
+                **{lookup_field: campaign_id}
             ).first()
 
             if not campaign:
@@ -82,16 +93,37 @@ class FBCampaignInsightsAPIView(APIView):
                 }, status=400)
 
             token = social_fb.access_token
+            ad_account_id = social_fb.account_id
+            meta_campaign_id = (
+                campaign.fb_campaign_id
+                if platform == "facebook"
+                else campaign.instagram_campaign_id
+            )
 
             date_preset = request.query_params.get('date_preset', 'maximum')
 
+            currency_res = requests.get(
+                f"https://graph.facebook.com/v25.0/{ad_account_id}",
+                params={
+                    "fields": "currency",
+                    "access_token": token,
+                },
+            )
+
+            currency_data = currency_res.json()
+
+            currency = currency_data.get(
+                "currency",
+                "USD",
+            )
+
             r = requests.get(
-                f"https://graph.facebook.com/v19.0/{campaign_id}/insights",
+                f"https://graph.facebook.com/v25.0/{meta_campaign_id}/insights",
                 params={
                     "fields": "campaign_name,impressions,clicks,reach,spend,cpc,cpm,actions",
                     "date_preset": date_preset,
                     "access_token": token,
-                }
+                },
             )
             data = r.json()
 
@@ -112,22 +144,27 @@ class FBCampaignInsightsAPIView(APIView):
                         "reach": "0",
                         "cpc": "0",
                         "cpm": "0",
+                        "currency": currency,
                     },
                     "message": "No data yet - campaign has no spend"
                 }, status=200)
 
             i = insights[0]
-            return Response({
-                "insights": {
-                    "post_impressions": int(i.get("impressions", 0)),
-                    "post_clicks": int(i.get("clicks", 0)),
-                    "post_engaged_users": int(i.get("reach", 0)),
-                    "spend": i.get("spend", "0"),
-                    "reach": i.get("reach", "0"),
-                    "cpc": i.get("cpc", "0"),
-                    "cpm": i.get("cpm", "0"),
-                }
-            }, status=200)
+            return Response(
+                {
+                    "insights": {
+                        "post_impressions": int(i.get("impressions", 0)),
+                        "post_clicks": int(i.get("clicks", 0)),
+                        "post_engaged_users": int(i.get("reach", 0)),
+                        "spend": i.get("spend", "0"),
+                        "reach": i.get("reach", "0"),
+                        "cpc": i.get("cpc", "0"),
+                        "cpm": i.get("cpm", "0"),
+                        "currency": currency,
+                    }
+                },
+                status=200,
+            )
 
         except Exception:
             logger.error("FB Insights Error:\n" + traceback.format_exc())

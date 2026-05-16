@@ -58,6 +58,7 @@ CAMPAIGN_OBJECTIVES = {
     "leads": "OUTCOME_LEADS",
 }
 
+DEFAULT_CAMPAIGN_IMAGE = "https://images.unsplash.com/photo-1584515933487-779824d29309?q=80&w=1200&auto=format&fit=crop"
 
 def get_usd_to_inr():
     try:
@@ -230,6 +231,9 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     and cc_url
                 ):
                     image_url_field = cc_url
+
+                if not image_url_field:
+                    image_url_field = DEFAULT_CAMPAIGN_IMAGE
 
                 # -----------------------------------
                 # Dates
@@ -480,7 +484,9 @@ class SocialMediaCampaignCreateAPIView(APIView):
                         "event": "meta_ads_create",
                         "platform": "facebook",
                         "schedule_datetime": (
-                            campaign.selected_start.isoformat()
+                            campaign.selected_start.strftime(
+                                "%Y-%m-%d %H:%M:%S"
+                            )
                             if campaign.selected_start
                             else None
                         ),
@@ -594,7 +600,9 @@ class SocialMediaCampaignCreateAPIView(APIView):
                         "event": "meta_ads_create",
                         "platform": "instagram",
                         "schedule_datetime": (
-                            campaign.selected_start.isoformat()
+                            campaign.selected_start.strftime(
+                                "%Y-%m-%d %H:%M:%S"
+                            )
                             if campaign.selected_start
                             else None
                         ),

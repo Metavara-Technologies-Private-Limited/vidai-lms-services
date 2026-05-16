@@ -182,6 +182,12 @@ class CampaignReadSerializer(serializers.ModelSerializer):
             "linkedin_ads_manager_url",
 
             # ----------------------------
+            # Meta Campaign Metadata
+            # ----------------------------
+            "fb_campaign_id",
+            "instagram_campaign_id",
+
+            # ----------------------------
             # Cached Insights
             # ----------------------------
             "last_synced_metrics",
