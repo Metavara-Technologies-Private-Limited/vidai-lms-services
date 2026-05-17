@@ -351,44 +351,50 @@ class SocialMediaCampaignCreateAPIView(APIView):
                 )
 
                 # -----------------------------------
+                # Normalize Google Ads platform data
+                # -----------------------------------
+                google_ads_data = (
+                    raw_platform_data.get(
+                        "google_ads",
+                        {}
+                    ) or {}
+                )
+
+                if isinstance(google_ads_data, dict):
+
+                    google_ads_data["status"] = (
+                        "paused"
+                        if str(
+                            data.get("status", "")
+                        ).lower() in ["paused", "draft"]
+                        else "active"
+                    )
+
+                    raw_platform_data["google_ads"] = (
+                        google_ads_data
+                    )
+
+                # -----------------------------------
                 # Create campaign
                 # -----------------------------------
                 campaign = Campaign.objects.create(
-                    clinic_id=data[
-                        "clinic"
-                    ],
-                    campaign_name=data[
-                        "campaign_name"
-                    ],
-                    campaign_description=data[
-                        "campaign_description"
-                    ],
-                    campaign_objective=data[
-                        "campaign_objective"
-                    ],
-                    target_audience=data[
-                        "target_audience"
-                    ],
-                    start_date=data[
-                        "start_date"
-                    ],
-                    end_date=data[
-                        "end_date"
-                    ],
-                    campaign_mode=mode_mapping.get(
-                        mode
-                    ),
+                    clinic_id=data["clinic"],
+                    campaign_name=data["campaign_name"],
+                    campaign_description=data["campaign_description"],
+                    campaign_objective=data["campaign_objective"],
+                    target_audience=data["target_audience"],
+                    start_date=data["start_date"],
+                    end_date=data["end_date"],
+                    campaign_mode=mode_mapping.get(mode),
                     campaign_content=facebook_message,
                     selected_start=selected_start,
                     selected_end=selected_end,
-                    enter_time=data[
-                        "enter_time"
-                    ],
+                    enter_time=data["enter_time"],
                     platform_data=raw_platform_data,
                     budget_data=filtered_budget,
                     image_url=image_url_field,
                     status=data["status"],
-                    is_active=True,
+                    is_active=data.get("is_active", False),
                 )
 
                 channels = []
@@ -730,6 +736,10 @@ class SocialMediaCampaignCreateAPIView(APIView):
                         if google_account
                         else None
                     )
+                    login_customer_id = str(
+                        getattr(google_account, "login_customer_id", None)
+                        or getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
+                    ).replace("-", "")
 
                     if not refresh_token:
                         refresh_token = getattr(
@@ -800,34 +810,128 @@ class SocialMediaCampaignCreateAPIView(APIView):
                         )
 
                         google_payload = {
-                            "event":"google_ads_campaign_created",
-                            "campaign_name": campaign.campaign_name,
+                            "event": "google_ads_campaign_created",
+                            # -----------------------------------
+                            # Scheduler
+                            # -----------------------------------
+                            "schedule_datetime": (
+                                campaign.selected_start.strftime("%Y-%m-%d %H:%M:%S")
+                                if campaign.selected_start
+                                else None
+                            ),
+                            # -----------------------------------
+                            # Auth
+                            # -----------------------------------
                             "customer_id": str(customer_id).replace("-", ""),
+                            "login_customer_id": str(login_customer_id).replace(
+                                "-", ""
+                            ),
                             "refresh_token": refresh_token,
                             "access_token": access_token or "",
                             "developer_token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
                             "client_id": settings.GOOGLE_CLIENT_ID,
                             "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                            # -----------------------------------
+                            # Campaign
+                            # -----------------------------------
+                            "internal_campaign_id": str(campaign.id),
+                            "campaign_name": campaign.campaign_name,
+                            "campaign_type": google_data.get(
+                                "campaign_type",
+                                "SEARCH",
+                            ),
+                            # -----------------------------------
+                            # Status
+                            # -----------------------------------
+                            "campaign_status": (
+                                "PAUSED"
+                                if (campaign.status or "").lower() == "draft"
+                                else "ENABLED"
+                            ),
+                            "our_status": (campaign.status or "").lower(),
+                            # -----------------------------------
+                            # Budget / Bidding
+                            # -----------------------------------
                             "budget": int(
                                 filtered_budget.get(
                                     "google_ads",
                                     500,
                                 )
                             ),
-                            "keywords": keywords_str,
-                            "final_url": clinic_website,
-                            "headline_1": campaign.campaign_name[:30],
-                            "headline_2": "Book Free Consultation",
-                            "headline_3": "Contact Us Today",
-                            "description": strip_tags(
-                                campaign.campaign_description
-                                or campaign.campaign_name
-                            )[:90],
-                            "campaign_id": str(
-                                campaign.id
+                            "bidding_strategy": google_data.get(
+                                "bidding_strategy",
+                                "MANUAL_CPC",
                             ),
-                            "callback_url": (
-                                f"{settings.BACKEND_BASE_URL}/api/campaign/insights/callback/"
+                            "cpc_bid": int(
+                                google_data.get(
+                                    "cpc_bid",
+                                    2,
+                                )
+                            ),
+                            # -----------------------------------
+                            # Keywords
+                            # -----------------------------------
+                            "keywords": keywords_str,
+                            # -----------------------------------
+                            # URLs
+                            # -----------------------------------
+                            "final_url": clinic_website,
+                            # ✅ NEVER NULL
+                            "image_url": (campaign.image_url or DEFAULT_CAMPAIGN_IMAGE),
+                            # -----------------------------------
+                            # Headlines
+                            # -----------------------------------
+                            "headline_1": google_data.get(
+                                "headline_1",
+                                campaign.campaign_name[:30],
+                            ),
+                            "headline_2": google_data.get(
+                                "headline_2",
+                                "Learn More",
+                            ),
+                            "headline_3": google_data.get(
+                                "headline_3",
+                                "Contact Us Today",
+                            ),
+                            # -----------------------------------
+                            # Descriptions
+                            # -----------------------------------
+                            "description": google_data.get(
+                                "description",
+                                strip_tags(
+                                    campaign.campaign_description
+                                    or campaign.campaign_name
+                                )[:90],
+                            ),
+                            "description_2": google_data.get(
+                                "description_2",
+                                "Call us now or visit our website.",
+                            )[:90],
+                            # -----------------------------------
+                            # Ad Group
+                            # -----------------------------------
+                            "ad_group_name": google_data.get(
+                                "ad_group_name",
+                                f"{campaign.campaign_name} AdGroup",
+                            ),
+                            # -----------------------------------
+                            # Extra Metadata
+                            # -----------------------------------
+                            "campaign_objective": campaign.campaign_objective,
+                            "target_audience": campaign.target_audience,
+                            "start_date": str(campaign.start_date),
+                            "end_date": str(campaign.end_date),
+                            "start_time": (
+                                campaign.enter_time.strftime("%H:%M")
+                                if campaign.enter_time
+                                else ""
+                            ),
+                            # -----------------------------------
+                            # Callback
+                            # -----------------------------------
+                            "campaign_created_callback_url": (
+                                f"{settings.BACKEND_BASE_URL}"
+                                "/api/google-ads/callback/campaign-created/"
                             ),
                         }
 
@@ -835,6 +939,13 @@ class SocialMediaCampaignCreateAPIView(APIView):
                             requests.post(
                                 settings.ZAPIER_WEBHOOK_GOOGLE_ADS_URL,
                                 json=google_payload,
+                                headers={
+                                    "Content-Type": "application/json",
+                                    "login-customer-id": str(login_customer_id).replace(
+                                        "-", ""
+                                    ),
+                                    "customer-id": str(customer_id).replace("-", ""),
+                                },
                                 timeout=10,
                             )
 

@@ -3,6 +3,7 @@ import traceback
 import requests
 
 from django.conf import settings
+from django.utils.dateparse import parse_datetime
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -140,8 +141,33 @@ class GoogleAdsCampaignCreateAPIView(APIView):
             campaign_created_callback_url = f"{callback_base}/api/google-ads/callback/campaign-created/"
 
             # ✅ Map our status to Google Ads status
-            our_status        = data.get("campaign_status") or data.get("status") or "draft"
-            google_ads_status = "ENABLED" if our_status == "live" else "PAUSED"
+            our_status = str(
+                data.get("campaign_status")
+                or data.get("status")
+                or "draft"
+            ).strip().lower()
+
+            google_ads_status = (
+                "PAUSED"
+                if our_status == "draft"
+                else "ENABLED"
+            )
+
+            raw_schedule_datetime = str(
+                data.get("schedule_datetime") or ""
+            ).strip()
+
+            parsed_schedule_datetime = parse_datetime(
+                raw_schedule_datetime
+            )
+
+            schedule_datetime = (
+                parsed_schedule_datetime.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                if parsed_schedule_datetime
+                else raw_schedule_datetime
+            )
 
             # ✅ NEW FIELDS — campaign objective, target audience, schedule dates & time
             campaign_objective = str(data.get("campaign_objective") or "").strip()
@@ -190,6 +216,7 @@ class GoogleAdsCampaignCreateAPIView(APIView):
                 "start_date":                    start_date,
                 "end_date":                      end_date,
                 "start_time":                    start_time,
+                "schedule_datetime":             schedule_datetime,
             }
 
             logger.info(
