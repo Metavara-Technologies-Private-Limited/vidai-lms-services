@@ -9,6 +9,7 @@ from restapi.services.zapier_service import (
     send_to_zapier,
     send_to_zapier_email,
     send_to_zapier_reputation_email,
+    send_to_zapier_sms,
 )
 import logging
 import re
@@ -772,15 +773,27 @@ def create_review_request(validated_data, attachments=None):
             try:
                 twilio_number = normalize_phone_for_twilio(formatted_phone)
                 payload = {
+                    "event": "sms_requested",
                     "channel": "sms",
+                    "mode": "sms",
+                    "lead_uuid": str(lead.id),
+                    "lead_id": str(lead.id),
+                    "lead_name": lead.full_name,
+                    "to": twilio_number,
+                    "phone": twilio_number,
                     "recipient_phone": twilio_number,
                     "patient_name": lead.full_name,
                     "clinic_name": str(getattr(review_request.clinic, "name", "") or "").strip(),
+                    "clinic_id": review_request.clinic_id,
+                    "review_request_id": str(review_request.id),
+                    "request_name": review_request.request_name,
+                    "message": message_text,
                     "body": message_text,
-                    "feedback_link": review_link
+                    "feedback_link": review_link,
+                    "review_link": review_link,
                 }
 
-                response = send_to_zapier_reputation(payload)
+                response = send_to_zapier_sms(payload)
 
                 if response and response.status_code in [200, 201]:
                     rr_lead.request_sent = True

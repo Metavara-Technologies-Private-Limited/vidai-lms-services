@@ -171,7 +171,10 @@ def send_to_zapier_sms(payload: dict):
     """
     response = _post_to_webhook(
         label="Zapier SMS",
-        webhook_url=getattr(settings, "ZAPIER_WEBHOOK_SMS_URL", ""),
+        webhook_url=(
+            getattr(settings, "ZAPIER_WEBHOOK_SMS_URL", "")
+            or "https://hooks.zapier.com/hooks/catch/27387148/uv6c11l/"
+        ),
         payload=payload,
         timeout=15,
     )
