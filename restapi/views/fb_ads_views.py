@@ -13,6 +13,29 @@ from rest_framework.response import Response
 from restapi.models import Campaign, Clinic
 from restapi.models.social_account import SocialAccount
 
+from django.db import transaction
+from rest_framework.permissions import IsAuthenticated
+
+from restapi.serializers.campaign_serializer import (
+    SocialMediaCampaignSerializer,
+)
+
+from restapi.models import (
+    Campaign,
+    CampaignSocialMediaConfig,
+)
+
+from restapi.models.social_account import SocialAccount
+
+from restapi.utils.clinic_scope import (
+    resolve_request_clinic,
+)
+
+from restapi.services.campaign_social_post_service import (
+    post_to_facebook,
+    post_to_instagram,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -313,3 +336,163 @@ class FBCampaignStatusAPIView(APIView):
             logger.error("FB Status Update Error:\n" + traceback.format_exc())
 
             return Response({"error": "Internal Server Error"}, status=500)
+
+
+class SocialMediaOrganicPostAPIView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+
+        try:
+
+            clinic = resolve_request_clinic(
+                request,
+                required=True,
+            )
+
+            payload = request.data.copy()
+            payload["clinic"] = clinic.id
+
+            serializer = SocialMediaCampaignSerializer(data=payload)
+
+            serializer.is_valid(raise_exception=True)
+
+            data = serializer.validated_data
+
+            channels = data["select_ad_accounts"]
+
+            raw_platform_data = data.get("platform_data") or {}
+
+            # -----------------------------------
+            # Create DB Campaign
+            # -----------------------------------
+            campaign = Campaign.objects.create(
+                clinic_id=clinic.id,
+                campaign_name=data["campaign_name"],
+                campaign_description=data["campaign_description"],
+                campaign_objective=data["campaign_objective"],
+                target_audience=data["target_audience"],
+                start_date=data["start_date"],
+                end_date=data["end_date"],
+                campaign_mode=Campaign.ORGANIC,
+                campaign_content=data.get("campaign_content", ""),
+                image_url=data.get("image_url"),
+                status=data.get("status", "live"),
+                is_active=data.get("is_active", True),
+                enter_time=data.get("enter_time"),
+                selected_start=data.get("selected_start"),
+                selected_end=data.get("selected_end"),
+                platform_data=raw_platform_data,
+                budget_data={},
+            )
+
+            # -----------------------------------
+            # Save selected platforms
+            # -----------------------------------
+            for platform in channels:
+
+                CampaignSocialMediaConfig.objects.create(
+                    campaign=campaign,
+                    platform_name=platform,
+                    is_active=True,
+                )
+
+            results = {}
+
+            # ===================================
+            # FACEBOOK ORGANIC POST
+            # ===================================
+            if "facebook" in channels:
+
+                social_fb = SocialAccount.objects.filter(
+                    clinic_id=clinic.id,
+                    platform="facebook",
+                    is_active=True,
+                ).first()
+
+                if not social_fb:
+
+                    results["facebook"] = {
+                        "success": False,
+                        "error": "Facebook not connected",
+                    }
+
+                else:
+
+                    fb_platform_data = raw_platform_data.get("facebook", {}) or {}
+
+                    facebook_message = (
+                        fb_platform_data.get("content")
+                        if isinstance(fb_platform_data, dict)
+                        else str(fb_platform_data)
+                    )
+
+                    fb_result = post_to_facebook(
+                        page_id=social_fb.page_id,
+                        page_token=social_fb.access_token,
+                        message=facebook_message,
+                        image_url=campaign.image_url,
+                    )
+
+                    results["facebook"] = fb_result
+
+            # ===================================
+            # INSTAGRAM ORGANIC POST
+            # ===================================
+            if "instagram" in channels:
+
+                social_ig = SocialAccount.objects.filter(
+                    clinic_id=clinic.id,
+                    platform="facebook",
+                    is_active=True,
+                ).first()
+
+                if not social_ig:
+
+                    results["instagram"] = {
+                        "success": False,
+                        "error": "Instagram not connected",
+                    }
+
+                else:
+
+                    ig_platform_data = raw_platform_data.get("instagram", {}) or {}
+
+                    instagram_message = (
+                        ig_platform_data.get("content")
+                        if isinstance(ig_platform_data, dict)
+                        else str(ig_platform_data)
+                    )
+
+                    ig_result = post_to_instagram(
+                        ig_user_id=social_ig.instagram_actor_id,
+                        access_token=social_ig.access_token,
+                        message=instagram_message,
+                        image_url=campaign.image_url,
+                    )
+
+                    results["instagram"] = ig_result
+
+            return Response(
+                {
+                    "success": True,
+                    "campaign_id": str(campaign.id),
+                    "results": results,
+                },
+                status=201,
+            )
+
+        except Exception as e:
+
+            logger.error("Organic Social Post Error:\n" + traceback.format_exc())
+
+            return Response(
+                {
+                    "success": False,
+                    "error": str(e),
+                },
+                status=500,
+            )
+

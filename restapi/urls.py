@@ -278,6 +278,8 @@ urlpatterns = [
     path("fb/campaigns/<str:campaign_id>/status/", FacebookCampaignStatusAPIView.as_view(), name="fb-campaign-status"),
     path("social-campaign/meta-callback/", MetaCampaignCallbackAPIView.as_view(), name="meta-callback"),
 
+    path("social-media-campaign/organic/create/", SocialMediaOrganicPostAPIView.as_view(), name="social-organic-create"),
+
     # ============================
     # GOOGLE ADS
     # ============================

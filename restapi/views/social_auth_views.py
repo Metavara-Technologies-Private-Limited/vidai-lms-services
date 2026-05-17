@@ -500,7 +500,7 @@ class FacebookLoginAPIView(APIView):
             "?response_type=code"
             f"&client_id={settings.FACEBOOK_CLIENT_ID}"
             f"&redirect_uri={settings.FACEBOOK_REDIRECT_URI}"
-            "&scope=public_profile,pages_show_list,pages_read_engagement,ads_management,ads_read,business_management,instagram_basic"
+            "&scope=public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,ads_management,ads_read,business_management,instagram_basic,instagram_content_publish"
             f"&state={state_payload}"
             "&auth_type=rerequest"
         )
