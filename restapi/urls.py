@@ -291,6 +291,8 @@ urlpatterns = [
     path("campaign/insights/trigger/",  CampaignInsightsTriggerAPIView.as_view(),  name="campaign-insights-trigger"),
     path("campaign/insights/callback/", CampaignInsightsCallbackAPIView.as_view(), name="campaign-insights-callback"),
 
+    path("social-campaign/google-ad-callback/", GoogleAdsCreateCampaignCallbackAPIView.as_view(), name="google-ad-callback"),
+
     # ============================
     # REPUTATION
     # ============================

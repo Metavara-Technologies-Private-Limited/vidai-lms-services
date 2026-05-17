@@ -375,7 +375,7 @@ class GoogleAdsCampaignCreatedCallbackAPIView(APIView):
             )
 
 
-class GoogleAdsCampaignStatusAPIView(APIView):
+class GoogleAdsCampaignStatusAPIView_Old(APIView):
     """
     POST /api/google-ads/status/
     Pause or enable a Google Ads campaign directly via Google Ads REST API.
@@ -614,6 +614,265 @@ class GoogleAdsCampaignStatusAPIView(APIView):
         except Exception:
             logger.error("[GoogleAdsStatus] Unexpected error:\n%s", traceback.format_exc())
             return Response({"success": False, "error": "Internal Server Error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class GoogleAdsCampaignStatusAPIView(APIView):
+    """
+    POST /api/google-ads/status/
+    Pause or enable Google Ads campaigns.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+
+        try:
+
+            campaign_id = request.data.get("campaign_id")
+
+            action = request.data.get("action")
+
+            if not campaign_id or action not in [
+                "pause",
+                "enable",
+            ]:
+                return Response(
+                    {"error": "campaign_id and action " "(pause/enable) are required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            campaign = Campaign.objects.get(id=campaign_id)
+
+            clinic_id = campaign.clinic_id
+
+            # -----------------------------------
+            # Google account
+            # -----------------------------------
+
+            google_account = SocialAccount.objects.filter(
+                clinic_id=clinic_id,
+                platform="google",
+                is_active=True,
+            ).first()
+
+            if not google_account:
+
+                return Response(
+                    {"error": "Google Ads not connected"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            cust_id = str(google_account.customer_id or "").replace("-", "")
+
+            if not cust_id:
+
+                return Response(
+                    {"error": "Google customer_id missing"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # -----------------------------------
+            # Refresh token
+            # -----------------------------------
+
+            refresh_token = google_account.user_token or getattr(
+                settings,
+                "GOOGLE_REFRESH_TOKEN",
+                None,
+            )
+
+            if not refresh_token:
+
+                return Response(
+                    {"error": "Google refresh token missing"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # -----------------------------------
+            # Access token
+            # -----------------------------------
+
+            auth_res = requests.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id": settings.GOOGLE_CLIENT_ID,
+                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                    "refresh_token": refresh_token,
+                    "grant_type": "refresh_token",
+                },
+                timeout=10,
+            )
+
+            auth_json = auth_res.json()
+
+            if "access_token" not in auth_json:
+
+                return Response(
+                    {
+                        "error": "Failed to refresh " "Google token",
+                        "details": auth_json,
+                    },
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+
+            access_token = auth_json["access_token"]
+
+            # -----------------------------------
+            # Headers
+            # -----------------------------------
+
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "developer-token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
+                "Content-Type": "application/json",
+            }
+
+            login_id = str(
+                getattr(
+                    settings,
+                    "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
+                    "",
+                )
+            ).replace("-", "")
+
+            if login_id:
+                headers["login-customer-id"] = login_id
+
+            # -----------------------------------
+            # Platform data
+            # -----------------------------------
+
+            platform_data = campaign.platform_data or {}
+
+            google_data = platform_data.get("google_ads", {}) or {}
+
+            search_campaign = google_data.get("search_campaign", {}) or {}
+
+            display_campaign = google_data.get("display_campaign", {}) or {}
+
+            campaign_resources = [
+                search_campaign.get("resource_name"),
+                display_campaign.get("resource_name"),
+            ]
+
+            campaign_resources = [r for r in campaign_resources if r]
+
+            if not campaign_resources:
+
+                return Response(
+                    {
+                        "success": True,
+                        "skipped": True,
+                        "message": "No Google Ads campaigns " "found",
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            # -----------------------------------
+            # Status mapping
+            # -----------------------------------
+
+            new_google_status = "PAUSED" if action == "pause" else "ENABLED"
+
+            # -----------------------------------
+            # Mutate ALL campaigns
+            # -----------------------------------
+
+            mutate_results = []
+
+            for resource_name in campaign_resources:
+
+                mutate_resp = requests.post(
+                    (
+                        "https://googleads.googleapis.com/"
+                        f"v20/customers/{cust_id}/"
+                        "campaigns:mutate"
+                    ),
+                    headers=headers,
+                    json={
+                        "operations": [
+                            {
+                                "update": {
+                                    "resourceName": resource_name,
+                                    "status": new_google_status,
+                                },
+                                "updateMask": "status",
+                            }
+                        ]
+                    },
+                    timeout=10,
+                )
+
+                try:
+
+                    mutate_res = mutate_resp.json() if mutate_resp.text.strip() else {}
+
+                except Exception:
+
+                    mutate_res = {}
+
+                mutate_results.append(
+                    {
+                        "resource_name": resource_name,
+                        "status_code": mutate_resp.status_code,
+                        "response": mutate_res,
+                    }
+                )
+
+                if "results" not in mutate_res:
+
+                    logger.error(
+                        "[GoogleAdsStatus] " "Mutate failed for %s | %s",
+                        resource_name,
+                        mutate_res,
+                    )
+
+            # -----------------------------------
+            # Update platform_data
+            # -----------------------------------
+
+            google_data["google_status"] = new_google_status
+
+            google_data["status"] = "paused" if action == "pause" else "active"
+
+            platform_data["google_ads"] = google_data
+
+            campaign.platform_data = platform_data
+
+            campaign.save(update_fields=["platform_data"])
+
+            return Response(
+                {
+                    "success": True,
+                    "campaign_id": str(campaign_id),
+                    "action": action,
+                    "google_ads_status": new_google_status,
+                    "updated_campaigns": mutate_results,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Campaign.DoesNotExist:
+
+            return Response(
+                {"error": "Campaign not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        except Exception:
+
+            logger.error(
+                "[GoogleAdsStatus] " "Unexpected error:\n%s",
+                traceback.format_exc(),
+            )
+
+            return Response(
+                {
+                    "success": False,
+                    "error": "Internal Server Error",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 # =====================================================

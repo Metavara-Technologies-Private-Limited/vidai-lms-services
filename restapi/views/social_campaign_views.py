@@ -996,6 +996,79 @@ class SocialMediaCampaignCreateAPIView(APIView):
             )
 
 
+class GoogleAdsCreateCampaignCallbackAPIView(APIView):
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+
+        internal_campaign_id = request.data.get("internal_campaign_id")
+
+        try:
+
+            campaign = Campaign.objects.get(id=internal_campaign_id)
+
+            search_campaign_id = request.data.get("search_campaign_id")
+
+            search_campaign_resource_name = request.data.get(
+                "search_campaign_resource_name"
+            )
+
+            display_campaign_id = request.data.get("display_campaign_id")
+
+            display_campaign_resource_name = request.data.get(
+                "display_campaign_resource_name"
+            )
+
+            # -----------------------------------
+            # platform_data
+            # -----------------------------------
+
+            platform_data = campaign.platform_data or {}
+
+            google_data = platform_data.get("google_ads", {}) or {}
+
+            google_data["search_campaign"] = {
+                "campaign_id": search_campaign_id,
+                "resource_name": search_campaign_resource_name,
+            }
+
+            google_data["display_campaign"] = {
+                "campaign_id": display_campaign_id,
+                "resource_name": display_campaign_resource_name,
+            }
+
+            platform_data["google_ads"] = google_data
+
+            campaign.platform_data = platform_data
+
+            # -----------------------------------
+            # primary shortcut fields
+            # -----------------------------------
+
+            campaign.google_campaign_id = search_campaign_id
+
+            campaign.google_campaign_resource_name = search_campaign_resource_name
+
+            campaign.save(
+                update_fields=[
+                    "platform_data",
+                    "google_campaign_id",
+                    "google_campaign_resource_name",
+                ]
+            )
+
+            return Response({"success": True})
+
+        except Campaign.DoesNotExist:
+
+            return Response(
+                {"error": "Campaign not found"},
+                status=404,
+            )
+
+
 class MetaCampaignCallbackAPIView(APIView):
 
     authentication_classes = []

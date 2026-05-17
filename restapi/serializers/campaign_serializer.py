@@ -138,62 +138,54 @@ class CampaignReadSerializer(serializers.ModelSerializer):
             "campaign_description",
             "campaign_objective",
             "target_audience",
-
             "start_date",
             "end_date",
             "selected_start",
             "selected_end",
             "enter_time",
-
             "campaign_mode",
             "campaign_content",
             "image_url",
             "status",
-
             "is_active",
             "is_deleted",
-
             "created_at",
             "modified_at",
-
             # ----------------------------
             # Platform Config
             # ----------------------------
             "platform_data",
             "budget_data",
             "social_posts",
-
             "social_media",
             "email",
-
             # ----------------------------
             # LinkedIn Campaign Metadata
             # ----------------------------
             "linkedin_campaign_urn",
             "linkedin_external_campaign_id",
-
             "linkedin_creative_urn",
             "linkedin_creative_id",
-
             "linkedin_account_id",
             "linkedin_post_urn",
-
             "linkedin_campaign_group_urn",
             "linkedin_ads_manager_url",
-
             # ----------------------------
             # Meta Campaign Metadata
             # ----------------------------
             "fb_campaign_id",
             "instagram_campaign_id",
-
+            # ----------------------------
+            # Google Campaign Metadata
+            # ----------------------------
+            "google_campaign_id",
+            "google_campaign_resource_name",
             # ----------------------------
             # Cached Insights
             # ----------------------------
             "last_synced_metrics",
             "last_metrics_synced_at",
         ]
-
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -233,8 +225,6 @@ class CampaignReadSerializer(serializers.ModelSerializer):
             for k, v in data.items()
             if k in allowed_fields
         }
-    
-
 
 
 # =====================================================

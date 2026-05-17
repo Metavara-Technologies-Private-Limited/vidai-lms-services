@@ -397,6 +397,20 @@ class Campaign(models.Model):
         help_text="Instagram Ad Campaign ID created via API",
     )
 
+    google_campaign_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Google Ad Campaign ID created via API",
+    )
+
+    google_campaign_resource_name = models.CharField(
+        max_length=500,
+        null=True,
+        blank=True,
+        help_text="Google Campaign Resource Name created via API",
+    )
+
     # ----------------------------
     # STATUS FIELD
     # ----------------------------
