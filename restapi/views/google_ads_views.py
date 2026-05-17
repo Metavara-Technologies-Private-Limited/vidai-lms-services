@@ -880,79 +880,290 @@ class GoogleAdsCampaignStatusAPIView(APIView):
 # =====================================================
 class GoogleAdsInsightsAPIView(APIView):
     """
-    GET /api/google-ads/insights/?campaign_id=<uuid>&clinic_id=<int>
-    Reads saved insights from DB for THIS specific campaign only.
-    ✅ FIX: filters by clinic_id to prevent cross-clinic data leakage.
+    GET /api/google-ads/insights/?campaign_id=<uuid>
+
+    Fetch LIVE Google Ads insights directly from Google Ads API.
+    No Zapier.
+    No DB insights dependency.
     """
+
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        campaign_id = request.query_params.get("campaign_id")
-        clinic_id   = request.query_params.get("clinic_id")
-
-        if not campaign_id:
-            return Response({"error": "campaign_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # ✅ FIX: filter by clinic_id so only this clinic's campaign is returned
-            filters = {"id": campaign_id}
-            if clinic_id:
-                filters["clinic_id"] = clinic_id
+
+            campaign_id = request.query_params.get("campaign_id")
+            logger.info(
+                "[GoogleAdsInsights] START | campaign_id=%s",
+                campaign_id,
+            )
+
+            if not campaign_id:
+
+                return Response(
+                    {"error": "campaign_id is required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # -----------------------------------
+            # Campaign
+            # -----------------------------------
 
             try:
-                campaign = Campaign.objects.get(**filters)
+
+                campaign = Campaign.objects.get(id=campaign_id)
+
             except Campaign.DoesNotExist:
+
                 return Response(
-                    {"error": f"Campaign {campaign_id} not found for this clinic"},
+                    {"error": "Campaign not found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            config = CampaignSocialMediaConfig.objects.filter(
-                campaign=campaign,
-                platform_name="google_ads",
+            clinic_id = campaign.clinic_id
+
+            # -----------------------------------
+            # Google account
+            # -----------------------------------
+
+            google_account = SocialAccount.objects.filter(
+                clinic_id=clinic_id,
+                platform="google",
+                is_active=True,
             ).first()
 
-            if not config or not config.insights:
-                logger.info("[GoogleAdsInsights] No insights in DB yet for campaign %s — returning zeros", campaign_id)
+            if not google_account:
+
+                return Response(
+                    {"error": "Google Ads not connected"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            cust_id = str(google_account.customer_id or "").replace("-", "")
+
+            if not cust_id:
+
+                return Response(
+                    {"error": "Google customer_id missing"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # -----------------------------------
+            # Refresh token
+            # -----------------------------------
+
+            refresh_token = google_account.user_token or getattr(
+                settings,
+                "GOOGLE_REFRESH_TOKEN",
+                None,
+            )
+
+            if not refresh_token:
+
+                return Response(
+                    {"error": "Google refresh token missing"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # -----------------------------------
+            # Fresh access token
+            # -----------------------------------
+
+            auth_res = requests.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id": settings.GOOGLE_CLIENT_ID,
+                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                    "refresh_token": refresh_token,
+                    "grant_type": "refresh_token",
+                },
+                timeout=10,
+            )
+
+            auth_json = auth_res.json()
+
+            if "access_token" not in auth_json:
+
                 return Response(
                     {
-                        "success":     True,
-                        "campaign_id": campaign_id,
+                        "error": "Failed to refresh Google token",
+                        "details": auth_json,
+                    },
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+
+            access_token = auth_json["access_token"]
+
+            # -----------------------------------
+            # Headers
+            # -----------------------------------
+
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "developer-token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
+                "Content-Type": "application/json",
+            }
+
+            login_id = str(
+                getattr(
+                    settings,
+                    "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
+                    "",
+                )
+            ).replace("-", "")
+
+            if login_id:
+
+                headers["login-customer-id"] = login_id
+
+            # -----------------------------------
+            # Platform data
+            # -----------------------------------
+
+            platform_data = campaign.platform_data or {}
+
+            google_data = platform_data.get("google_ads", {}) or {}
+
+            resource_names = [
+                google_data.get("campaign_resource_name")
+            ]
+
+            resource_names = [r for r in resource_names if r]
+
+            if not resource_names:
+
+                return Response(
+                    {
+                        "success": True,
+                        "message": "No Google campaigns found",
                         "insights": {
-                            "campaign_id": campaign_id, "ads_campaign_name": "",
-                            "impressions": 0, "clicks": 0, "ctr": 0.0,
-                            "avg_cpc": 0.0, "cost": 0.0, "conversions": 0,
+                            "impressions": 0,
+                            "clicks": 0,
+                            "ctr": 0,
+                            "avg_cpc": 0,
+                            "cost": 0,
+                            "conversions": 0,
                         },
-                        "message": "No insights yet — Zapier may still be fetching",
                     },
                     status=status.HTTP_200_OK,
                 )
 
-            saved = config.insights
-            logger.info("[GoogleAdsInsights] Returning DB insights for campaign %s: %s", campaign_id, saved)
+            # -----------------------------------
+            # Totals
+            # -----------------------------------
+
+            total_impressions = 0
+            total_clicks = 0
+            total_cost = 0
+            total_conversions = 0
+            avg_cpc = 0
+            ctr = 0
+
+            # -----------------------------------
+            # Fetch ALL campaigns
+            # -----------------------------------
+
+            for resource_name in resource_names:
+
+                query = f"""
+                    SELECT
+                        campaign.id,
+                        campaign.name,
+                        campaign.resource_name,
+                        campaign.status,
+                        metrics.impressions,
+                        metrics.clicks,
+                        metrics.ctr,
+                        metrics.average_cpc,
+                        metrics.cost_micros,
+                        metrics.conversions
+                    FROM campaign
+                    WHERE campaign.resource_name = "{resource_name}"
+                    AND segments.date DURING LAST_30_DAYS
+                """
+
+                search_resp = requests.post(
+                    (
+                        "https://googleads.googleapis.com/"
+                        f"v20/customers/{cust_id}/"
+                        "googleAds:search"
+                    ),
+                    headers=headers,
+                    json={"query": query},
+                    timeout=10,
+                )
+
+                try:
+
+                    search_data = search_resp.json() if search_resp.text.strip() else {}
+
+                except Exception:
+
+                    search_data = {}
+
+
+                results = search_data.get("results", [])
+
+                if not results:
+                    continue
+
+                metrics = results[0].get("metrics", {})
+
+                total_impressions += int(metrics.get("impressions", 0))
+
+                total_clicks += int(metrics.get("clicks", 0))
+
+                total_cost += int(metrics.get("costMicros", 0)) / 1_000_000
+
+                total_conversions += float(metrics.get("conversions", 0))
+
+            # -----------------------------------
+            # Derived metrics
+            # -----------------------------------
+
+            if total_clicks > 0:
+
+                avg_cpc = total_cost / total_clicks
+
+            if total_impressions > 0:
+
+                ctr = (total_clicks / total_impressions) * 100
+
+            # -----------------------------------
+            # Response
+            # -----------------------------------
 
             return Response(
                 {
-                    "success":     True,
-                    "campaign_id": campaign_id,
+                    "success": True,
+                    "campaign_id": str(campaign.id),
                     "insights": {
-                        "campaign_id":       campaign_id,
-                        "ads_campaign_name": saved.get("ads_campaign_name", ""),
-                        "impressions":       saved.get("impressions",  0),
-                        "clicks":            saved.get("clicks",       0),
-                        "ctr":               saved.get("ctr",          0.0),
-                        "avg_cpc":           saved.get("avg_cpc",      0.0),
-                        "cost":              saved.get("cost",         0.0),
-                        "conversions":       saved.get("conversions",  0),
-                        "fetched_at":        saved.get("fetched_at",   None),
+                        "impressions": total_impressions,
+                        "clicks": total_clicks,
+                        "ctr": round(ctr, 2),
+                        "avg_cpc": round(avg_cpc, 2),
+                        "cost": round(total_cost, 2),
+                        "conversions": round(
+                            total_conversions,
+                            2,
+                        ),
                     },
                 },
                 status=status.HTTP_200_OK,
             )
 
-        except Exception as e:
-            logger.error("[GoogleAdsInsights] Error for campaign %s: %s\n%s", campaign_id, e, traceback.format_exc())
-            return Response({"error": "Failed to fetch insights", "detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception:
+
+            logger.error(
+                "[GoogleAdsInsights] Error:\n%s",
+                traceback.format_exc(),
+            )
+
+            return Response(
+                {"error": "Failed to fetch insights"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 # =====================================================

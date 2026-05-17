@@ -467,7 +467,7 @@ class SocialMediaOrganicPostAPIView(APIView):
                     )
 
                     ig_result = post_to_instagram(
-                        ig_user_id=social_ig.instagram_actor_id,
+                        ig_user_id=social_ig.org_urn,
                         access_token=social_ig.access_token,
                         message=instagram_message,
                         image_url=campaign.image_url,
