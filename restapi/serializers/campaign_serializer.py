@@ -116,15 +116,20 @@ class CampaignReadSerializer(serializers.ModelSerializer):
 
         from restapi.serializers.campaign_social_post_serializer import (
             CampaignSocialPostReadSerializer
-    )
+        )
 
+        # =====================================================
+        # ✅ OPTIMIZATION: social_posts should already be
+        #    prefetched from the view, so this accesses
+        #    in-memory data without additional DB queries
+        # =====================================================
         posts = obj.social_posts.all().order_by("-created_at")
 
         return CampaignSocialPostReadSerializer(
-        posts,
-        many=True,
-        context=self.context
-    ).data  
+            posts,
+            many=True,
+            context=self.context
+        ).data
 
     class Meta:
         model = Campaign

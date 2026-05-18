@@ -8,6 +8,7 @@ import os
 import uuid
 from django.conf import settings
 from django.shortcuts import get_object_or_404
+from django.db.models import Prefetch, Count
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -16,7 +17,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 
 from drf_yasg.utils import swagger_auto_schema
 from restapi.services.campaign_social_post_service import get_facebook_post_insights
-from restapi.models import Campaign
+from restapi.models import Campaign, CampaignEmailConfig
 from restapi.serializers.campaign_serializer import (
     CampaignSerializer,
     CampaignReadSerializer,
@@ -208,21 +209,37 @@ class CampaignListAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # =====================================================
+        # ✅ OPTIMIZATION: Use prefetch_related() and Prefetch
+        #    to eliminate N+1 queries for related objects
+        # =====================================================
+        email_configs_prefetch = Prefetch(
+            'email_configs',
+            CampaignEmailConfig.objects.filter(is_active=True)
+        )
+
         campaigns = (
             Campaign.objects
             .filter(clinic_id=clinic_id, is_deleted=False)
+            .annotate(lead_count=Count('leads'))
+            .prefetch_related(
+                email_configs_prefetch,
+                'social_configs',
+                'social_posts'
+            )
             .order_by("-created_at")
         )
 
         data = []
         for campaign in campaigns:
             campaign_data = CampaignReadSerializer(campaign, context={"request": request}).data
-            campaign_data["lead_generated"] = campaign.leads.count()
+            campaign_data["lead_generated"] = campaign.lead_count
 
             # =====================================================
             # ✅ FIX: Get Mailchimp ID from CampaignEmailConfig
+            #    No extra query - already prefetched above
             # =====================================================
-            email_config = campaign.email_configs.filter(is_active=True).first()
+            email_config = campaign.email_configs.first() if campaign.email_configs.exists() else None
             mailchimp_id = email_config.mailchimp_campaign_id if email_config else None
 
             if mailchimp_id:
@@ -289,12 +306,33 @@ class CampaignGetAPIView(APIView):
         #    cached insights JSONField on CampaignEmailConfig, which is a
         #    single fast DB read. The dedicated mailchimp-insights endpoint
         #    is the only place that should trigger the live Mailchimp fetch.
+        #
+        # ✅ FIX 3 (N+1 queries): Use prefetch_related() to eliminate
+        #    separate DB queries for email_configs and social_posts
         # =====================================================
         clinic_id = request.query_params.get("clinic_id")
 
+        # Prefetch related objects to avoid N+1 queries
+        email_configs_prefetch = Prefetch(
+            'email_configs',
+            CampaignEmailConfig.objects.filter(is_active=True)
+        )
+
         if clinic_id:
             # Scope to clinic when caller provides it (always should)
-            campaign = get_object_or_404(Campaign, id=campaign_id, clinic_id=clinic_id)
+            campaign = (
+                Campaign.objects
+                .filter(id=campaign_id, clinic_id=clinic_id)
+                .annotate(lead_count=Count('leads'))
+                .prefetch_related(
+                    email_configs_prefetch,
+                    'social_configs',
+                    'social_posts'
+                )
+                .first()
+            )
+            if not campaign:
+                raise NotFound("Campaign not found")
         else:
             # Fallback: still fetch by id but log a warning so we can track
             # callers that forgot to send clinic_id
@@ -302,18 +340,31 @@ class CampaignGetAPIView(APIView):
                 f"CampaignGetAPIView called without clinic_id for campaign {campaign_id}. "
                 "All callers should pass clinic_id."
             )
-            campaign = get_object_or_404(Campaign, id=campaign_id)
+            campaign = (
+                Campaign.objects
+                .filter(id=campaign_id)
+                .annotate(lead_count=Count('leads'))
+                .prefetch_related(
+                    email_configs_prefetch,
+                    'social_configs',
+                    'social_posts'
+                )
+                .first()
+            )
+            if not campaign:
+                raise NotFound("Campaign not found")
 
         data = CampaignReadSerializer(campaign, context={"request": request}).data
-        data["lead_generated"] = campaign.leads.count()
+        data["lead_generated"] = campaign.lead_count
 
         # =====================================================
         # ✅ FIX 2: Read ONLY from cached insights — no live
         #    Mailchimp HTTP call here. Use the dedicated
         #    /campaigns/<id>/mailchimp-insights/ endpoint to
         #    refresh cache when needed.
+        #    No extra query - already prefetched above
         # =====================================================
-        email_config = campaign.email_configs.filter(is_active=True).first()
+        email_config = campaign.email_configs.first() if campaign.email_configs.exists() else None
         cached = email_config.insights if email_config else None
 
         if cached and cached.get("emails_sent") is not None:
