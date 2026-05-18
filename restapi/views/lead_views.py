@@ -13,7 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 
 from django.shortcuts import get_object_or_404
-from django.db.models import Q
+from django.db.models import Q, Prefetch
 
 from restapi.models import Lead, Clinic, PipelineStage, Department
 from restapi.serializers.lead_serializer import LeadSerializer, LeadReadSerializer
@@ -80,6 +80,10 @@ def apply_lead_visibility_scope(queryset, request):
 
 
 def get_scoped_lead_or_404(request, clinic, lead_id):
+    # =====================================================
+    # ✅ OPTIMIZATION: Use select_related() for all FK relations
+    #    and prefetch_related() for M2M relations to eliminate N+1 queries
+    # =====================================================
     queryset = Lead.objects.select_related(
         "clinic",
         "department",
@@ -87,6 +91,14 @@ def get_scoped_lead_or_404(request, clinic, lead_id):
         "referral_department",
         "referral_source",
         "stage",
+        "converted_at_stage",
+        "updated_by",
+        "assigned_to",
+        "personal",
+        "created_by",
+    ).prefetch_related(
+        "documents",
+        "treatment_interest",
     ).filter(
         id=lead_id,
         clinic=clinic,
@@ -418,14 +430,29 @@ class LeadListAPIView(APIView):
         try:
             clinic = get_request_clinic(request)
 
+            # =====================================================
+            # ✅ OPTIMIZATION: Use select_related() for all FK relations
+            #    and prefetch_related() for M2M relations to eliminate N+1 queries
+            # =====================================================
             queryset = apply_lead_visibility_scope(
                 Lead.objects.filter(
                     clinic=clinic,
                     is_deleted=False
                 ).select_related(
+                    "clinic",
+                    "department",
+                    "campaign",
                     "referral_department",
                     "referral_source",
-                    "stage",  # 🔥 ADDED
+                    "stage",
+                    "converted_at_stage",
+                    "updated_by",
+                    "assigned_to",
+                    "personal",
+                    "created_by",
+                ).prefetch_related(
+                    "documents",
+                    "treatment_interest",
                 ).order_by("-created_at"),
                 request,
             )

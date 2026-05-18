@@ -130,6 +130,10 @@ class LeadReadSerializer(serializers.ModelSerializer):
         return f"{campaign.start_date.strftime('%d/%m/%Y')} - {campaign.end_date.strftime('%d/%m/%Y')}"
 
     def get_documents(self, obj):
+        # =====================================================
+        # ✅ OPTIMIZATION: documents already prefetched from view,
+        #    so this accesses in-memory data without additional DB queries
+        # =====================================================
         return [
             {
                 "id": doc.id,
@@ -138,7 +142,12 @@ class LeadReadSerializer(serializers.ModelSerializer):
             }
             for doc in obj.documents.all()
         ]
+
     def get_treatment_interest(self, obj):
+        # =====================================================
+        # ✅ OPTIMIZATION: treatment_interest already prefetched from view,
+        #    so this accesses in-memory data without additional DB queries
+        # =====================================================
         return [
             {
                 "id": interest.id,
