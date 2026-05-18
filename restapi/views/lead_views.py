@@ -92,10 +92,6 @@ def get_scoped_lead_or_404(request, clinic, lead_id):
         "referral_source",
         "stage",
         "converted_at_stage",
-        "updated_by",
-        "assigned_to",
-        "personal",
-        "created_by",
     ).prefetch_related(
         "documents",
         "treatment_interest",
@@ -446,10 +442,6 @@ class LeadListAPIView(APIView):
                     "referral_source",
                     "stage",
                     "converted_at_stage",
-                    "updated_by",
-                    "assigned_to",
-                    "personal",
-                    "created_by",
                 ).prefetch_related(
                     "documents",
                     "treatment_interest",
