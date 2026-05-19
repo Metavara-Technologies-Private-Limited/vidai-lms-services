@@ -86,6 +86,41 @@ def _get_image_url_for_platform(campaign, platform: str) -> str:
     return ""
 
 
+# =====================================================
+# HELPER: get_or_create_social_post
+# =====================================================
+def get_or_create_social_post(campaign, platform: str) -> "CampaignSocialPost":
+    """
+    Returns the most recent CampaignSocialPost for this campaign+platform,
+    or creates a new PENDING one if none exists.
+
+    Always ensures image_url is populated from platform_data.
+    This is a safe idempotent helper — calling it multiple times is fine.
+    """
+    platform_key = (platform or "").lower().strip()
+
+    social_post = CampaignSocialPost.objects.filter(
+        campaign=campaign,
+        platform_name=platform_key,
+    ).order_by("-created_at").first()
+
+    if not social_post:
+        social_post = create_pending_social_post(campaign, platform_key)
+    else:
+        # Backfill image_url if missing
+        if not social_post.image_url:
+            resolved = _get_image_url_for_platform(campaign, platform_key)
+            if resolved:
+                social_post.image_url = resolved
+                social_post.save(update_fields=["image_url"])
+                logger.info(
+                    f"[get_or_create_social_post] Backfilled image_url for "
+                    f"campaign={campaign.id} platform={platform_key}"
+                )
+
+    return social_post
+
+
 def create_pending_social_post(campaign, platform):
     """
     Called when LMS sends campaign to Zapier.
@@ -171,7 +206,9 @@ def handle_zapier_callback(validated_data):
         if not social_post:
             social_post = CampaignSocialPost.objects.create(
                 campaign=campaign,
-                platform_name=platform
+                platform_name=platform,
+                # CHANGED: set image_url immediately on creation via callback path too
+                image_url=_get_image_url_for_platform(campaign, platform) or None,
             )
 
         # CHANGED: always ensure image_url is set on the social post record.
