@@ -30,6 +30,9 @@ from restapi.services.zapier_service import send_to_zapier
 from restapi.services.mailchimp_service import get_mailchimp_campaign_report
 from restapi.services.campaign_social_post_service import handle_zapier_callback
 from restapi.services.campaign_social_post_service import get_facebook_post_insights
+# CHANGED: import create_pending_social_post so we can create tracking records
+# immediately when a campaign is created or updated with social platforms.
+from restapi.services.campaign_social_post_service import create_pending_social_post
 from restapi.models.social_account import SocialAccount
 
 logger = logging.getLogger(__name__)
@@ -59,6 +62,35 @@ class CampaignCreateAPIView(APIView):
             serializer.is_valid(raise_exception=True)
 
             campaign = serializer.save()
+
+            # CHANGED: create a CampaignSocialPost (PENDING) record for every
+            # selected social platform immediately after the campaign is saved.
+            # This is what populates the restapi_campaignsocialpost table so
+            # image_url, status, and Zapier callback data are all tracked.
+            #
+            # select_ad_accounts is the list of platforms sent from the frontend
+            # (e.g. ["facebook", "instagram", "linkedin", "google_ads"]).
+            # We read it from request.data because the serializer may not expose
+            # it as a model field — adjust the key if your serializer uses a
+            # different name.
+            selected_platforms = request.data.get("select_ad_accounts", [])
+            if isinstance(selected_platforms, str):
+                # handle accidental comma-separated string
+                selected_platforms = [p.strip() for p in selected_platforms.split(",") if p.strip()]
+
+            for platform in selected_platforms:
+                try:
+                    create_pending_social_post(campaign, platform)
+                    logger.info(
+                        f"[CampaignCreate] Created pending social post for "
+                        f"campaign={campaign.id} platform={platform}"
+                    )
+                except Exception as sp_err:
+                    # Non-fatal: log and continue — don't block campaign creation
+                    logger.error(
+                        f"[CampaignCreate] Failed to create social post record "
+                        f"for platform={platform}: {sp_err}"
+                    )
 
             channels = []
 
@@ -132,6 +164,28 @@ class CampaignUpdateAPIView(APIView):
             serializer.is_valid(raise_exception=True)
 
             updated_campaign = serializer.save()
+
+            # CHANGED: on update, also ensure social post records exist for
+            # all selected platforms. We use get_or_create logic so existing
+            # records are not duplicated — only missing ones are created and
+            # any record missing image_url gets it backfilled.
+            from restapi.services.campaign_social_post_service import get_or_create_social_post
+            selected_platforms = request.data.get("select_ad_accounts", [])
+            if isinstance(selected_platforms, str):
+                selected_platforms = [p.strip() for p in selected_platforms.split(",") if p.strip()]
+
+            for platform in selected_platforms:
+                try:
+                    get_or_create_social_post(updated_campaign, platform)
+                    logger.info(
+                        f"[CampaignUpdate] Ensured social post record for "
+                        f"campaign={updated_campaign.id} platform={platform}"
+                    )
+                except Exception as sp_err:
+                    logger.error(
+                        f"[CampaignUpdate] Failed to ensure social post record "
+                        f"for platform={platform}: {sp_err}"
+                    )
 
             channels = []
             if updated_campaign.social_configs.filter(is_active=True).exists():
