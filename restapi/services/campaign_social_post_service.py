@@ -21,15 +21,96 @@ from restapi.models import Campaign, CampaignSocialPost
 
 logger = logging.getLogger(__name__)
 
+
+# =====================================================
+# HELPER: Extract image_url from campaign.platform_data
+# =====================================================
+def _get_image_url_for_platform(campaign, platform: str) -> str:
+    """
+    Reads image_url for a given platform from campaign.platform_data.
+
+    Priority:
+      1. platform_data[platform]["image_url"]   ← NEW: per-platform storage
+      2. platform_data[platform] if it is itself a plain URL string (legacy)
+      3. campaign.image_url                     ← top-level fallback (backward compat)
+      4. Scan all other platform_data entries for any image_url key
+      5. Empty string (no image)
+
+    This ensures:
+    - New campaigns (image stored in platform_data) work correctly.
+    - Old campaigns (image stored only in campaign.image_url) still work.
+    """
+    platform_key = (platform or "").lower().strip()
+
+    # ── 1. platform_data[platform]["image_url"] (new per-platform storage) ──
+    try:
+        platform_data = campaign.platform_data or {}
+        entry = platform_data.get(platform_key)
+
+        if isinstance(entry, dict):
+            url = entry.get("image_url") or ""
+            if url:
+                return str(url).strip()
+
+        # ── 2. Legacy: platform_data value is itself a plain URL ────────────
+        if isinstance(entry, str) and entry.strip().startswith("http"):
+            return entry.strip()
+
+    except Exception as e:
+        logger.warning(
+            f"[image_url] Failed to read platform_data for {platform_key}: {e}"
+        )
+
+    # ── 3. Top-level campaign.image_url (backward compatibility) ────────────
+    try:
+        top_level = getattr(campaign, "image_url", None) or ""
+        if top_level:
+            return str(top_level).strip()
+    except Exception:
+        pass
+
+    # ── 4. Scan all other platform_data entries for any image_url ───────────
+    try:
+        platform_data = campaign.platform_data or {}
+        for key, val in platform_data.items():
+            if key == platform_key:
+                continue  # already checked above
+            if isinstance(val, dict):
+                url = val.get("image_url") or ""
+                if url:
+                    return str(url).strip()
+    except Exception:
+        pass
+
+    # ── 5. No image found ────────────────────────────────────────────────────
+    return ""
+
+
 def create_pending_social_post(campaign, platform):
     """
     Called when LMS sends campaign to Zapier.
     Creates a pending record.
+
+    CHANGED: now also saves image_url by reading it from
+    campaign.platform_data[platform]["image_url"] (new per-platform storage)
+    with fallback to campaign.image_url (old top-level storage).
+    This ensures restapi_campaignsocialpost.image_url is populated
+    immediately when the pending record is created.
     """
+    # CHANGED: resolve image_url for this platform before creating the record
+    resolved_image_url = _get_image_url_for_platform(campaign, platform)
+
+    logger.info(
+        f"[create_pending_social_post] platform={platform} "
+        f"image_url={'SET (' + resolved_image_url[:60] + '...)' if resolved_image_url else 'NOT SET'}"
+    )
+
     return CampaignSocialPost.objects.create(
         campaign=campaign,
         platform_name=platform,
-        status=CampaignSocialPost.PENDING
+        status=CampaignSocialPost.PENDING,
+        # CHANGED: persist image_url so the social post record carries its own image
+        image_url=resolved_image_url or None,
     )
 
 
@@ -38,6 +119,10 @@ def handle_zapier_callback(validated_data):
     """
     Handles Zapier callback after campaign/post creation.
     Persists LinkedIn provider ACK IDs needed for insights.
+
+    CHANGED: on SUCCESS callback, also ensures image_url is saved on the
+    social post record (in case create_pending_social_post was called before
+    platform_data was populated, or for records created by other paths).
     """
 
     raw_id = (
@@ -88,6 +173,22 @@ def handle_zapier_callback(validated_data):
                 campaign=campaign,
                 platform_name=platform
             )
+
+        # CHANGED: always ensure image_url is set on the social post record.
+        # This covers two cases:
+        #   a) The record was created before platform_data had image_url (race condition).
+        #   b) The record was created via a code path that didn't call
+        #      create_pending_social_post (e.g. direct Zapier callback with no prior record).
+        if not social_post.image_url:
+            resolved_image_url = _get_image_url_for_platform(campaign, platform)
+            if resolved_image_url:
+                social_post.image_url = resolved_image_url
+                social_post.save(update_fields=["image_url"])
+                logger.info(
+                    f"[handle_zapier_callback] Backfilled image_url for "
+                    f"campaign={campaign.id} platform={platform}: "
+                    f"{resolved_image_url[:60]}..."
+                )
 
 
         # ------------------------------------
