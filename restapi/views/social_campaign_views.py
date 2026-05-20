@@ -1185,6 +1185,318 @@ class FacebookCampaignStatusAPIView(APIView):
             )
 
 # -------------------------------------------------------------------
+# FACEBOOK CAMPAIGN UPDATE (Campaign + AdSet + Ad levels)
+# PUT /api/fb/campaigns/<campaign_id>/update/
+# -------------------------------------------------------------------
+class FacebookCampaignUpdateAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, campaign_id):
+        try:
+            campaign = Campaign.objects.get(id=campaign_id)
+
+            if not campaign.fb_campaign_id:
+                return Response(
+                    {"error": "Facebook campaign not synced yet"},
+                    status=400,
+                )
+
+            social_fb = SocialAccount.objects.filter(
+                clinic=campaign.clinic,
+                platform="facebook",
+                is_active=True,
+            ).first()
+
+            if not social_fb:
+                return Response(
+                    {"error": "Facebook account not connected"},
+                    status=400,
+                )
+
+            data = request.data
+
+            # ========== CAMPAIGN LEVEL UPDATES ==========
+            campaign_updates = {}
+            if "name" in data:
+                campaign_updates["name"] = data["name"]
+                campaign.campaign_name = data["name"]
+
+            if "objective" in data:
+                obj_map = {"awareness": "OUTCOME_AWARENESS", "leads": "OUTCOME_LEADS", "traffic": "OUTCOME_TRAFFIC"}
+                fb_obj = obj_map.get(str(data["objective"]).lower(), "OUTCOME_TRAFFIC")
+                campaign_updates["objective"] = fb_obj
+                campaign.campaign_objective = data["objective"]
+
+            if "status" in data:
+                fb_status = "ACTIVE" if str(data["status"]).lower() == "live" else "PAUSED"
+                campaign_updates["status"] = fb_status
+                campaign.status = data["status"]
+
+            # POST to Meta API - Campaign level
+            if campaign_updates:
+                resp = requests.post(
+                    f"https://graph.facebook.com/v25.0/{campaign.fb_campaign_id}",
+                    data={**campaign_updates, "access_token": social_fb.access_token},
+                    timeout=15,
+                )
+                if resp.status_code >= 400:
+                    return Response({"error": "Facebook Campaign API error", "details": resp.json()}, status=400)
+
+            # ========== ADSET LEVEL UPDATES ==========
+            adset_updates = {}
+            
+            if "budget_data" in data:
+                budget = data["budget_data"]
+                if "facebook" in budget:
+                    fb_budget = float(budget["facebook"])
+                    usd_to_inr = get_usd_to_inr()
+                    daily_budget_cents = math.ceil((fb_budget * usd_to_inr) * 100)
+                    adset_updates["daily_budget"] = daily_budget_cents
+                campaign.budget_data = data["budget_data"]
+
+            if "platform_data" in data and "facebook" in data["platform_data"]:
+                fb_data = data["platform_data"]["facebook"]
+                if isinstance(fb_data, dict) and "targeting" in fb_data:
+                    targeting = fb_data["targeting"]
+                    adset_updates["targeting"] = {
+                        "geo_locations": {"countries": targeting.get("countries", ["IN"])},
+                        "publisher_platforms": ["facebook"],
+                    }
+                    if "state" in targeting:
+                        adset_updates["targeting"]["geo_locations"]["state"] = targeting["state"]
+                campaign.platform_data = data["platform_data"]
+
+            # Get or fetch AdSet ID
+            adset_id = (campaign.platform_data or {}).get("facebook", {}).get("adset_id")
+            if not adset_id:
+                camp_details = requests.get(
+                    f"https://graph.facebook.com/v25.0/{campaign.fb_campaign_id}?fields=adsets",
+                    params={"access_token": social_fb.access_token},
+                    timeout=15,
+                ).json()
+                if camp_details.get("adsets", {}).get("data"):
+                    adset_id = camp_details["adsets"]["data"][0]["id"]
+                    if not campaign.platform_data:
+                        campaign.platform_data = {}
+                    if "facebook" not in campaign.platform_data:
+                        campaign.platform_data["facebook"] = {}
+                    campaign.platform_data["facebook"]["adset_id"] = adset_id
+
+            # POST to Meta API - AdSet level
+            if adset_updates and adset_id:
+                resp = requests.post(
+                    f"https://graph.facebook.com/v25.0/{adset_id}",
+                    data={**adset_updates, "access_token": social_fb.access_token},
+                    timeout=15,
+                )
+                if resp.status_code >= 400:
+                    return Response({"error": "Facebook AdSet API error", "details": resp.json()}, status=400)
+
+            # ========== AD LEVEL UPDATES ==========
+            ad_updates = {}
+            if "campaign_content" in data:
+                ad_updates["message"] = data["campaign_content"]
+                campaign.campaign_content = data["campaign_content"]
+
+            if "image_url" in data:
+                ad_updates["image_url"] = data["image_url"]
+                campaign.image_url = data["image_url"]
+
+            # Get or fetch Ad ID
+            ad_id = (campaign.platform_data or {}).get("facebook", {}).get("ad_id")
+            if not ad_id and adset_id:
+                adset_details = requests.get(
+                    f"https://graph.facebook.com/v25.0/{adset_id}?fields=ads",
+                    params={"access_token": social_fb.access_token},
+                    timeout=15,
+                ).json()
+                if adset_details.get("ads", {}).get("data"):
+                    ad_id = adset_details["ads"]["data"][0]["id"]
+                    if "facebook" not in campaign.platform_data:
+                        campaign.platform_data["facebook"] = {}
+                    campaign.platform_data["facebook"]["ad_id"] = ad_id
+
+            # POST to Meta API - Ad level
+            if ad_updates and ad_id:
+                resp = requests.post(
+                    f"https://graph.facebook.com/v25.0/{ad_id}",
+                    data={**ad_updates, "access_token": social_fb.access_token},
+                    timeout=15,
+                )
+                if resp.status_code >= 400:
+                    return Response({"error": "Facebook Ad API error", "details": resp.json()}, status=400)
+
+            campaign.save()
+
+            return Response({
+                "success": True,
+                "message": "Facebook campaign updated successfully",
+                "campaign_id": str(campaign.id),
+            })
+
+        except Campaign.DoesNotExist:
+            return Response({"error": "Campaign not found"}, status=404)
+        except Exception as e:
+            logger.error(f"Facebook Campaign Update Error:\n{traceback.format_exc()}")
+            return Response({"error": str(e), "trace": traceback.format_exc()}, status=400)
+
+# -------------------------------------------------------------------
+# INSTAGRAM CAMPAIGN UPDATE (Campaign + AdSet + Ad levels)
+# PUT /api/instagram/campaigns/<campaign_id>/update/
+# -------------------------------------------------------------------
+class InstagramCampaignUpdateAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, campaign_id):
+        try:
+            campaign = Campaign.objects.get(id=campaign_id)
+
+            if not campaign.instagram_campaign_id:
+                return Response(
+                    {"error": "Instagram campaign not synced yet"},
+                    status=400,
+                )
+
+            social_ig = SocialAccount.objects.filter(
+                clinic=campaign.clinic,
+                platform="facebook",
+                is_active=True,
+            ).first()
+
+            if not social_ig:
+                return Response(
+                    {"error": "Instagram account not connected"},
+                    status=400,
+                )
+
+            data = request.data
+
+            # ========== CAMPAIGN LEVEL UPDATES ==========
+            campaign_updates = {}
+            if "name" in data:
+                campaign_updates["name"] = data["name"]
+                campaign.campaign_name = data["name"]
+
+            if "objective" in data:
+                obj_map = {"awareness": "OUTCOME_AWARENESS", "leads": "OUTCOME_LEADS", "traffic": "OUTCOME_TRAFFIC"}
+                ig_obj = obj_map.get(str(data["objective"]).lower(), "OUTCOME_TRAFFIC")
+                campaign_updates["objective"] = ig_obj
+                campaign.campaign_objective = data["objective"]
+
+            if "status" in data:
+                ig_status = "ACTIVE" if str(data["status"]).lower() == "live" else "PAUSED"
+                campaign_updates["status"] = ig_status
+                campaign.status = data["status"]
+
+            # POST to Meta API - Campaign level
+            if campaign_updates:
+                resp = requests.post(
+                    f"https://graph.facebook.com/v25.0/{campaign.instagram_campaign_id}",
+                    data={**campaign_updates, "access_token": social_ig.access_token},
+                    timeout=15,
+                )
+                if resp.status_code >= 400:
+                    return Response({"error": "Instagram Campaign API error", "details": resp.json()}, status=400)
+
+            # ========== ADSET LEVEL UPDATES ==========
+            adset_updates = {}
+            
+            if "budget_data" in data:
+                budget = data["budget_data"]
+                if "instagram" in budget:
+                    ig_budget = float(budget["instagram"])
+                    usd_to_inr = get_usd_to_inr()
+                    daily_budget_cents = math.ceil((ig_budget * usd_to_inr) * 100)
+                    adset_updates["daily_budget"] = daily_budget_cents
+                campaign.budget_data = data["budget_data"]
+
+            if "platform_data" in data and "instagram" in data["platform_data"]:
+                ig_data = data["platform_data"]["instagram"]
+                if isinstance(ig_data, dict) and "targeting" in ig_data:
+                    targeting = ig_data["targeting"]
+                    adset_updates["targeting"] = {
+                        "geo_locations": {"countries": targeting.get("countries", ["IN"])},
+                        "publisher_platforms": ["instagram"],
+                    }
+                    if "state" in targeting:
+                        adset_updates["targeting"]["geo_locations"]["state"] = targeting["state"]
+                campaign.platform_data = data["platform_data"]
+
+            # Get or fetch AdSet ID
+            adset_id = (campaign.platform_data or {}).get("instagram", {}).get("adset_id")
+            if not adset_id:
+                camp_details = requests.get(
+                    f"https://graph.facebook.com/v25.0/{campaign.instagram_campaign_id}?fields=adsets",
+                    params={"access_token": social_ig.access_token},
+                    timeout=15,
+                ).json()
+                if camp_details.get("adsets", {}).get("data"):
+                    adset_id = camp_details["adsets"]["data"][0]["id"]
+                    if not campaign.platform_data:
+                        campaign.platform_data = {}
+                    if "instagram" not in campaign.platform_data:
+                        campaign.platform_data["instagram"] = {}
+                    campaign.platform_data["instagram"]["adset_id"] = adset_id
+
+            # POST to Meta API - AdSet level
+            if adset_updates and adset_id:
+                resp = requests.post(
+                    f"https://graph.facebook.com/v25.0/{adset_id}",
+                    data={**adset_updates, "access_token": social_ig.access_token},
+                    timeout=15,
+                )
+                if resp.status_code >= 400:
+                    return Response({"error": "Instagram AdSet API error", "details": resp.json()}, status=400)
+
+            # ========== AD LEVEL UPDATES ==========
+            ad_updates = {}
+            if "campaign_content" in data:
+                ad_updates["message"] = data["campaign_content"]
+                campaign.campaign_content = data["campaign_content"]
+
+            if "image_url" in data:
+                ad_updates["image_url"] = data["image_url"]
+                campaign.image_url = data["image_url"]
+
+            # Get or fetch Ad ID
+            ad_id = (campaign.platform_data or {}).get("instagram", {}).get("ad_id")
+            if not ad_id and adset_id:
+                adset_details = requests.get(
+                    f"https://graph.facebook.com/v25.0/{adset_id}?fields=ads",
+                    params={"access_token": social_ig.access_token},
+                    timeout=15,
+                ).json()
+                if adset_details.get("ads", {}).get("data"):
+                    ad_id = adset_details["ads"]["data"][0]["id"]
+                    if "instagram" not in campaign.platform_data:
+                        campaign.platform_data["instagram"] = {}
+                    campaign.platform_data["instagram"]["ad_id"] = ad_id
+
+            # POST to Meta API - Ad level
+            if ad_updates and ad_id:
+                resp = requests.post(
+                    f"https://graph.facebook.com/v25.0/{ad_id}",
+                    data={**ad_updates, "access_token": social_ig.access_token},
+                    timeout=15,
+                )
+                if resp.status_code >= 400:
+                    return Response({"error": "Instagram Ad API error", "details": resp.json()}, status=400)
+
+            campaign.save()
+
+            return Response({
+                "success": True,
+                "message": "Instagram campaign updated successfully",
+                "campaign_id": str(campaign.id),
+            })
+
+        except Campaign.DoesNotExist:
+            return Response({"error": "Campaign not found"}, status=404)
+        except Exception as e:
+            logger.error(f"Instagram Campaign Update Error:\n{traceback.format_exc()}")
+            return Response({"error": str(e), "trace": traceback.format_exc()}, status=400)
+
+# -------------------------------------------------------------------
 # LINKEDIN CAMPAIGN INSIGHTS
 # POST /api/social/campaign/insights/
 # -------------------------------------------------------------------

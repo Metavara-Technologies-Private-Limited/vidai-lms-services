@@ -276,6 +276,8 @@ urlpatterns = [
     path("fb/campaigns/create/", FBCampaignCreateAPIView.as_view(), name="fb-campaign-create"),
     path("fb/campaigns/<str:campaign_id>/insights/", FBCampaignInsightsAPIView.as_view(), name="fb-insights"),
     path("fb/campaigns/<str:campaign_id>/status/", FacebookCampaignStatusAPIView.as_view(), name="fb-campaign-status"),
+    path("fb/campaigns/<str:campaign_id>/update/", FacebookCampaignUpdateAPIView.as_view(), name="fb-campaign-update"),
+    path("instagram/campaigns/<str:campaign_id>/update/", InstagramCampaignUpdateAPIView.as_view(), name="ig-campaign-update"),
     path("social-campaign/meta-callback/", MetaCampaignCallbackAPIView.as_view(), name="meta-callback"),
 
     path("social-media-campaign/organic/create/", SocialMediaOrganicPostAPIView.as_view(), name="social-organic-create"),
