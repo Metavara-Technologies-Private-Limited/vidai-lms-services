@@ -1,5 +1,6 @@
 import logging
 import traceback
+from typing import Optional
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -12,6 +13,63 @@ from restapi.models import UseCase, Clinic
 from restapi.serializers.usecase_serializer import UseCaseSerializer
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_TEMPLATE_USE_CASE_NAMES = [
+    "Follow-Up",
+    "Reminder",
+    "Re-engagement",
+    "Feedback",
+    "No-Show",
+    "Appointment",
+]
+
+
+def normalize_use_case_name(value: str) -> str:
+    return " ".join((value or "").strip().lower().split())
+
+
+def resolve_clinic_from_request(request) -> Clinic:
+    clinic_id = request.headers.get("X-Clinic-Id") or request.query_params.get("clinic_id")
+
+    if not clinic_id:
+        raise ValidationError({
+            "clinic": "X-Clinic-Id header or clinic_id query param required"
+        })
+
+    clinic = Clinic.objects.filter(id=clinic_id).first()
+
+    if not clinic:
+        raise ValidationError({
+            "clinic": "Invalid clinic"
+        })
+
+    return clinic
+
+
+def ensure_default_use_cases(clinic: Clinic) -> None:
+    existing = UseCase.objects.filter(clinic=clinic)
+    existing_by_normalized = {
+        normalize_use_case_name(item.name): item
+        for item in existing
+    }
+
+    for default_name in DEFAULT_TEMPLATE_USE_CASE_NAMES:
+        key = normalize_use_case_name(default_name)
+        matched: Optional[UseCase] = existing_by_normalized.get(key)
+
+        if matched:
+            if not matched.is_active:
+                matched.is_active = True
+                matched.name = default_name
+                matched.save(update_fields=["is_active", "name"])
+            continue
+
+        UseCase.objects.create(
+            clinic=clinic,
+            name=default_name,
+            is_active=True,
+        )
 
 
 # =========================================================
@@ -34,19 +92,20 @@ class UseCaseCreateAPIView(APIView):
     def post(self, request):
 
         try:
-            clinic_id = request.headers.get("X-Clinic-Id")
+            clinic = resolve_clinic_from_request(request)
 
-            if not clinic_id:
-                raise ValidationError({
-                    "clinic": "X-Clinic-Id header required"
-                })
-
-            clinic = Clinic.objects.filter(id=clinic_id).first()
-
-            if not clinic:
-                raise ValidationError({
-                    "clinic": "Invalid clinic"
-                })
+            incoming_name = str(request.data.get("name", "")).strip()
+            if incoming_name:
+                inactive_match = UseCase.objects.filter(
+                    clinic=clinic,
+                    name__iexact=incoming_name,
+                    is_active=False,
+                ).first()
+                if inactive_match:
+                    inactive_match.name = incoming_name
+                    inactive_match.is_active = True
+                    inactive_match.save(update_fields=["name", "is_active"])
+                    return Response(UseCaseSerializer(inactive_match).data, status=201)
 
             serializer = UseCaseSerializer(
                 data=request.data,
@@ -91,26 +150,27 @@ class UseCaseListAPIView(APIView):
     def get(self, request):
 
         try:
-            clinic_id = request.query_params.get(
-                "clinic_id"
-            )
+            clinic = resolve_clinic_from_request(request)
 
-            if not clinic_id:
-                raise ValidationError({
-                    "clinic": "X-Clinic-Id header required"
-                })
-
-            clinic = Clinic.objects.filter(id=clinic_id).first()
-
-            if not clinic:
-                raise ValidationError({
-                    "clinic": "Invalid clinic"
-                })
+            ensure_default_use_cases(clinic)
 
             usecases = UseCase.objects.filter(
                 clinic=clinic,
                 is_active=True
-            ).order_by("name")
+            )
+
+            priority = {
+                normalize_use_case_name(name): index
+                for index, name in enumerate(DEFAULT_TEMPLATE_USE_CASE_NAMES)
+            }
+
+            usecases = sorted(
+                usecases,
+                key=lambda item: (
+                    priority.get(normalize_use_case_name(item.name), 99),
+                    item.name.lower(),
+                ),
+            )
 
             return Response(
                 UseCaseSerializer(usecases, many=True).data
@@ -146,19 +206,7 @@ class UseCaseUpdateAPIView(APIView):
     def put(self, request, pk):
 
         try:
-            clinic_id = request.headers.get("X-Clinic-Id")
-
-            if not clinic_id:
-                raise ValidationError({
-                    "clinic": "X-Clinic-Id header required"
-                })
-
-            clinic = Clinic.objects.filter(id=clinic_id).first()
-
-            if not clinic:
-                raise ValidationError({
-                    "clinic": "Invalid clinic"
-                })
+            clinic = resolve_clinic_from_request(request)
 
             usecase = UseCase.objects.filter(
                 id=pk,
