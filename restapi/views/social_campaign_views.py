@@ -6,6 +6,7 @@ import logging
 import traceback
 import requests
 import math
+import json
 
 from django.db import transaction
 from django.utils import timezone
@@ -47,6 +48,7 @@ from restapi.services.zapier_service import (
 from restapi.utils.clinic_scope import (
     resolve_request_clinic,
 )
+from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +324,9 @@ class SocialMediaCampaignCreateAPIView(APIView):
                     )
                 )
 
+                if selected_end < (selected_start + timedelta(hours=24)):
+                    selected_end = selected_start + timedelta(hours=24)
+
                 selected_platforms = (
                     data[
                         "select_ad_accounts"
@@ -530,6 +535,13 @@ class SocialMediaCampaignCreateAPIView(APIView):
                             if campaign.selected_start
                             else None
                         ),
+                        "end_datetime": (
+                            campaign.selected_end.strftime(
+                                "%Y-%m-%d %H:%M:%S"
+                            )
+                            if campaign.selected_end
+                            else None
+                        ),
                         "access_token": social_fb.access_token,
                         "ad_account_id": social_fb.account_id,
                         "page_id": social_fb.page_id,
@@ -640,10 +652,13 @@ class SocialMediaCampaignCreateAPIView(APIView):
                         "event": "meta_ads_create",
                         "platform": "instagram",
                         "schedule_datetime": (
-                            campaign.selected_start.strftime(
-                                "%Y-%m-%d %H:%M:%S"
-                            )
+                            campaign.selected_start.strftime("%Y-%m-%d %H:%M:%S")
                             if campaign.selected_start
+                            else None
+                        ),
+                        "end_datetime": (
+                            campaign.selected_end.strftime("%Y-%m-%d %H:%M:%S")
+                            if campaign.selected_end
                             else None
                         ),
                         "access_token": social_ig.access_token,
@@ -1251,15 +1266,24 @@ class FacebookCampaignUpdateAPIView(APIView):
 
             # ========== CAMPAIGN LEVEL UPDATES ==========
             campaign_updates = {}
-            if "name" in data:
-                campaign_updates["name"] = data["name"]
-                campaign.campaign_name = data["name"]
+            name = data.get("name") or data.get("campaign_name")
+            objective = data.get("objective") or data.get("campaign_objective")
 
-            if "objective" in data:
-                obj_map = {"awareness": "OUTCOME_AWARENESS", "leads": "OUTCOME_LEADS", "traffic": "OUTCOME_TRAFFIC"}
-                fb_obj = obj_map.get(str(data["objective"]).lower(), "OUTCOME_TRAFFIC")
+            if name:
+                campaign_updates["name"] = name
+                campaign.campaign_name = name
+
+            if objective:
+                obj_map = {
+                    "awareness": "OUTCOME_AWARENESS",
+                    "leads": "OUTCOME_LEADS",
+                    "traffic": "OUTCOME_TRAFFIC",
+                }
+
+                fb_obj = obj_map.get(str(objective).lower(), "OUTCOME_TRAFFIC")
+
                 campaign_updates["objective"] = fb_obj
-                campaign.campaign_objective = data["objective"]
+                campaign.campaign_objective = objective
 
             if "status" in data:
                 fb_status = "ACTIVE" if str(data["status"]).lower() == "live" else "PAUSED"
@@ -1274,11 +1298,17 @@ class FacebookCampaignUpdateAPIView(APIView):
                     timeout=15,
                 )
                 if resp.status_code >= 400:
-                    return Response({"error": "Facebook Campaign API error", "details": resp.json()}, status=400)
+                    return Response(
+                        {
+                            "error": "Facebook Campaign API error",
+                            "details": resp.json(),
+                        },
+                        status=400,
+                    )
 
             # ========== ADSET LEVEL UPDATES ==========
             adset_updates = {}
-            
+
             if "budget_data" in data:
                 budget = data["budget_data"]
                 if "facebook" in budget:
@@ -1296,12 +1326,13 @@ class FacebookCampaignUpdateAPIView(APIView):
                         "geo_locations": {"countries": targeting.get("countries", ["IN"])},
                         "publisher_platforms": ["facebook"],
                     }
-                    if "state" in targeting:
-                        adset_updates["targeting"]["geo_locations"]["state"] = targeting["state"]
+                    # if "state" in targeting:
+                    #     adset_updates["targeting"]["geo_locations"]["state"] = targeting["state"]
                 campaign.platform_data = data["platform_data"]
 
             # Get or fetch AdSet ID
             adset_id = (campaign.platform_data or {}).get("facebook", {}).get("adset_id")
+            camp_details = {}
             if not adset_id:
                 camp_details = requests.get(
                     f"https://graph.facebook.com/v25.0/{campaign.fb_campaign_id}?fields=adsets",
@@ -1318,13 +1349,29 @@ class FacebookCampaignUpdateAPIView(APIView):
 
             # POST to Meta API - AdSet level
             if adset_updates and adset_id:
+
+                payload = {
+                    **adset_updates,
+                    "access_token": social_fb.access_token,
+                }
+
+                # Meta requires targeting as JSON string
+                if "targeting" in payload:
+                    payload["targeting"] = json.dumps(payload["targeting"])
+
                 resp = requests.post(
                     f"https://graph.facebook.com/v25.0/{adset_id}",
-                    data={**adset_updates, "access_token": social_fb.access_token},
+                    data=payload,
                     timeout=15,
                 )
                 if resp.status_code >= 400:
-                    return Response({"error": "Facebook AdSet API error", "details": resp.json()}, status=400)
+                    return Response(
+                        {
+                            "error": "Facebook AdSet API error",
+                            "details": resp.json(),
+                        },
+                        status=400,
+                    )
 
             # ========== AD LEVEL UPDATES ==========
             ad_updates = {}
@@ -1407,15 +1454,28 @@ class InstagramCampaignUpdateAPIView(APIView):
 
             # ========== CAMPAIGN LEVEL UPDATES ==========
             campaign_updates = {}
-            if "name" in data:
-                campaign_updates["name"] = data["name"]
-                campaign.campaign_name = data["name"]
+            name = data.get("name") or data.get("campaign_name")
 
-            if "objective" in data:
-                obj_map = {"awareness": "OUTCOME_AWARENESS", "leads": "OUTCOME_LEADS", "traffic": "OUTCOME_TRAFFIC"}
-                ig_obj = obj_map.get(str(data["objective"]).lower(), "OUTCOME_TRAFFIC")
-                campaign_updates["objective"] = ig_obj
-                campaign.campaign_objective = data["objective"]
+            if name:
+                campaign_updates["name"] = name
+                campaign.campaign_name = name
+
+            objective = data.get("objective") or data.get("campaign_objective")
+
+            if objective:
+                obj_map = {
+                    "awareness": "OUTCOME_AWARENESS",
+                    "leads": "OUTCOME_LEADS",
+                    "traffic": "OUTCOME_TRAFFIC",
+                }
+
+                fb_obj = obj_map.get(
+                    str(objective).lower(),
+                    "OUTCOME_TRAFFIC",
+                )
+
+                campaign_updates["objective"] = fb_obj
+                campaign.campaign_objective = objective
 
             if "status" in data:
                 ig_status = "ACTIVE" if str(data["status"]).lower() == "live" else "PAUSED"
@@ -1452,8 +1512,8 @@ class InstagramCampaignUpdateAPIView(APIView):
                         "geo_locations": {"countries": targeting.get("countries", ["IN"])},
                         "publisher_platforms": ["instagram"],
                     }
-                    if "state" in targeting:
-                        adset_updates["targeting"]["geo_locations"]["state"] = targeting["state"]
+                    # if "state" in targeting:
+                    #     adset_updates["targeting"]["geo_locations"]["state"] = targeting["state"]
                 campaign.platform_data = data["platform_data"]
 
             # Get or fetch AdSet ID
@@ -1474,13 +1534,30 @@ class InstagramCampaignUpdateAPIView(APIView):
 
             # POST to Meta API - AdSet level
             if adset_updates and adset_id:
+                print("[IG ADSET API CALL START]")
+
+                payload = {
+                    **adset_updates,
+                    "access_token": social_ig.access_token,
+                }
+
+                # Meta requires targeting as JSON string
+                if "targeting" in payload:
+                    payload["targeting"] = json.dumps(payload["targeting"])
+
                 resp = requests.post(
                     f"https://graph.facebook.com/v25.0/{adset_id}",
-                    data={**adset_updates, "access_token": social_ig.access_token},
+                    data=payload,
                     timeout=15,
                 )
                 if resp.status_code >= 400:
-                    return Response({"error": "Instagram AdSet API error", "details": resp.json()}, status=400)
+                    return Response(
+                        {
+                            "error": "Instagram AdSet API error",
+                            "details": resp.json(),
+                        },
+                        status=400,
+                    )
 
             # ========== AD LEVEL UPDATES ==========
             ad_updates = {}
