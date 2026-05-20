@@ -351,28 +351,62 @@ class SocialMediaCampaignCreateAPIView(APIView):
                 )
 
                 # -----------------------------------
-                # Normalize Google Ads platform data
+                # Normalize platform statuses
                 # -----------------------------------
-                google_ads_data = (
-                    raw_platform_data.get(
-                        "google_ads",
-                        {}
-                    ) or {}
+
+                default_platform_status = (
+                    "paused"
+                    if str(data.get("status", "")).lower()
+                    in ["paused", "draft"]
+                    else "active"
                 )
 
-                if isinstance(google_ads_data, dict):
+                for platform_key in [
+                    "facebook",
+                    "instagram",
+                    "linkedin",
+                    "google_ads",
+                ]:
 
-                    google_ads_data["status"] = (
-                        "paused"
-                        if str(
-                            data.get("status", "")
-                        ).lower() in ["paused", "draft"]
-                        else "active"
+                    platform_value = (
+                        raw_platform_data.get(platform_key)
                     )
 
-                    raw_platform_data["google_ads"] = (
-                        google_ads_data
-                    )
+                    # Only normalize object-based platforms
+                    if isinstance(platform_value, dict):
+
+                        platform_value["status"] = (
+                            platform_value.get("status")
+                            or default_platform_status
+                        )
+
+                        raw_platform_data[platform_key] = (
+                            platform_value
+                        )
+
+                # # -----------------------------------
+                # # Normalize Google Ads platform data
+                # # -----------------------------------
+                # google_ads_data = (
+                #     raw_platform_data.get(
+                #         "google_ads",
+                #         {}
+                #     ) or {}
+                # )
+
+                # if isinstance(google_ads_data, dict):
+
+                #     google_ads_data["status"] = (
+                #         "paused"
+                #         if str(
+                #             data.get("status", "")
+                #         ).lower() in ["paused", "draft"]
+                #         else "active"
+                #     )
+
+                #     raw_platform_data["google_ads"] = (
+                #         google_ads_data
+                #     )
 
                 # -----------------------------------
                 # Create campaign
