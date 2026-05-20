@@ -5,6 +5,7 @@ from .views import *
 from restapi.views.google_ads_views import (
     GoogleAdsCampaignCreateAPIView,
     GoogleAdsCampaignStatusAPIView,
+    GoogleAdsCampaignUpdateAPIView,
     GoogleAdsInsightsAPIView,                  # ✅ FIX: moved here from social_auth_views
     GoogleAdsCampaignCreatedCallbackAPIView,   # ✅ NEW
     GoogleAdsInsightsCallbackAPIView,          # ✅ NEW
@@ -287,6 +288,7 @@ urlpatterns = [
     # ============================
     path("google-ads/create/",                      GoogleAdsCampaignCreateAPIView.as_view(),          name="google-ads-create"),
     path("google-ads/status/",                      GoogleAdsCampaignStatusAPIView.as_view(),          name="google-ads-status"),
+    path("google-ads/campaigns/<str:campaign_id>/update/", GoogleAdsCampaignUpdateAPIView.as_view(),  name="google-ads-campaign-update"),
     path("google-ads/callback/",                    GoogleAdsCampaignCallbackAPIView.as_view(),        name="google-ads-callback"),
     path("google-ads/insights/",                    GoogleAdsInsightsAPIView.as_view(),                name="google-ads-insights"),        # ✅ FIX: now reads from DB, not 149 campaigns
     path("google-ads/callback/campaign-created/",   GoogleAdsCampaignCreatedCallbackAPIView.as_view(), name="google-ads-campaign-created-callback"),  # ✅ NEW

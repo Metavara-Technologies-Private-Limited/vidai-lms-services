@@ -875,6 +875,204 @@ class GoogleAdsCampaignStatusAPIView(APIView):
             )
 
 
+# -------------------------------------------------------------------
+# GOOGLE ADS CAMPAIGN UPDATE
+# PUT /api/google-ads/campaigns/<campaign_id>/update/
+# -------------------------------------------------------------------
+class GoogleAdsCampaignUpdateAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, campaign_id):
+        try:
+            campaign = Campaign.objects.get(id=campaign_id)
+            clinic_id = campaign.clinic_id
+            data = request.data
+
+            # Get Google Account
+            google_account = SocialAccount.objects.filter(
+                clinic_id=clinic_id,
+                platform="google",
+                is_active=True,
+            ).first()
+
+            if not google_account:
+                return Response(
+                    {"error": "Google Ads account not connected"},
+                    status=400,
+                )
+
+            cust_id = str(google_account.customer_id or "").replace("-", "")
+            if not cust_id:
+                return Response(
+                    {"error": "Google customer_id missing"},
+                    status=400,
+                )
+
+            # Get refresh token
+            refresh_token = google_account.user_token or getattr(
+                settings, "GOOGLE_REFRESH_TOKEN", None
+            )
+            if not refresh_token:
+                return Response(
+                    {"error": "Google refresh token missing"},
+                    status=400,
+                )
+
+            # Get access token
+            auth_res = requests.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id": settings.GOOGLE_CLIENT_ID,
+                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                    "refresh_token": refresh_token,
+                    "grant_type": "refresh_token",
+                },
+                timeout=10,
+            )
+
+            auth_json = auth_res.json()
+            if "access_token" not in auth_json:
+                return Response(
+                    {"error": "Failed to refresh Google token", "details": auth_json},
+                    status=401,
+                )
+
+            access_token = auth_json["access_token"]
+
+            # Setup headers
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "developer-token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
+                "Content-Type": "application/json",
+            }
+
+            login_id = str(getattr(settings, "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")).replace("-", "")
+            if login_id:
+                headers["login-customer-id"] = login_id
+
+            # Get platform data with campaign resources
+            platform_data = campaign.platform_data or {}
+            google_data = platform_data.get("google_ads", {}) or {}
+
+            search_campaign = google_data.get("search_campaign", {}) or {}
+            display_campaign = google_data.get("display_campaign", {}) or {}
+
+            campaign_resources = [
+                search_campaign.get("resource_name"),
+                display_campaign.get("resource_name"),
+            ]
+            campaign_resources = [r for r in campaign_resources if r]
+
+            if not campaign_resources:
+                return Response(
+                    {"success": True, "skipped": True, "message": "No Google Ads campaigns found"},
+                    status=200,
+                )
+
+            # Prepare updates
+            updates = {}
+
+            # Status update
+            if "status" in data:
+                our_status = str(data["status"]).lower()
+                google_status = "PAUSED" if our_status in ["draft", "paused"] else "ENABLED"
+                updates["status"] = google_status
+                campaign.status = data["status"]
+
+            # Name update
+            if "name" in data:
+                updates["name"] = data["name"]
+                campaign.campaign_name = data["name"]
+
+            # Budget update
+            if "budget" in data or "budget_data" in data:
+                budget_val = data.get("budget") or (data.get("budget_data", {}).get("google", 500))
+                budget_micros = int(float(budget_val) * 1_000_000)
+                updates["campaign_budget_id"] = budget_micros
+                if "budget_data" not in campaign.budget_data:
+                    campaign.budget_data = data.get("budget_data", {})
+
+            # Bidding strategy
+            if "bidding_strategy" in data:
+                updates["bidding_strategy"] = data["bidding_strategy"]
+
+            # Campaign objective
+            if "campaign_objective" in data:
+                campaign.campaign_objective = data["campaign_objective"]
+
+            # Update DB fields
+            if "name" in data:
+                campaign.campaign_name = data["name"]
+            if "content" in data or "campaign_content" in data:
+                campaign.campaign_content = data.get("content") or data.get("campaign_content")
+
+            # Mutate campaigns at Google Ads
+            mutate_results = []
+
+            for resource_name in campaign_resources:
+                # Build update mask
+                update_mask_fields = list(updates.keys())
+
+                mutate_resp = requests.post(
+                    f"https://googleads.googleapis.com/v20/customers/{cust_id}/campaigns:mutate",
+                    headers=headers,
+                    json={
+                        "operations": [
+                            {
+                                "update": {
+                                    "resourceName": resource_name,
+                                    **updates,
+                                },
+                                "updateMask": ",".join(update_mask_fields),
+                            }
+                        ]
+                    },
+                    timeout=10,
+                )
+
+                try:
+                    mutate_res = mutate_resp.json() if mutate_resp.text.strip() else {}
+                except Exception:
+                    mutate_res = {}
+
+                mutate_results.append({
+                    "resource_name": resource_name,
+                    "status_code": mutate_resp.status_code,
+                    "response": mutate_res,
+                })
+
+                if "results" not in mutate_res:
+                    logger.error(
+                        "[GoogleAdsUpdate] Mutate failed for %s | %s",
+                        resource_name,
+                        mutate_res,
+                    )
+
+            # Update platform_data
+            google_data["google_status"] = updates.get("status", google_data.get("google_status"))
+            platform_data["google_ads"] = google_data
+            campaign.platform_data = platform_data
+
+            # Save campaign
+            campaign.save()
+
+            return Response({
+                "success": True,
+                "campaign_id": str(campaign_id),
+                "message": "Google Ads campaign updated successfully",
+                "updated_campaigns": mutate_results,
+            })
+
+        except Campaign.DoesNotExist:
+            return Response({"error": "Campaign not found"}, status=404)
+        except Exception as e:
+            logger.error(f"[GoogleAdsUpdate] Error:\n{traceback.format_exc()}")
+            return Response(
+                {"error": str(e), "trace": traceback.format_exc()},
+                status=400,
+            )
+
+
 # =====================================================
 # ✅ Google Ads Insights — reads from DB only
 # =====================================================
