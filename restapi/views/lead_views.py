@@ -75,7 +75,9 @@ def apply_lead_visibility_scope(queryset, request):
         return queryset.none()
 
     return queryset.filter(
-        Q(created_by_id__in=candidate_ids) | Q(personal_id__in=candidate_ids)
+        Q(created_by_id__in=candidate_ids)
+        | Q(personal_id__in=candidate_ids)
+        | Q(assigned_to_id__in=candidate_ids)
     )
 
 
