@@ -31,6 +31,24 @@ logger = logging.getLogger(__name__)
 #   Call:   completed/in-progress/ringing → high | busy/no-answer → low | failed/canceled → no
 #           Fallback: if no status matches but records exist → all go to high
 # =====================================================
+
+
+def _filter_user_leads(queryset, user):
+    if not hasattr(user, "profile") or not user.profile.role:
+        return queryset.none()
+
+    role_name = (user.profile.role.name or "").strip().lower()
+
+    # Super admin/admin → full clinic access
+    if role_name in ["super admin", "superadmin", "admin"]:
+        return queryset
+
+    return queryset.filter(
+        Q(lead__assigned_to_id=user.id)
+        | Q(lead__created_by_id=user.id)
+        | Q(lead__personal_id=user.id)
+    )
+
 class InteractionCountsAPIView(APIView):
     """
     GET /api/interactions/counts/?clinic_id=25
@@ -49,7 +67,9 @@ class InteractionCountsAPIView(APIView):
                 )
 
             # ───────────────── EMAIL ─────────────────
-            email_qs = LeadEmail.objects.filter(lead__clinic_id=clinic_id)
+            email_qs = _filter_user_leads(
+                LeadEmail.objects.filter(lead__clinic_id=clinic_id), request.user
+            )
 
             email_counts = email_qs.aggregate(
                 high=Count(
@@ -78,9 +98,10 @@ class InteractionCountsAPIView(APIView):
             email_low  = email_counts["low"] or 0
             email_no   = email_counts["no"] or 0
 
-
             # ───────────────── SMS ─────────────────
-            sms_qs = TwilioMessage.objects.filter(lead__clinic_id=clinic_id)
+            sms_qs = _filter_user_leads(
+                TwilioMessage.objects.filter(lead__clinic_id=clinic_id), request.user
+            )
 
             sms_counts = sms_qs.aggregate(
                 high=Count(
@@ -101,9 +122,11 @@ class InteractionCountsAPIView(APIView):
             sms_low  = sms_counts["low"] or 0
             sms_no   = sms_counts["no"] or 0
 
-
             # ───────────────── CALL ─────────────────
-            call_qs = TwilioCall.objects.filter(lead__clinic_id=clinic_id)
+            call_qs = _filter_user_leads(
+                TwilioCall.objects.filter(lead__clinic_id=clinic_id),
+                request.user
+            )
 
             call_high = 0
             call_low = 0
@@ -135,19 +158,8 @@ class InteractionCountsAPIView(APIView):
                 ):
                     call_low += 1
 
-
                 elif status_value in ["failed"]:
                     call_no += 1
-                
-              
-                
-
-
-    
-
-
-
-
 
             # ───────────────── FINAL RESPONSE ─────────────────
             data = [
