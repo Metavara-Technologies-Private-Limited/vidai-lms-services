@@ -22,6 +22,11 @@ from restapi.utils.permissions import (
     has_action_permission_for_labels,
     normalize_role_name,
 )
+from restapi.models.twilio import TwilioCall, TwilioMessage
+from restapi.models.lead_mail import LeadEmail
+from django.db.models import OuterRef, Subquery
+from django.db.models import DateTimeField
+from django.db.models.functions import Greatest, Coalesce
 
 LEAD_LABELS = ["leads hub"]
 
@@ -427,16 +432,47 @@ class LeadListAPIView(APIView):
 
         try:
             clinic = get_request_clinic(request)
+            latest_call_subquery = (
+                TwilioCall.objects.filter(
+                    lead=OuterRef("pk"),
+                    status__in=["completed", "answered", "in-progress"]
+                )
+                .order_by("-created_at")
+                .values("created_at")[:1]
+            )
+
+            latest_sms_subquery = (
+                TwilioMessage.objects.filter(
+                    lead=OuterRef("pk"),
+                    status__in=[
+                        "queued",
+                        "queued_via_zapier",
+                        "sent",
+                        "delivered",
+                    ]
+                )
+                .order_by("-created_at")
+                .values("created_at")[:1]
+            )
+
+            latest_email_subquery = (
+                LeadEmail.objects.filter(
+                    lead=OuterRef("pk"),
+                    status="SENT",
+                    sent_at__isnull=False
+                )
+                .order_by("-sent_at")
+                .values("sent_at")[:1]
+            )
+
 
             # =====================================================
             # ✅ OPTIMIZATION: Use select_related() for all FK relations
             #    and prefetch_related() for M2M relations to eliminate N+1 queries
             # =====================================================
             queryset = apply_lead_visibility_scope(
-                Lead.objects.filter(
-                    clinic=clinic,
-                    is_deleted=False
-                ).select_related(
+                Lead.objects.filter(clinic=clinic, is_deleted=False)
+                .select_related(
                     "clinic",
                     "department",
                     "campaign",
@@ -444,10 +480,33 @@ class LeadListAPIView(APIView):
                     "referral_source",
                     "stage",
                     "converted_at_stage",
-                ).prefetch_related(
+                )
+                .prefetch_related(
                     "documents",
                     "treatment_interest",
-                ).order_by("-created_at"),
+                )
+                .annotate(
+                    latest_call_at=Subquery(
+                        latest_call_subquery,
+                        output_field=DateTimeField(),
+                    ),
+                    latest_sms_at=Subquery(
+                        latest_sms_subquery,
+                        output_field=DateTimeField(),
+                    ),
+                    latest_email_at=Subquery(
+                        latest_email_subquery,
+                        output_field=DateTimeField(),
+                    ),
+                )
+                .annotate(
+                    last_interaction_at_db=Greatest(
+                        Coalesce("latest_call_at", "created_at"),
+                        Coalesce("latest_sms_at", "created_at"),
+                        Coalesce("latest_email_at", "created_at"),
+                    )
+                )
+                .order_by("-created_at"),
                 request,
             )
 

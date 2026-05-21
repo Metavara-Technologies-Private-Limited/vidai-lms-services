@@ -118,6 +118,8 @@ class LeadReadSerializer(serializers.ModelSerializer):
     treatment_interest = serializers.SerializerMethodField()
 
     documents = serializers.SerializerMethodField()
+    quality = serializers.SerializerMethodField()
+    last_interaction_at = serializers.SerializerMethodField()
 
     class Meta:
         model = Lead
