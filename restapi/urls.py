@@ -48,6 +48,7 @@ urlpatterns = [
 
     path("login/", LoginAPIView.as_view(), name="login"),
     path("auth/login/", LoginAPIView.as_view(), name="login-legacy"),
+    path("auto-login/", AutoLoginAPIView.as_view(), name="auto-login"),
     path("token/refresh/", TokenRefreshAPIView.as_view(), name="token-refresh"),
 
     path('roles/create/', RoleCreateAPIView.as_view()),
