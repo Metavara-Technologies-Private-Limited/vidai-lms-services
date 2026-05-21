@@ -17,6 +17,7 @@ from restapi.models import (
 )
 
 from restapi.services.lead_service import create_lead, update_lead
+from django.utils import timezone
 
 
 # =====================================================
@@ -157,6 +158,81 @@ class LeadReadSerializer(serializers.ModelSerializer):
             }
             for interest in obj.treatment_interest.all()
         ]
+
+    # def get_last_interaction_at(self, obj):
+
+    #     latest_call = obj.twilio_calls.filter(
+    #         status__in=["completed", "answered", "in-progress"]
+    #     ).aggregate(
+    #         latest=Max("created_at")
+    #     )["latest"]
+
+    #     latest_sms = obj.twilio_messages.filter(
+    #         status__in=[
+    #             "queued",
+    #             "queued_via_zapier",
+    #             "sent",
+    #             "delivered",
+    #         ]
+    #     ).aggregate(
+    #         latest=Max("created_at")
+    #     )["latest"]
+
+    #     latest_email = obj.emails.filter(
+    #         status="SENT",
+    #         sent_at__isnull=False
+    #     ).aggregate(
+    #         latest=Max("sent_at")
+    #     )["latest"]
+
+    #     appointment_datetime = None
+
+    #     if obj.book_appointment and obj.appointment_date:
+    #         appointment_datetime = timezone.datetime.combine(
+    #             obj.appointment_date,
+    #             timezone.datetime.min.time(),
+    #             tzinfo=timezone.get_current_timezone()
+    #         )
+
+    #     latest_dates = [
+    #         latest_call,
+    #         latest_sms,
+    #         latest_email,
+    #         appointment_datetime,
+    #     ]
+
+    #     valid_dates = [d for d in latest_dates if d]
+
+    #     # ✅ FALLBACK TO LEAD CREATION
+    #     if not valid_dates:
+    #         return obj.created_at
+
+    #     return max(valid_dates)
+    def get_last_interaction_at(self, obj):
+        return getattr(
+            obj,
+            "last_interaction_at_db",
+            obj.created_at
+        )
+
+    def get_quality(self, obj):
+
+        last_interaction = self.get_last_interaction_at(obj)
+
+        if not last_interaction:
+            return "Cold"
+
+        diff_days = (
+            timezone.now() - last_interaction
+        ).days
+
+        if diff_days <= 7:
+            return "Hot"
+
+        if diff_days <= 30:
+            return "Warm"
+
+        return "Cold"
 
 
 # =====================================================
