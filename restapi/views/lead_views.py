@@ -27,6 +27,7 @@ from restapi.models.lead_mail import LeadEmail
 from django.db.models import OuterRef, Subquery
 from django.db.models import DateTimeField
 from django.db.models.functions import Greatest, Coalesce
+from restapi.services.patient_sync_service import sync_patient_to_external_system
 
 LEAD_LABELS = ["leads hub"]
 
@@ -370,6 +371,8 @@ class LeadUpdateAPIView(APIView):
                         "stage_id": "Stage does not belong to selected pipeline"
                     })
 
+            old_status = (lead.lead_status or "").lower()
+
             serializer = LeadSerializer(
                 lead,
                 data=data,
@@ -380,6 +383,30 @@ class LeadUpdateAPIView(APIView):
             serializer.is_valid(raise_exception=True)
 
             updated_lead = serializer.save()
+
+            new_status = (updated_lead.lead_status or "").lower()
+
+            if (
+                old_status != "converted"
+                and new_status == "converted"
+                and not updated_lead.external_patient_id
+            ):
+
+                try:
+                    sync_patient_to_external_system(updated_lead)
+
+                except Exception as e:
+
+                    updated_lead.external_patient_sync_error = traceback.format_exc()
+
+                    updated_lead.save(
+                        update_fields=["external_patient_sync_error"]
+                    )
+
+                    logger.exception(
+                        "External patient sync failed for lead %s",
+                        updated_lead.id
+                    )
 
             logger.info(
                 f"Lead {updated_lead.id} updated | "

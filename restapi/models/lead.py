@@ -246,6 +246,21 @@ class Lead(models.Model):
     # =============================
     converted_at = models.DateTimeField(null=True, blank=True)
 
+    external_patient_id = models.IntegerField(
+        null=True,
+        blank=True
+    )
+
+    external_patient_synced_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    external_patient_sync_error = models.TextField(
+        null=True,
+        blank=True
+    )
+
     class Meta:
         db_table = "restapi_lead"
         ordering = ["-created_at"]
