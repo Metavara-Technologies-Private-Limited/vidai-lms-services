@@ -12,7 +12,7 @@ from rest_framework.exceptions import ValidationError
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 
-from restapi.models import Pipeline, PipelineStage
+from restapi.models import Pipeline, PipelineStage, StageRule, StageField, Clinic, PipelineStageAuditLog
 from restapi.serializers.pipeline_serializer import (
     PipelineSerializer,
     PipelineReadSerializer,
@@ -298,7 +298,7 @@ class PipelineStageCreateAPIView(APIView):
                 if exists:
                     raise ValidationError({"is_conversion_stage": "Conversion stage already exists"})
 
-            stage = add_stage(request.data)
+            stage = add_stage(request.data, user=request.user)
 
             return Response(
                 PipelineStageReadSerializer(stage, context={"request": request}).data,
@@ -698,7 +698,12 @@ class StageDeleteAPIView(APIView):
     def delete(self, request, stage_id):
         try:
             _get_scoped_stage(request, stage_id)
-            delete_stage(stage_id)
+
+            delete_stage(
+                stage_id,
+                user=request.user
+            )
+
             return Response(
                 {"message": "Stage deleted successfully"},
                 status=status.HTTP_200_OK,
@@ -714,6 +719,7 @@ class StageDeleteAPIView(APIView):
             logger.error(
                 "Unhandled Stage Delete Error:\n" + traceback.format_exc()
             )
+
             return Response(
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -773,7 +779,7 @@ class StageDetailAPIView(APIView):
     def delete(self, request, stage_id):
         try:
             _get_scoped_stage(request, stage_id)
-            delete_stage(stage_id)
+            delete_stage(stage_id, user=request.user)
             return Response(status=status.HTTP_204_NO_CONTENT)
 
         except ValidationError as ve:

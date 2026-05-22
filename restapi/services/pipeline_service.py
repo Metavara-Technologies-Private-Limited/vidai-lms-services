@@ -7,6 +7,9 @@ from restapi.models import (
     StageRule,
     StageField,
     Clinic,
+    PipelineStageAuditLog,
+    Lead,
+    
 )
 
 
@@ -113,7 +116,7 @@ def set_default_pipeline(pipeline_id):
 
 # add_stage
 @transaction.atomic
-def add_stage(validated_data):
+def add_stage(validated_data, user=None):
     try:
         pipeline_id = validated_data.get("pipeline_id") or validated_data.get("pipeline")
         pipeline = Pipeline.objects.get(id=pipeline_id)
@@ -153,6 +156,14 @@ def add_stage(validated_data):
         # ✅ ADD: pass conversion flags
         is_conversion_stage=validated_data.get("is_conversion_stage", False),
         is_default_stage=validated_data.get("is_default_stage", False),
+    )
+
+    PipelineStageAuditLog.objects.create(
+        pipeline=pipeline,
+        stage_id=stage.id,
+        stage_name=stage.stage_name,
+        action="created",
+        created_by=user,
     )
 
     return stage
@@ -374,13 +385,37 @@ def archive_stage(stage_id):
     stage.save()
     return stage
 
-
 # delete_stage
 @transaction.atomic
-def delete_stage(stage_id):
+def delete_stage(stage_id, user=None):
     try:
         stage = PipelineStage.objects.get(id=stage_id)
     except PipelineStage.DoesNotExist:
         raise ValidationError({"stage_id": "Stage not found"})
 
+    # =====================================================
+    # PREVENT DELETE IF LEADS EXIST
+    # =====================================================
+    lead_exists = Lead.objects.filter(
+        stage=stage
+    ).exists()
+
+    if lead_exists:
+        raise ValidationError({
+            "stage": "Cannot delete stage because leads are associated with this stage."
+        })
+
+    # =====================================================
+    # AUDIT LOG
+    # =====================================================
+    PipelineStageAuditLog.objects.create(
+        pipeline=stage.pipeline,
+        stage_id=stage.id,
+        stage_name=stage.stage_name,
+        action="deleted",
+        created_by=user,
+    )
+
     stage.delete()
+
+    return {"message": "Stage deleted successfully"}

@@ -62,3 +62,5 @@ from .usecase import UseCase
 from .interest import Interest
 
 from .whatsapp import WhatsAppMessage   # ✅ FIXED: removed deleted WhatsAppTemplate
+
+from .pipeline_stage_audit_log import PipelineStageAuditLog
