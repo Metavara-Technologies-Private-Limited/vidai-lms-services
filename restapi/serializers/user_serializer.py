@@ -14,6 +14,7 @@ from restapi.utils.permissions import (
     is_super_admin_role,
     has_action_permission_for_labels,  # ✅ IMPORTANT
 )
+from restapi.models.clinic import Clinic
 
 
 # =========================
@@ -95,14 +96,28 @@ class UserSerializer(serializers.ModelSerializer):
 
     photo = serializers.ImageField(required=False)
     remove_photo = serializers.BooleanField(write_only=True, required=False, default=False)
+    clinic_id = serializers.PrimaryKeyRelatedField(
+        queryset=Clinic.objects.all(), source="clinic", required=False
+    )
 
     class Meta:
         model = User
         fields = [
-            "id", "username", "email", "password", "confirm_password",
-            "first_name", "last_name", "gender",
-            "date_of_birth", "date_of_joining", "mobile_no",
-            "role", "photo", "remove_photo"
+            "id",
+            "username",
+            "email",
+            "password",
+            "confirm_password",
+            "first_name",
+            "last_name",
+            "gender",
+            "date_of_birth",
+            "date_of_joining",
+            "mobile_no",
+            "role",
+            "photo",
+            "clinic_id",
+            "remove_photo",
         ]
 
     # =========================
@@ -183,7 +198,9 @@ class UserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("No role configured")
 
         profile_data["role"] = role
-        profile_data["clinic"] = request.user.profile.clinic
+        profile_data["clinic"] = validated_data.pop(
+            "clinic", request.user.profile.clinic
+        )
         profile_data["created_by"] = request.user
 
         password = validated_data.pop("password", None)

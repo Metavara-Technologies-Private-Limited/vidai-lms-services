@@ -13,7 +13,8 @@ from drf_yasg.utils import swagger_auto_schema
 
 from restapi.services import get_user_permissions
 from restapi.utils.media import build_media_api_url
-
+from django.contrib.auth.models import User
+from rest_framework.permissions import AllowAny
 
 def _get_profile_photo_url(user, request):
     """
@@ -272,3 +273,106 @@ class TokenRefreshAPIView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+class AutoLoginAPIView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+
+        token = request.GET.get("token")
+
+        if not token:
+            return Response(
+                {"success": False, "message": "Token is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            payload = jwt.decode(
+                token, settings.AUTO_LOGIN_SECRET, algorithms=["HS256"]
+            )
+
+            user_id = payload.get("user_id")
+
+            if not user_id:
+                return Response(
+                    {"success": False, "message": "Invalid token payload"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            user = User.objects.filter(id=user_id).first()
+
+            if not user:
+                return Response(
+                    {"success": False, "message": "User not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if not hasattr(user, "profile") or not user.profile.is_active:
+                return Response(
+                    {"success": False, "message": "User inactive"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            if not user.profile.role:
+                return Response(
+                    {"success": False, "message": "User role not assigned"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            profile = user.profile
+
+            permissions = get_user_permissions(user)
+
+            # Reuse existing token generators
+            login_view = LoginAPIView()
+
+            access_token, expires_at = login_view._build_access_token(user)
+
+            refresh_token, refresh_expires_at = login_view._build_refresh_token(user)
+
+            photo_url = _get_profile_photo_url(user, request)
+
+            return Response(
+                {
+                    "success": True,
+                    "message": "Auto login successful",
+                    "data": {
+                        "access_token": access_token,
+                        "refresh_token": refresh_token,
+                        "token_type": "Bearer",
+                        "expires_at": expires_at.isoformat(),
+                        "refresh_expires_at": refresh_expires_at.isoformat(),
+                        "user": {
+                            "id": user.id,
+                            "username": user.username,
+                            "email": user.email,
+                            "first_name": (profile.first_name or user.first_name),
+                            "last_name": (profile.last_name or user.last_name),
+                            "photo": photo_url,
+                        },
+                        "role": profile.role.name,
+                        "permissions": permissions,
+                    },
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except jwt.ExpiredSignatureError:
+            return Response(
+                {"success": False, "message": "Token expired"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        except jwt.InvalidTokenError:
+            return Response(
+                {"success": False, "message": "Invalid token"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        except Exception as e:
+            return Response(
+                {"success": False, "message": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
