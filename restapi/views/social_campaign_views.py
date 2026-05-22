@@ -868,6 +868,11 @@ class SocialMediaCampaignCreateAPIView(APIView):
                                 if campaign.selected_start
                                 else None
                             ),
+                            "end_datetime": (
+                                campaign.selected_end.strftime("%Y-%m-%d %H:%M:%S")
+                                if campaign.selected_end
+                                else None
+                            ),
                             # -----------------------------------
                             # Auth
                             # -----------------------------------
