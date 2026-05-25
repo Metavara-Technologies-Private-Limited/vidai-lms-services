@@ -72,8 +72,8 @@ ZAPIER_WEBHOOK_MAILCHIMP_URL = os.getenv(
 )
 
 MIDDLEWARE = [
-    'restapi.middleware.RequestIDMiddleware',
     'corsheaders.middleware.CorsMiddleware',
+    'restapi.middleware.RequestIDMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',

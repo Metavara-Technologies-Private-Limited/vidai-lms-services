@@ -245,7 +245,6 @@ class LeadCreateAPIView(APIView):
                 status=500
             )
 
-
 # -------------------------------------------------------------------
 # Lead Update API View (PUT)
 # -------------------------------------------------------------------
@@ -273,6 +272,12 @@ class LeadUpdateAPIView(APIView):
             )
 
         try:
+
+            logger.info(
+                "Lead Update API Started | lead_id=%s",
+                lead_id
+            )
+
             clinic = get_request_clinic(request)
 
             lead = get_scoped_lead_or_404(
@@ -303,7 +308,6 @@ class LeadUpdateAPIView(APIView):
 
                     treatment_interest = data.getlist("treatment_interest")
 
-                    # SUPPORT SINGLE VALUE ALSO
                     if not treatment_interest:
 
                         single_interest = data.get("treatment_interest")
@@ -341,7 +345,8 @@ class LeadUpdateAPIView(APIView):
                 request._full_data["lead_status"] = status_val
 
                 logger.info(
-                    f"Lead Update Requested Status: {status_val}"
+                    "Lead Update Requested Status: %s",
+                    status_val
                 )
 
             # =====================================================
@@ -373,6 +378,11 @@ class LeadUpdateAPIView(APIView):
 
             old_status = (lead.lead_status or "").lower()
 
+            logger.info(
+                "STEP 1 - Starting serializer validation | lead=%s",
+                lead.id
+            )
+
             serializer = LeadSerializer(
                 lead,
                 data=data,
@@ -382,10 +392,23 @@ class LeadUpdateAPIView(APIView):
 
             serializer.is_valid(raise_exception=True)
 
+            logger.info(
+                "STEP 2 - Serializer validation completed | lead=%s",
+                lead.id
+            )
+
             updated_lead = serializer.save()
+
+            logger.info(
+                "STEP 3 - Serializer save completed | lead=%s",
+                updated_lead.id
+            )
 
             new_status = (updated_lead.lead_status or "").lower()
 
+            # =====================================================
+            # EXTERNAL PATIENT SYNC
+            # =====================================================
             if (
                 old_status != "converted"
                 and new_status == "converted"
@@ -393,9 +416,20 @@ class LeadUpdateAPIView(APIView):
             ):
 
                 try:
+
+                    logger.info(
+                        "STEP 4 - Starting external patient sync | lead=%s",
+                        updated_lead.id
+                    )
+
                     sync_patient_to_external_system(updated_lead)
 
-                except Exception as e:
+                    logger.info(
+                        "STEP 5 - External patient sync completed | lead=%s",
+                        updated_lead.id
+                    )
+
+                except Exception:
 
                     updated_lead.external_patient_sync_error = traceback.format_exc()
 
@@ -409,18 +443,46 @@ class LeadUpdateAPIView(APIView):
                     )
 
             logger.info(
-                f"Lead {updated_lead.id} updated | "
-                f"status={updated_lead.lead_status} | "
-                f"converted_at_stage={updated_lead.converted_at_stage_id} | "
-                f"converted_at_status={updated_lead.converted_at_status}"
+                "Lead %s updated | status=%s | converted_at_stage=%s | converted_at_status=%s",
+                updated_lead.id,
+                updated_lead.lead_status,
+                updated_lead.converted_at_stage_id,
+                updated_lead.converted_at_status
             )
 
-            send_to_zapier({
-                "event": "lead_updated",
-                "lead_id": str(updated_lead.id),
-                "lead_status": updated_lead.lead_status,
-                "assigned_to_id": updated_lead.assigned_to_id,
-            })
+            # =====================================================
+            # ZAPIER SYNC
+            # =====================================================
+            try:
+
+                logger.info(
+                    "STEP 6 - Starting Zapier sync | lead=%s",
+                    updated_lead.id
+                )
+
+                send_to_zapier({
+                    "event": "lead_updated",
+                    "lead_id": str(updated_lead.id),
+                    "lead_status": updated_lead.lead_status,
+                    "assigned_to_id": updated_lead.assigned_to_id,
+                })
+
+                logger.info(
+                    "STEP 7 - Zapier sync completed | lead=%s",
+                    updated_lead.id
+                )
+
+            except Exception:
+
+                logger.exception(
+                    "Zapier sync failed for lead %s",
+                    updated_lead.id
+                )
+
+            logger.info(
+                "Lead Update API Completed Successfully | lead=%s",
+                updated_lead.id
+            )
 
             return Response(
                 LeadReadSerializer(updated_lead).data,
@@ -428,12 +490,21 @@ class LeadUpdateAPIView(APIView):
             )
 
         except ValidationError as ve:
-            return Response({"error": ve.detail}, status=400)
+
+            logger.error(
+                "Lead Update Validation Error:\n%s",
+                traceback.format_exc()
+            )
+
+            return Response(
+                {"error": ve.detail},
+                status=400
+            )
 
         except Exception:
 
             logger.error(
-                "Unhandled Lead Update Error:\n" +
+                "Unhandled Lead Update Error:\n%s",
                 traceback.format_exc()
             )
 

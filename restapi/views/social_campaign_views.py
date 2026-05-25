@@ -63,13 +63,49 @@ CAMPAIGN_OBJECTIVES = {
 DEFAULT_CAMPAIGN_IMAGE = "https://images.unsplash.com/photo-1584515933487-779824d29309?q=80&w=1200&auto=format&fit=crop"
 
 def get_usd_to_inr():
+
     try:
-        res = requests.get(
-            "https://api.exchangerate.host/latest?base=USD&symbols=INR", timeout=3
+
+        logger.info(
+            "Fetching USD to INR conversion rate"
         )
-        return res.json()["rates"]["INR"]
-    except:
-        return 95  # fallback
+
+        res = requests.get(
+            "https://api.exchangerate.host/latest?base=USD&symbols=INR",
+            timeout=3,
+        )
+
+        data = res.json()
+
+        rate = data.get("rates", {}).get("INR")
+
+        if not rate:
+            logger.warning(
+                "USD to INR rate missing. Using fallback."
+            )
+            return 95
+
+        logger.info(
+            "USD to INR rate fetched successfully: %s",
+            rate
+        )
+
+        return rate
+
+    except Exception:
+
+        logger.exception(
+            "USD to INR API failed. Using fallback."
+        )
+
+        return 95
+
+
+
+
+
+
+
 
 # =====================================================
 # SOCIAL MEDIA CAMPAIGN CREATE
