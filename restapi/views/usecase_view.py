@@ -30,12 +30,10 @@ def normalize_use_case_name(value: str) -> str:
 
 
 def resolve_clinic_from_request(request) -> Clinic:
-    clinic_id = request.headers.get("X-Clinic-Id") or request.query_params.get("clinic_id")
+    clinic_id = request.query_params.get("clinic_id") or request.data.get("clinic_id")
 
     if not clinic_id:
-        raise ValidationError({
-            "clinic": "X-Clinic-Id header or clinic_id query param required"
-        })
+        raise ValidationError({"clinic": "clinic_id required"})
 
     clinic = Clinic.objects.filter(id=clinic_id).first()
 
@@ -93,6 +91,7 @@ class UseCaseCreateAPIView(APIView):
 
         try:
             clinic = resolve_clinic_from_request(request)
+            request.clinic = clinic
 
             incoming_name = str(request.data.get("name", "")).strip()
             if incoming_name:
@@ -151,6 +150,7 @@ class UseCaseListAPIView(APIView):
 
         try:
             clinic = resolve_clinic_from_request(request)
+            request.clinic = clinic
 
             ensure_default_use_cases(clinic)
 
@@ -207,6 +207,7 @@ class UseCaseUpdateAPIView(APIView):
 
         try:
             clinic = resolve_clinic_from_request(request)
+            request.clinic = clinic
 
             usecase = UseCase.objects.filter(
                 id=pk,

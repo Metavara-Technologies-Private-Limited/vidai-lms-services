@@ -34,12 +34,12 @@ class InterestCreateAPIView(APIView):
     def post(self, request):
 
         try:
-            clinic_id = request.headers.get("X-Clinic-Id")
+            clinic_id = request.query_params.get("clinic_id") or request.data.get(
+                "clinic_id"
+            )
 
             if not clinic_id:
-                raise ValidationError({
-                    "clinic": "X-Clinic-Id header required"
-                })
+                raise ValidationError({"clinic": "clinic_id required"})
 
             clinic = Clinic.objects.filter(id=clinic_id).first()
 
@@ -91,7 +91,7 @@ class InterestListAPIView(APIView):
     def get(self, request):
 
         try:
-            clinic_id = request.headers.get("X-Clinic-Id")
+            clinic_id = request.query_params.get("clinic_id")
 
             if not clinic_id:
                 raise ValidationError({
@@ -144,12 +144,12 @@ class InterestUpdateAPIView(APIView):
     def put(self, request, pk):
 
         try:
-            clinic_id = request.headers.get("X-Clinic-Id")
+            clinic_id = request.query_params.get("clinic_id") or request.data.get(
+                "clinic_id"
+            )
 
             if not clinic_id:
-                raise ValidationError({
-                    "clinic": "X-Clinic-Id header required"
-                })
+                raise ValidationError({"clinic": "clinic_id required"})
 
             clinic = Clinic.objects.filter(id=clinic_id).first()
 
@@ -194,5 +194,3 @@ class InterestUpdateAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=500
             )
-
-

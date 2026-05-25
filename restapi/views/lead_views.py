@@ -38,7 +38,9 @@ logger = logging.getLogger(__name__)
 # 🔥 HELPER: GET CLINIC FROM REQUEST
 # =====================================================
 def get_request_clinic(request):
-    clinic_id = request.headers.get("X-Clinic-Id") or request.query_params.get("clinic_id")
+    clinic_id = request.query_params.get("clinic_id") or request.headers.get(
+        "X-Clinic-Id"
+    )
 
     if not clinic_id:
         raise ValidationError({"clinic": "Clinic is required"})
