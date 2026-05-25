@@ -202,6 +202,10 @@ class CampaignReadSerializer(serializers.ModelSerializer):
 
         user = request.user
 
+        # Check if user is authenticated before accessing profile
+        if not user or not user.is_authenticated:
+            return {}
+
         # Super admin gets full response
         if user.profile.role.name.lower() == "super admin":
             return data
