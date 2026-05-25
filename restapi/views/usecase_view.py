@@ -91,6 +91,7 @@ class UseCaseCreateAPIView(APIView):
 
         try:
             clinic = resolve_clinic_from_request(request)
+            request.clinic = clinic
 
             incoming_name = str(request.data.get("name", "")).strip()
             if incoming_name:
@@ -149,6 +150,7 @@ class UseCaseListAPIView(APIView):
 
         try:
             clinic = resolve_clinic_from_request(request)
+            request.clinic = clinic
 
             ensure_default_use_cases(clinic)
 
@@ -205,6 +207,7 @@ class UseCaseUpdateAPIView(APIView):
 
         try:
             clinic = resolve_clinic_from_request(request)
+            request.clinic = clinic
 
             usecase = UseCase.objects.filter(
                 id=pk,
