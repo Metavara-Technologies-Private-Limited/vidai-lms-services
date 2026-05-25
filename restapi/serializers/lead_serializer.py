@@ -440,10 +440,18 @@ class LeadSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get("request")
 
-        clinic_id = attrs.get("clinic_id") or request.headers.get("X-Clinic-Id")
+        clinic_id = attrs.get("clinic_id")
+
+        if not clinic_id and request:
+            clinic_id = (
+                request.query_params.get("clinic_id")
+                or request.data.get("clinic_id")
+            )
 
         if not clinic_id:
-            raise ValidationError({"clinic_id": "Clinic is required"})
+            raise ValidationError({
+                "clinic_id": "Clinic is required"
+            })
 
         pipeline_id = attrs.get("pipeline_id")
 

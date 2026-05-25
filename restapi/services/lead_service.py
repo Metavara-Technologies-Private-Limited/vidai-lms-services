@@ -175,10 +175,18 @@ def create_lead(validated_data, request=None):
     # =====================================================
     # CLINIC
     # =====================================================
-    clinic_id = request.headers.get("X-Clinic-Id") if request else None
+    clinic_id = validated_data.pop("clinic_id", None)
+
+    if not clinic_id and request:
+        clinic_id = (
+            request.query_params.get("clinic_id")
+            or request.data.get("clinic_id")
+        )
 
     if not clinic_id:
-        raise ValidationError({"clinic": "Clinic is required"})
+        raise ValidationError({
+            "clinic": "Clinic is required"
+        })
 
     clinic = get_object_or_404(Clinic, id=clinic_id)
 
