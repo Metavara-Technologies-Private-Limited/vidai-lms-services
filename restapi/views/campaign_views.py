@@ -296,6 +296,14 @@ class CampaignListAPIView(APIView):
             email_config = campaign.email_configs.first() if campaign.email_configs.exists() else None
             mailchimp_id = email_config.mailchimp_campaign_id if email_config else None
 
+            # =====================================================
+            # ✅ NEW: Extract insights from social configs (social campaigns)
+            # =====================================================
+            social_insights = {}
+            for social_config in campaign.social_configs.all():
+                if social_config.insights:
+                    social_insights[social_config.platform_name] = social_config.insights
+
             if mailchimp_id:
                 report = get_mailchimp_campaign_report(mailchimp_id)
                 if report:
@@ -322,9 +330,33 @@ class CampaignListAPIView(APIView):
                         campaign_data["emails_sent"]  = 0
                         campaign_data["bounces"]      = 0
                         campaign_data["unsubscribes"] = 0
+            elif social_insights:
+                # =====================================================
+                # ✅ NEW: Extract from social campaigns (Google Ads, LinkedIn, etc.)
+                # =====================================================
+                combined_metrics = {
+                    "impressions": 0,
+                    "clicks": 0,
+                    "conversions": 0,
+                    "cost": 0,
+                    "ctr": 0,
+                }
+
+                # Aggregate metrics from all social platforms
+                for platform, insights in social_insights.items():
+                    combined_metrics["impressions"] += insights.get("impressions", 0)
+                    combined_metrics["clicks"] += insights.get("clicks", 0)
+                    combined_metrics["conversions"] += insights.get("conversions", 0)
+                    combined_metrics["cost"] += insights.get("cost", 0)
+
+                campaign_data["impressions"] = combined_metrics["impressions"]
+                campaign_data["clicks"] = combined_metrics["clicks"]
+                campaign_data["conversions"] = combined_metrics.get("conversions", 0)
+                campaign_data["cost"] = combined_metrics.get("cost", 0)
+                campaign_data["ctr"] = combined_metrics.get("ctr", 0)
             else:
                 # =====================================================
-                # ✅ No Mailchimp ID → return 0
+                # ✅ No insights available → return 0
                 # =====================================================
                 campaign_data["impressions"]  = 0
                 campaign_data["clicks"]       = 0

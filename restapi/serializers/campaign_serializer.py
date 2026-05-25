@@ -26,6 +26,9 @@ class CampaignSocialMediaSerializer(serializers.ModelSerializer):
             "id",
             "platform_name",
             "is_active",
+            "insights",
+            "post_id",
+            "created_at",
         ]
 
 
