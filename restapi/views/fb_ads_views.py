@@ -81,12 +81,13 @@ class FBCampaignInsightsAPIView(APIView):
     """
     GET /api/fb/campaigns/<campaign_id>/insights/
     Returns impressions, clicks, reach, spend, leads
-    ✅ FIX: Reads from CampaignSocialMediaConfig DB first (saved by Zapier callback),
-            falls back to live Facebook API if no DB data found.
     """
     def get(self, request, campaign_id):
         try:
-            platform = request.query_params.get("platform", "facebook")
+            platform = request.query_params.get(
+                "platform",
+                "facebook",
+            )
 
             lookup_field = (
                 "fb_campaign_id"
@@ -94,81 +95,14 @@ class FBCampaignInsightsAPIView(APIView):
                 else "instagram_campaign_id"
             )
 
-            # ✅ Try lookup by fb_campaign_id / instagram_campaign_id first
             campaign = Campaign.objects.filter(
                 **{lookup_field: campaign_id}
             ).first()
-
-            # ✅ FIX: Also try lookup by internal campaign UUID as fallback
-            if not campaign:
-                campaign = Campaign.objects.filter(id=campaign_id).first()
 
             if not campaign:
                 return Response({
                     "error": "Campaign not found"
                 }, status=404)
-
-            # =====================================================
-            # ✅ FIX: Read from DB first (saved by Zapier callback)
-            # =====================================================
-            config = CampaignSocialMediaConfig.objects.filter(
-                campaign=campaign,
-                platform_name=platform,
-            ).first()
-
-            db_insights = config.insights if config and config.insights else {}
-
-            has_db_data = (
-                int(db_insights.get("post_impressions", 0)) > 0
-                or int(db_insights.get("impressions", 0)) > 0
-                or float(db_insights.get("spend", 0)) > 0
-            )
-
-            if has_db_data:
-                logger.info(
-                    "[FBInsights] Returning DB insights for campaign %s platform %s",
-                    campaign.id, platform,
-                )
-                return Response(
-                    {
-                        "insights": {
-                            "post_impressions": int(
-                                db_insights.get(
-                                    "post_impressions",
-                                    db_insights.get("impressions", 0),
-                                )
-                            ),
-                            "post_clicks": int(
-                                db_insights.get(
-                                    "post_clicks",
-                                    db_insights.get("clicks", 0),
-                                )
-                            ),
-                            "post_engaged_users": int(
-                                db_insights.get(
-                                    "post_engaged_users",
-                                    db_insights.get("reach", 0),
-                                )
-                            ),
-                            "spend":    str(db_insights.get("spend", "0")),
-                            "reach":    str(db_insights.get("reach", "0")),
-                            "cpc":      str(db_insights.get("cpc", "0")),
-                            "cpm":      str(db_insights.get("cpm", "0")),
-                            "currency": str(db_insights.get("currency", "USD")),
-                        },
-                        "source": "db",
-                    },
-                    status=200,
-                )
-
-            # =====================================================
-            # ✅ Fallback: Live Facebook API if no DB data
-            # =====================================================
-            logger.info(
-                "[FBInsights] No DB data — fetching live from Facebook API "
-                "for campaign %s platform %s",
-                campaign.id, platform,
-            )
 
             social_fb = SocialAccount.objects.filter(
                 clinic_id=campaign.clinic_id,
@@ -183,48 +117,29 @@ class FBCampaignInsightsAPIView(APIView):
 
             token = social_fb.access_token
             ad_account_id = social_fb.account_id
-
             meta_campaign_id = (
                 campaign.fb_campaign_id
                 if platform == "facebook"
                 else campaign.instagram_campaign_id
             )
 
-            if not meta_campaign_id:
-                return Response({
-                    "insights": {
-                        "post_impressions": 0,
-                        "post_clicks": 0,
-                        "post_engaged_users": 0,
-                        "spend": "0",
-                        "reach": "0",
-                        "cpc": "0",
-                        "cpm": "0",
-                        "currency": "USD",
-                    },
-                    "message": "No Meta campaign ID found for this campaign",
-                }, status=200)
+            date_preset = request.query_params.get('date_preset', 'maximum')
 
-            date_preset = request.query_params.get("date_preset", "maximum")
+            currency_res = requests.get(
+                f"https://graph.facebook.com/v25.0/{ad_account_id}",
+                params={
+                    "fields": "currency",
+                    "access_token": token,
+                },
+            )
 
-            # ── Fetch currency ────────────────────────────────────────────
-            currency = "USD"
-            try:
-                currency_res = requests.get(
-                    f"https://graph.facebook.com/v25.0/{ad_account_id}",
-                    params={
-                        "fields": "currency",
-                        "access_token": token,
-                    },
-                )
-                currency_data = currency_res.json()
-                currency = currency_data.get("currency", "USD")
-            except Exception:
-                logger.warning(
-                    "[FBInsights] Failed to fetch currency, defaulting to USD"
-                )
+            currency_data = currency_res.json()
 
-            # ── Fetch insights from Facebook API ──────────────────────────
+            currency = currency_data.get(
+                "currency",
+                "USD",
+            )
+
             r = requests.get(
                 f"https://graph.facebook.com/v25.0/{meta_campaign_id}/insights",
                 params={
@@ -235,33 +150,13 @@ class FBCampaignInsightsAPIView(APIView):
             )
             data = r.json()
 
-            logger.info(
-                "[FBInsights] Live API response for campaign %s: %s",
-                meta_campaign_id, data,
-            )
-
             if "error" in data:
-                logger.error(
-                    "[FBInsights] Facebook API error: %s",
-                    data["error"],
-                )
                 return Response({
-                    "insights": {
-                        "post_impressions": 0,
-                        "post_clicks": 0,
-                        "post_engaged_users": 0,
-                        "spend": "0",
-                        "reach": "0",
-                        "cpc": "0",
-                        "cpm": "0",
-                        "currency": currency,
-                    },
                     "error": data["error"]["message"],
-                    "note": "Need ads_read permission",
-                }, status=200)
+                    "note": "Need ads_read permission"
+                }, status=400)
 
             insights = data.get("data", [])
-
             if not insights:
                 return Response({
                     "insights": {
@@ -274,61 +169,22 @@ class FBCampaignInsightsAPIView(APIView):
                         "cpm": "0",
                         "currency": currency,
                     },
-                    "message": "No data yet - campaign has no spend",
+                    "message": "No data yet - campaign has no spend"
                 }, status=200)
 
             i = insights[0]
-
-            # ✅ Save live data back to DB for future requests
-            try:
-                if config:
-                    config.insights = {
-                        "post_impressions":   int(i.get("impressions", 0)),
-                        "post_clicks":        int(i.get("clicks", 0)),
-                        "post_engaged_users": int(i.get("reach", 0)),
-                        "spend":    i.get("spend", "0"),
-                        "reach":    i.get("reach", "0"),
-                        "cpc":      i.get("cpc", "0"),
-                        "cpm":      i.get("cpm", "0"),
-                        "currency": currency,
-                    }
-                    config.save(update_fields=["insights"])
-                else:
-                    CampaignSocialMediaConfig.objects.update_or_create(
-                        campaign=campaign,
-                        platform_name=platform,
-                        defaults={
-                            "insights": {
-                                "post_impressions":   int(i.get("impressions", 0)),
-                                "post_clicks":        int(i.get("clicks", 0)),
-                                "post_engaged_users": int(i.get("reach", 0)),
-                                "spend":    i.get("spend", "0"),
-                                "reach":    i.get("reach", "0"),
-                                "cpc":      i.get("cpc", "0"),
-                                "cpm":      i.get("cpm", "0"),
-                                "currency": currency,
-                            }
-                        },
-                    )
-            except Exception:
-                logger.warning(
-                    "[FBInsights] Failed to cache live insights to DB:\n%s",
-                    traceback.format_exc(),
-                )
-
             return Response(
                 {
                     "insights": {
-                        "post_impressions":   int(i.get("impressions", 0)),
-                        "post_clicks":        int(i.get("clicks", 0)),
+                        "post_impressions": int(i.get("impressions", 0)),
+                        "post_clicks": int(i.get("clicks", 0)),
                         "post_engaged_users": int(i.get("reach", 0)),
-                        "spend":    i.get("spend", "0"),
-                        "reach":    i.get("reach", "0"),
-                        "cpc":      i.get("cpc", "0"),
-                        "cpm":      i.get("cpm", "0"),
+                        "spend": i.get("spend", "0"),
+                        "reach": i.get("reach", "0"),
+                        "cpc": i.get("cpc", "0"),
+                        "cpm": i.get("cpm", "0"),
                         "currency": currency,
-                    },
-                    "source": "live",
+                    }
                 },
                 status=200,
             )
@@ -336,7 +192,6 @@ class FBCampaignInsightsAPIView(APIView):
         except Exception:
             logger.error("FB Insights Error:\n" + traceback.format_exc())
             return Response({"error": "Internal Server Error"}, status=500)
-
 
 class FBCampaignCreateAPIView(APIView):
     """
@@ -640,3 +495,4 @@ class SocialMediaOrganicPostAPIView(APIView):
                 },
                 status=500,
             )
+
