@@ -10,7 +10,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -58,6 +57,6 @@ jobs:
 
             echo "Wait container boot"
             sleep 12
-                   
+
             echo "Run database migrations"
             docker exec vidai-backend python manage.py migrate || true
