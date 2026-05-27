@@ -325,10 +325,12 @@ def browser_call_twiml(to_number: str, record: bool = False) -> str:
         return str(response)
 
     dial = Dial(
-        caller_id=from_number,
-        record="record-from-ringing" if record else "do-not-record",
-        **({"action": callback_url} if callback_url else {}),
-    )
+    caller_id=from_number,
+    record="record-from-ringing" if record else "do-not-record",
+    **({"action": callback_url,
+        "status_callback": callback_url,
+        "status_callback_method": "POST"} if callback_url else {}),
+)
     dial.number(to_number)
     response.append(dial)
 
@@ -716,4 +718,4 @@ def bulk_send_whatsapp(
         "clinic_id":     clinic_id,
     })
 
-    return results 
+    return results
