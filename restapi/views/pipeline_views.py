@@ -352,7 +352,7 @@ class PipelineStageUpdateAPIView(APIView):
                 if exists:
                     raise ValidationError({"is_conversion_stage": "Conversion stage already exists"})
 
-            stage = update_stage(stage, request.data)
+            stage = update_stage(stage, request.data, user=request.user)
 
             return Response(
                 PipelineStageReadSerializer(stage, context={"request": request}).data,
@@ -741,7 +741,7 @@ class StageDetailAPIView(APIView):
     def put(self, request, stage_id):
         try:
             stage = _get_scoped_stage(request, stage_id)
-            stage = update_stage(stage, request.data)
+            stage = update_stage(stage, request.data, user=request.user)
 
             return Response(
                 PipelineStageReadSerializer(stage, context={"request": request}).data,

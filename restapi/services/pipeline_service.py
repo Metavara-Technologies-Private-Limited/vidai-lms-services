@@ -171,7 +171,7 @@ def add_stage(validated_data, user=None):
 
 # update_stage
 @transaction.atomic
-def update_stage(instance, validated_data):
+def update_stage(instance, validated_data, user=None):
     IMMUTABLE_FIELDS = {"pipeline"}
     MUTABLE_FIELDS = {
         "stage_name",
@@ -205,6 +205,18 @@ def update_stage(instance, validated_data):
         setattr(instance, field, value)
 
     instance.save()
+    
+    # =====================================================
+    # AUDIT LOG FOR UPDATE
+    # =====================================================
+    PipelineStageAuditLog.objects.create(
+        pipeline=instance.pipeline,
+        stage_id=instance.id,
+        stage_name=instance.stage_name,
+        action="updated",
+        created_by=user,
+    )
+    
     instance.refresh_from_db()
     return instance
 
@@ -402,7 +414,7 @@ def delete_stage(stage_id, user=None):
 
     if lead_exists:
         raise ValidationError({
-            "stage": "Cannot delete stage because leads are associated with this stage."
+            "stage": "Leads are linked, so cannot delete this stage"
         })
 
     # =====================================================
