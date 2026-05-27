@@ -6,6 +6,7 @@ class PipelineStageAuditLog(models.Model):
 
     ACTION_CHOICES = (
         ("created", "Created"),
+        ("updated", "Updated"),
         ("deleted", "Deleted"),
     )
 
