@@ -119,6 +119,17 @@ DATABASES = {
     }
 } 
 
+# DATABASES = {
+    # 'default': {
+        # 'ENGINE': 'django.db.backends.postgresql',
+        # 'NAME': os.getenv('POSTGRES_DB', 'stage5_db'),
+        # 'USER': os.getenv('POSTGRES_USER', 'postgres'),
+        # 'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'password'),
+        # 'HOST': os.getenv('POSTGRES_HOST', '72.62.227.137'),
+        # 'PORT': os.getenv('POSTGRES_PORT', '5432'),
+    # }
+# }
+
 
 # ================================
 # PASSWORD VALIDATION
