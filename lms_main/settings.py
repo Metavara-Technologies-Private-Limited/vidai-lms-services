@@ -107,37 +107,37 @@ WSGI_APPLICATION = 'lms_main.wsgi.application'
 # ================================
 # DATABASE
 # ================================
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'lms_db',
-        'USER': 'lms_db', #postgres
-        'PASSWORD': 'saimohan',
-        'HOST': '72.62.227.137',  # 'host.docker.internal',   #127.0.0.1
-        'PORT': '5432',
-
-    }
-} 
-# 
 # DATABASES = {
     # 'default': {
         # 'ENGINE': 'django.db.backends.postgresql',
+        # 'NAME': 'lms_db',
+        # 'USER': 'lms_db', #postgres
+        # 'PASSWORD': 'saimohan',
+        # 'HOST': '72.62.227.137',  # 'host.docker.internal',   #127.0.0.1
+        # 'PORT': '5432',
 # 
+    # }
+# } 
+# 
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+
         # 'NAME': 'lms_db',
         # 'USER': 'lms_db',
         # 'PASSWORD': 'saimohan',
         # 'HOST': '72.62.227.137',  # 'host.docker.internal',   #127.0.0.1
         # 'PORT': '5432',
-# 
-# 
-        # 'NAME': os.getenv('POSTGRES_DB', 'stage5_db'),
-        # 'USER': os.getenv('POSTGRES_USER', 'postgres'),
-        # 'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'saimohan'),
-        # 'HOST': os.getenv('POSTGRES_HOST', '72.62.227.137'),
-        # 'PORT': os.getenv('POSTGRES_PORT', '5432'),
-# 
-    # }
-# }
+
+
+        'NAME': os.getenv('POSTGRES_DB'),
+        'USER': os.getenv('POSTGRES_USER'),
+        'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
+        'HOST': os.getenv('POSTGRES_HOST'),
+        'PORT': os.getenv('POSTGRES_PORT'),
+
+    }
+}
 # 
 # 
 # ================================
