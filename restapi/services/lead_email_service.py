@@ -1,6 +1,7 @@
 from datetime import timedelta
 import re
 from datetime import datetime
+from uuid import uuid4
 from django.utils.timezone import make_aware
 import requests
 import logging
@@ -100,6 +101,7 @@ def send_lead_email(email_id):
         if has_appointment:
             payload.update({
                 "create_calendar_event": True,
+                "create_google_meet": True,
                 "event_title": email_obj.subject,
                 "start_time": start_dt.isoformat(),
                 "end_time": end_dt.isoformat(),
@@ -108,6 +110,16 @@ def send_lead_email(email_id):
                 "location": (
                     email_obj.clinic.name if email_obj.clinic else "Online Consultation"
                 ),
+                # Include explicit conference creation hints for Zapier/Google Calendar.
+                "conference_data_version": 1,
+                "conference_data": {
+                    "createRequest": {
+                        "requestId": str(uuid4()),
+                        "conferenceSolutionKey": {
+                            "type": "hangoutsMeet"
+                        },
+                    }
+                },
             })
         else:
             payload["create_calendar_event"] = False
