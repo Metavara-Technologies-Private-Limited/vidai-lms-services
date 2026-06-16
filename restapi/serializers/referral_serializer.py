@@ -17,6 +17,11 @@ class ReferralSourceSerializer(serializers.ModelSerializer):
     external_clinic_name = serializers.SerializerMethodField()
 
     # =============================
+    # 🔥 CREATED BY USER
+    # =============================
+    created_by_name = serializers.SerializerMethodField()
+
+    # =============================
     # 🔥 COUNT
     # =============================
     referral_count = serializers.IntegerField(read_only=True)
@@ -35,6 +40,8 @@ class ReferralSourceSerializer(serializers.ModelSerializer):
             "external_clinic_id",
             "external_clinic_name",
 
+            "created_by_name",
+
             "referral_count",
         ]
 
@@ -52,3 +59,6 @@ class ReferralSourceSerializer(serializers.ModelSerializer):
 
     def get_external_clinic_name(self, obj):
         return obj.external_clinic.name if obj.external_clinic else None
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() if obj.created_by else None
