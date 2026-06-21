@@ -34,6 +34,9 @@ from restapi.views.twilio_views import (
     BrowserCallTokenAPIView,
     BrowserCallTwiMLAPIView,
     BrowserCallLogAPIView,
+    # ✅ NEW: Inbound call views
+    TwilioInboundCallAPIView,
+    TwilioLinkInboundCallAPIView,
 )
 
 # ✅ NEW: WhatsApp Views
@@ -127,6 +130,10 @@ urlpatterns = [
     path("twilio/browser-call/twiml/", BrowserCallTwiMLAPIView.as_view(), name="twilio-browser-call-twiml"),
     path("twilio/browser-call/log/",   BrowserCallLogAPIView.as_view(),   name="twilio-browser-call-log"),
 
+    # ✅ NEW: Inbound call endpoints
+    path("twilio/inbound-call/",      TwilioInboundCallAPIView.as_view(),     name="twilio-inbound-call"),
+    path("twilio/link-inbound-call/", TwilioLinkInboundCallAPIView.as_view(), name="twilio-link-inbound-call"),
+
     # ============================
     # WHATSAPP ✅ NEW
     # ============================
@@ -144,9 +151,9 @@ urlpatterns = [
     path("campaigns/<uuid:campaign_id>/activate/", CampaignActivateAPIView.as_view(), name="campaign-activate"),
     path("campaigns/<uuid:campaign_id>/inactivate/", CampaignInactivateAPIView.as_view(), name="campaign-inactivate"),
     path("campaigns/<uuid:campaign_id>/delete/", CampaignSoftDeleteAPIView.as_view(), name="campaign-delete"),
-    
+
     path("upload/image/", CampaignImageUploadAPIView.as_view(), name="campaign-image-upload"),
-    
+
     path("social-media-campaign/create/", SocialMediaCampaignCreateAPIView.as_view(), name="social-campaign-create"),
     path("campaigns/email/create/", EmailCampaignCreateAPIView.as_view(), name="email-campaign-create"),
 
@@ -328,7 +335,6 @@ urlpatterns = [
     path("proxy/login/", LoginProxyAPIView.as_view(), name="login-proxy"),
     path("me/profile/", ProfileProxyAPIView.as_view(), name="profile"),
     path("users-search/", UsersProxyAPIView.as_view(), name="users"),
-
 
     path("usecases/", UseCaseListAPIView.as_view()),
     path("usecases/create/", UseCaseCreateAPIView.as_view()),
