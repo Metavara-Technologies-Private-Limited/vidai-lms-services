@@ -34,7 +34,6 @@ from restapi.views.twilio_views import (
     BrowserCallTokenAPIView,
     BrowserCallTwiMLAPIView,
     BrowserCallLogAPIView,
-    # ✅ NEW: Inbound call views
     TwilioInboundCallAPIView,
     TwilioLinkInboundCallAPIView,
 )
@@ -45,6 +44,11 @@ from restapi.views.whatsapp_views import (
     WhatsAppSendView,
     WhatsAppBulkSendView,
     WhatsAppMessageListView,
+)
+
+# ✅ NEW: Lead Email Inbound Webhook
+from restapi.views.lead_email_views import (
+    LeadEmailInboundWebhookAPIView,
 )
 
 urlpatterns = [
@@ -106,6 +110,9 @@ urlpatterns = [
     path("leads/<uuid:lead_id>/delete/", LeadSoftDeleteAPIView.as_view(), name="lead-soft-delete"),
     path("lead-email/", LeadEmailAPIView.as_view(), name="lead-email"),
     path("lead-mail/", LeadMailListAPIView.as_view(), name="lead-mail-list"),
+
+    # ✅ NEW: Inbound email reply webhook (Zapier → backend)
+    path("lead-email/inbound/", LeadEmailInboundWebhookAPIView.as_view(), name="lead-email-inbound"),
 
     # ============================
     # LEAD NOTES

@@ -2,6 +2,8 @@ import logging
 import traceback
 
 from django.db import transaction
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -112,6 +114,85 @@ class LeadMailListAPIView(APIView):
         except Exception:
             logger.error("Email Fetch Error:\n" + traceback.format_exc())
 
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+# =====================================================
+# ✅ NEW: INBOUND EMAIL WEBHOOK (from Zapier)
+# When lead replies to email → Zapier POSTs here
+# POST /api/lead-email/inbound/
+# No auth required — called by Zapier
+# =====================================================
+@method_decorator(csrf_exempt, name="dispatch")
+class LeadEmailInboundWebhookAPIView(APIView):
+
+    authentication_classes = []
+    permission_classes = []
+
+    @swagger_auto_schema(auto_schema=None)
+    def post(self, request):
+        try:
+            data = request.data
+
+            from_email = data.get("from_email", "") or data.get("from", "")
+            subject    = data.get("subject", "Re: (no subject)")
+            body       = data.get("body", "") or data.get("message", "")
+            to_email   = data.get("to_email", "") or data.get("to", "")
+
+            logger.info(
+                "LeadEmailInbound: from=%s to=%s subject=%s",
+                from_email, to_email, subject,
+            )
+
+            if not from_email or not body:
+                return Response(
+                    {"error": "from_email and body are required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # ── Find lead by email ────────────────────────────────────────
+            from restapi.models.lead import Lead
+
+            lead = Lead.objects.filter(
+                email__iexact=from_email.strip()
+            ).first()
+
+            if not lead:
+                logger.warning(
+                    "LeadEmailInbound: no lead found for email=%s", from_email
+                )
+                # Return 200 so Zapier does not retry
+                return Response(
+                    {"message": "No lead found for this email, skipped"},
+                    status=status.HTTP_200_OK,
+                )
+
+            # ── Save reply to LeadEmail table ─────────────────────────────
+            LeadEmail.objects.create(
+                lead         = lead,
+                clinic       = getattr(lead, "clinic", None),
+                subject      = subject,
+                email_body   = body,
+                sender_email = from_email,
+                status       = "RECEIVED",
+                sent_at      = None,
+            )
+
+            logger.info(
+                "LeadEmailInbound: saved reply from lead=%s email=%s",
+                str(lead.id), from_email,
+            )
+
+            return Response(
+                {"message": "Reply saved successfully"},
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception:
+            logger.error("LeadEmailInbound error:\n" + traceback.format_exc())
             return Response(
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

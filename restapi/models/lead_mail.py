@@ -13,6 +13,7 @@ class LeadEmail(models.Model):
         SENT = "SENT", "Sent"
         FAILED = "FAILED", "Failed"
         CANCELLED = "CANCELLED", "Cancelled"
+        RECEIVED = "RECEIVED", "Received"  # ✅ NEW — for inbound replies
 
     # 🔹 Relations
     lead = models.ForeignKey(
