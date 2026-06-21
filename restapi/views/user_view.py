@@ -80,10 +80,9 @@ class UserListAPIView(APIView):
         if not _has_users_permission(request.user, "view"):
             return _permission_denied("view")
 
-        # Base query: all active users with profile.
+        # Base query: all users with profile (active and inactive).
         users = User.objects.filter(
             profile__isnull=False,
-            profile__is_active=True,
         ).select_related(
             "profile",
             "profile__role",
@@ -261,13 +260,14 @@ class UserDeleteAPIView(APIView):
         if not _has_users_permission(request.user, "print"):
             return _permission_denied("print")
 
-        user = get_object_or_404(User, id=pk)
-        user.delete()
+        user = User.objects.filter(id=pk).first()
+        if user is not None:
+            user.delete()
 
         return Response({
             "success": True,
             "message": "User deleted successfully"
-        }, status=status.HTTP_204_NO_CONTENT)
+        }, status=status.HTTP_200_OK)
 
 
 # =========================

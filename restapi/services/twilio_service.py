@@ -102,8 +102,11 @@ def _require_setting(name: str) -> str:
     """
     Read a required Django setting and raise a clear ValueError if missing/blank.
     This surfaces as a useful 500 message rather than a cryptic AttributeError.
+    ✅ Fix: support both TWILIO_FROM_NUMBER and TWILIO_PHONE_NUMBER
     """
     value = getattr(settings, name, "")
+    if not value and name == "TWILIO_FROM_NUMBER":
+        value = getattr(settings, "TWILIO_PHONE_NUMBER", "")
     if not value:
         raise ValueError(
             f"Django setting '{name}' is missing or empty. "
@@ -174,14 +177,12 @@ def make_call(lead_uuid: str, to_number: str):
     if callback_url:
         call_kwargs["status_callback"]        = callback_url
         call_kwargs["status_callback_method"] = "POST"
-
-        call_kwargs["status_callback_event"] = [
-        "initiated",
-        "ringing",
-        "answered",
-        "completed",
-    ]
-        
+        call_kwargs["status_callback_event"]  = [
+            "initiated",
+            "ringing",
+            "answered",
+            "completed",
+        ]
 
     call = client.calls.create(**call_kwargs)
 
@@ -193,7 +194,6 @@ def make_call(lead_uuid: str, to_number: str):
         to_number=to_number,
         from_number=from_number,
         status=call.status,
-        
         raw_payload={},
     )
 
@@ -273,24 +273,19 @@ def generate_browser_call_token(identity: str) -> dict:
     token_value = token.to_jwt()
 
     if isinstance(token_value, bytes):
-       
-
-       jwt = token_value.decode("utf-8")
-
+        jwt = token_value.decode("utf-8")
     else:
-       
-      
-      
-       jwt = token_value
+        jwt = token_value
 
-    logger.info("generate_browser_call_token: token generated for identity=%s",
-    identity
-)
+    logger.info(
+        "generate_browser_call_token: token generated for identity=%s",
+        identity,
+    )
 
     return {
-    "token": jwt,
-    "identity": identity,
-}
+        "token": jwt,
+        "identity": identity,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -325,12 +320,12 @@ def browser_call_twiml(to_number: str, record: bool = False) -> str:
         return str(response)
 
     dial = Dial(
-    caller_id=from_number,
-    record="record-from-ringing" if record else "do-not-record",
-    **({"action": callback_url,
-        "status_callback": callback_url,
-        "status_callback_method": "POST"} if callback_url else {}),
-)
+        caller_id=from_number,
+        record="record-from-ringing" if record else "do-not-record",
+        **({"action": callback_url,
+            "status_callback": callback_url,
+            "status_callback_method": "POST"} if callback_url else {}),
+    )
     dial.number(to_number)
     response.append(dial)
 
@@ -366,7 +361,10 @@ def log_browser_call(
         logger.warning("log_browser_call: lead not found for uuid=%s", lead_uuid)
         return None
 
-    from_number = getattr(settings, "TWILIO_FROM_NUMBER", "browser")
+    from_number = (
+        getattr(settings, "TWILIO_FROM_NUMBER", "")
+        or getattr(settings, "TWILIO_PHONE_NUMBER", "browser")
+    )
 
     call_log = TwilioCall.objects.create(
         lead=lead,
@@ -374,7 +372,6 @@ def log_browser_call(
         to_number=to_number,
         from_number=from_number,
         status=status,
-        
         raw_payload={
             "source": "browser_sdk",
             "agent_identity": agent_identity,
@@ -423,8 +420,6 @@ def notify_zapier_event(event_type: str, payload: dict) -> None:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-
-
 # WhatsApp Business API — Twilio sender
 # Uses existing TemplateWhatsApp model (restapi_template_whatsapp table)
 #

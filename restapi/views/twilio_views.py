@@ -555,3 +555,190 @@ class BrowserCallLogAPIView(APIView):
                 {"error": "Internal Server Error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+# =====================================================
+# ✅ NEW: INBOUND CALL WEBHOOK
+# POST /api/twilio/inbound-call/
+# Twilio hits this when a lead calls back
+# =====================================================
+@method_decorator(csrf_exempt, name="dispatch")
+class TwilioInboundCallAPIView(APIView):
+
+    authentication_classes = []
+    permission_classes = []
+
+    @swagger_auto_schema(auto_schema=None)
+    def post(self, request):
+        try:
+            payload = request.data.dict() if hasattr(request.data, "dict") else dict(request.data)
+
+            sid         = payload.get("CallSid", "")
+            from_number = payload.get("From", "")
+            to_number   = payload.get("To", "")
+            call_status = payload.get("CallStatus", "ringing")
+            direction   = payload.get("Direction", "inbound")
+
+            logger.info(
+                "TwilioInboundCall received: sid=%s from=%s to=%s status=%s",
+                sid, from_number, to_number, call_status,
+            )
+
+            from restapi.models.lead import Lead
+
+            # Strip country code to match stored contact_no (e.g. +919876543210 → 9876543210)
+            clean_number = from_number.strip()
+            if clean_number.startswith("+91"):
+                clean_number = clean_number[3:]
+            elif clean_number.startswith("+"):
+                clean_number = clean_number[1:]
+
+            # Match lead by contact_no
+            lead = (
+                Lead.objects.filter(contact_no=clean_number).first()
+                or Lead.objects.filter(contact_no=from_number).first()
+                or Lead.objects.filter(contact_no__endswith=clean_number[-10:]).first()
+            )
+
+            from_twilio_number = getattr(settings, "TWILIO_FROM_NUMBER", to_number)
+
+            # Create TwilioCall record for the inbound call
+            if sid:
+                twilio_call, created = TwilioCall.objects.get_or_create(
+                    sid=sid,
+                    defaults={
+                        "lead":        lead,
+                        "from_number": from_number,
+                        "to_number":   to_number,
+                        "status":      call_status,
+                        "raw_payload": {
+                            "source":    "inbound",
+                            "direction": "inbound",
+                            **payload,
+                        },
+                    }
+                )
+
+                if not created:
+                    twilio_call.status = call_status
+                    if lead and not twilio_call.lead:
+                        twilio_call.lead = lead
+                    twilio_call.save(update_fields=["status", "lead"])
+
+                logger.info(
+                    "TwilioInboundCall: sid=%s lead=%s created=%s",
+                    sid,
+                    str(lead.id) if lead else "NOT FOUND",
+                    created,
+                )
+            else:
+                logger.warning("TwilioInboundCall: no CallSid in payload")
+
+            # Notify Zapier (optional, non-fatal)
+            notify_zapier_event("inbound_call_received", {
+                "sid":         sid,
+                "from_number": from_number,
+                "to_number":   to_number,
+                "status":      call_status,
+                "lead_uuid":   str(lead.id) if lead else None,
+            })
+
+            # Return TwiML to handle the call
+            from twilio.twiml.voice_response import VoiceResponse
+            response = VoiceResponse()
+            response.say("Please hold while we connect you to our team.")
+
+            return HttpResponse(str(response), content_type="application/xml")
+
+        except Exception:
+            logger.error("TwilioInboundCall error:\n" + traceback.format_exc())
+            from twilio.twiml.voice_response import VoiceResponse
+            r = VoiceResponse()
+            r.say("An error occurred. Please try again.")
+            return HttpResponse(str(r), content_type="application/xml", status=500)
+
+
+# =====================================================
+# ✅ NEW: LINK INBOUND CALL TO LEAD
+# POST /api/twilio/link-inbound-call/
+# Called from frontend on Lead Activity load
+# Body: { lead_uuid, from_number }
+# =====================================================
+class TwilioLinkInboundCallAPIView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Link unmatched inbound calls to a lead by phone number",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["lead_uuid", "from_number"],
+            properties={
+                "lead_uuid":   openapi.Schema(type=openapi.TYPE_STRING, description="Lead UUID"),
+                "from_number": openapi.Schema(type=openapi.TYPE_STRING, description="Lead phone number E.164"),
+            },
+        ),
+        responses={
+            200: "Calls linked successfully",
+            400: "Bad request",
+            500: "Internal Server Error",
+        },
+        tags=["Twilio"],
+    )
+    def post(self, request):
+        try:
+            lead_uuid   = request.data.get("lead_uuid", "")
+            from_number = request.data.get("from_number", "")
+
+            if not lead_uuid or not from_number:
+                return Response(
+                    {"error": "lead_uuid and from_number are required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            from restapi.models.lead import Lead
+
+            lead = Lead.objects.filter(id=lead_uuid).first()
+            if not lead:
+                return Response(
+                    {"error": "Lead not found"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Clean number for matching
+            clean = from_number.strip()
+            if clean.startswith("+91"):
+                clean = clean[3:]
+            elif clean.startswith("+"):
+                clean = clean[1:]
+            last10 = clean[-10:] if len(clean) >= 10 else clean
+
+            # Find unlinked inbound calls matching this number
+            unlinked = TwilioCall.objects.filter(
+                lead__isnull=True,
+                raw_payload__source="inbound",
+            ).filter(
+                from_number__endswith=last10,
+            )
+
+            updated_count = unlinked.count()
+            unlinked.update(lead=lead)
+
+            logger.info(
+                "TwilioLinkInboundCall: lead=%s from=%s linked=%d",
+                lead_uuid, from_number, updated_count,
+            )
+
+            return Response(
+                {
+                    "message": f"{updated_count} inbound call(s) linked to lead",
+                    "lead_uuid": lead_uuid,
+                    "linked_count": updated_count,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception:
+            logger.error("TwilioLinkInboundCall error:\n" + traceback.format_exc())
+            return Response(
+                {"error": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

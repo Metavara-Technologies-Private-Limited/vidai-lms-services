@@ -4,7 +4,11 @@
 
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from restapi.utils.permissions import get_user_permissions, has_permission
+from restapi.utils.permissions import (
+    get_user_permissions,
+    has_permission,
+    has_action_permission_for_labels,
+)
 from restapi.models import (
     TemplateMail,
     TemplateSMS,
@@ -40,6 +44,21 @@ def _is_super_admin(user) -> bool:
 
     # Django fallbacks
     return bool(getattr(user, "is_superuser", False) or getattr(user, "is_staff", False))
+
+
+def _can_view_template_type(user, template_type: str) -> bool:
+    """
+    Accept both legacy per-type permissions and label-based template permissions.
+    This keeps Admin/User behavior aligned with frontend checks.
+    """
+    return (
+        has_permission(user, "template", template_type, "view")
+        or has_action_permission_for_labels(
+            user,
+            "view",
+            ["template", "templates", template_type],
+        )
+    )
 
 
 # =====================================================
@@ -125,7 +144,7 @@ class TemplateMailReadSerializer(serializers.ModelSerializer):
             return data
 
         # NO PERMISSION
-        if not has_permission(user, "template", "mail", "view"):
+        if not _can_view_template_type(user, "mail"):
             return {}
 
         # FIELD FILTERING
@@ -133,8 +152,11 @@ class TemplateMailReadSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "subject",
+            "body",
+            "use_case",
             "is_active",
-            "created_at"
+            "created_at",
+            "modified_at",
         ]
 
         return {k: v for k, v in data.items() if k in allowed_fields}
@@ -220,15 +242,17 @@ class TemplateSMSReadSerializer(serializers.ModelSerializer):
             return data
 
         # NO PERMISSION
-        if not has_permission(user, "template", "sms", "view"):
+        if not _can_view_template_type(user, "sms"):
             return {}
 
         allowed_fields = [
             "id",
             "name",
             "body",
+            "use_case",
             "is_active",
-            "created_at"
+            "created_at",
+            "modified_at",
         ]
 
         return {k: v for k, v in data.items() if k in allowed_fields}
@@ -309,16 +333,17 @@ class TemplateWhatsAppReadSerializer(serializers.ModelSerializer):
         if _is_super_admin(user):
             return data
 
-        # FIX: was checking "sms" — now correctly checks "whatsapp"
-        if not has_permission(user, "template", "whatsapp", "view"):
+        if not _can_view_template_type(user, "whatsapp"):
             return {}
 
         allowed_fields = [
             "id",
             "name",
             "body",
+            "use_case",
             "is_active",
-            "created_at"
+            "created_at",
+            "modified_at",
         ]
 
         return {k: v for k, v in data.items() if k in allowed_fields}
