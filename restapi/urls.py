@@ -102,6 +102,8 @@ urlpatterns = [
     # LEADS
     # ============================
     path("leads/", LeadCreateAPIView.as_view(), name="lead-create"),
+    path("lead-form-fields/", LeadFormFieldListAPIView.as_view(), name="lead-form-fields"),
+    path("lead-form-fields/<str:field_key>/", LeadFormFieldDetailAPIView.as_view(), name="lead-form-field-detail"),
     path("leads/<uuid:lead_id>/update/", LeadUpdateAPIView.as_view(), name="lead-update"),
     path("leads/list/", LeadListAPIView.as_view(), name="lead-list"),
     path("leads/<uuid:lead_id>/", LeadGetAPIView.as_view(), name="lead-get"),

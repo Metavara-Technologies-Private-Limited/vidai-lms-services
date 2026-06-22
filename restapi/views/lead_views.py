@@ -105,6 +105,7 @@ def get_scoped_lead_or_404(request, clinic, lead_id):
     ).prefetch_related(
         "documents",
         "treatment_interest",
+        "custom_field_values__field",
     ).filter(
         id=lead_id,
         clinic=clinic,
@@ -584,6 +585,7 @@ class LeadListAPIView(APIView):
                 .prefetch_related(
                     "documents",
                     "treatment_interest",
+                    "custom_field_values__field",
                 )
                 .annotate(
                     latest_call_at=Subquery(

@@ -4,6 +4,7 @@ from restapi.models import (
     PipelineStage,
     StageRule,
     StageField,
+    LeadFormField,
 )
 from restapi.utils.permissions import get_user_permissions, has_permission
 from rest_framework.exceptions import ValidationError
@@ -34,14 +35,35 @@ class StageRuleSerializer(serializers.ModelSerializer):
 # Stage Field READ
 # =====================================================
 class StageFieldSerializer(serializers.ModelSerializer):
+    field_name = serializers.SerializerMethodField()
+    field_type = serializers.SerializerMethodField()
+
     class Meta:
         model = StageField
         fields = [
             "id",
+            "field_key",
             "field_name",
             "field_type",
             "is_mandatory",
         ]
+
+    def _lead_form_field(self, obj):
+        field_key = (obj.field_key or "").strip()
+        if not field_key:
+            return None
+        return LeadFormField.objects.filter(
+            field_key=field_key,
+            is_active=True,
+        ).first()
+
+    def get_field_name(self, obj):
+        lead_form_field = self._lead_form_field(obj)
+        return lead_form_field.field_label if lead_form_field else obj.field_name
+
+    def get_field_type(self, obj):
+        lead_form_field = self._lead_form_field(obj)
+        return lead_form_field.stage_field_type if lead_form_field else obj.field_type
 
 
 # =====================================================

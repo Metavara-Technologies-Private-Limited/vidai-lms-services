@@ -2,7 +2,7 @@ from datetime import timedelta
 import re
 from datetime import datetime
 from uuid import uuid4
-from django.utils.timezone import make_aware
+from zoneinfo import ZoneInfo
 import requests
 import logging
 from django.utils import timezone
@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 # 🔥 YOUR ZAPIER WEBHOOK
 ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/27387148/uvl9my1/"
+APPOINTMENT_TIME_ZONE = "Asia/Kolkata"
+APPOINTMENT_TZ = ZoneInfo(APPOINTMENT_TIME_ZONE)
 
 def extract_time_range(body):
     match = re.search(r"Time:\s*(\d{1,2}:\d{2}\s*[APM]{2})\s*-\s*(\d{1,2}:\d{2}\s*[APM]{2})", body)
@@ -79,8 +81,14 @@ def send_lead_email(email_id):
         date_obj = extract_date(body)
 
         if start_time_obj and date_obj:
-            start_dt = make_aware(datetime.combine(date_obj, start_time_obj))
-            end_dt = make_aware(datetime.combine(date_obj, end_time_obj))
+            start_dt = timezone.make_aware(
+                datetime.combine(date_obj, start_time_obj),
+                APPOINTMENT_TZ,
+            )
+            end_dt = timezone.make_aware(
+                datetime.combine(date_obj, end_time_obj),
+                APPOINTMENT_TZ,
+            )
         else:
             start_dt = email_obj.scheduled_at or timezone.now()
             end_dt = start_dt + timedelta(minutes=30)
@@ -105,7 +113,7 @@ def send_lead_email(email_id):
                 "event_title": email_obj.subject,
                 "start_time": start_dt.isoformat(),
                 "end_time": end_dt.isoformat(),
-                "timezone": "Asia/Kolkata",
+                "timezone": APPOINTMENT_TIME_ZONE,
                 "attendees": [email_obj.lead.email],
                 "location": (
                     email_obj.clinic.name if email_obj.clinic else "Online Consultation"

@@ -8,6 +8,8 @@ from .user_permission import UserPermission
 
 # Core LMS models
 from .lead import Lead
+from .lead_form_field import LeadFormField
+from .lead_custom_field_value import LeadCustomFieldValue
 from .campaign import Campaign
 
 # ✅ ADD THIS LINE (IMPORTANT FIX)

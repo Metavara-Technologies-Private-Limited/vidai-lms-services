@@ -3,6 +3,7 @@
 # =====================================================
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+import json
 
 from restapi.models import (
     Lead,
@@ -14,6 +15,8 @@ from restapi.models import (
     ReferralDepartment,
     PipelineStage,
     Pipeline,
+    LeadFormField,
+    LeadCustomFieldValue,
 )
 
 from restapi.services.lead_service import create_lead, update_lead
@@ -119,6 +122,7 @@ class LeadReadSerializer(serializers.ModelSerializer):
     treatment_interest = serializers.SerializerMethodField()
 
     documents = serializers.SerializerMethodField()
+    custom_field_values = serializers.SerializerMethodField()
     quality = serializers.SerializerMethodField()
     last_interaction_at = serializers.SerializerMethodField()
 
@@ -157,6 +161,21 @@ class LeadReadSerializer(serializers.ModelSerializer):
                 "name": interest.name
             }
             for interest in obj.treatment_interest.all()
+        ]
+
+    def get_custom_field_values(self, obj):
+        values = getattr(obj, "custom_field_values", None)
+        if values is None:
+            return []
+
+        return [
+            {
+                "field_key": item.field.field_key,
+                "field_label": item.field.field_label,
+                "field_type": item.field.field_type,
+                "value": item.value,
+            }
+            for item in values.select_related("field").filter(field__is_active=True).order_by("field__sort_order", "field__field_label")
         ]
 
     # def get_last_interaction_at(self, obj):
@@ -280,6 +299,7 @@ class LeadSerializer(serializers.ModelSerializer):
         allow_null=True,
         allow_blank=True,
     )
+    custom_field_values = serializers.JSONField(required=False)
 
     class Meta:
         model = Lead
@@ -334,6 +354,7 @@ class LeadSerializer(serializers.ModelSerializer):
 
             # ── NEW ──────────────────────────────────────────────────────────
             "action_status",
+            "custom_field_values",
 
             "treatment_interest",
             "book_appointment",
@@ -380,6 +401,18 @@ class LeadSerializer(serializers.ModelSerializer):
                 f"Invalid action_status '{value}'. Must be one of: {', '.join(sorted(allowed))}"
             )
 
+        return value
+
+    def validate_custom_field_values(self, value):
+        if value in (None, "", "null"):
+            return {}
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                raise serializers.ValidationError("Invalid custom field values")
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Expected an object of field_key/value pairs")
         return value
 
     # =====================================================
