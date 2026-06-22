@@ -17,6 +17,8 @@ from restapi.models import (
     Campaign,
     LeadDocument,
     LeadEmail,
+    LeadFormField,
+    LeadCustomFieldValue,
     ReferralDepartment,
     ReferralSource,
     PipelineStage,
@@ -88,6 +90,36 @@ def _resolve_assignee_name(assigned_to_id, assigned_to_name):
     return None
 
 
+def _save_custom_field_values(lead, values):
+    if values in (None, "", "null"):
+        return
+    if not isinstance(values, dict):
+        raise ValidationError({"custom_field_values": "Expected an object of field_key/value pairs"})
+
+    for field_key, raw_value in values.items():
+        key = str(field_key or "").strip()
+        if not key:
+            continue
+
+        field = LeadFormField.objects.filter(
+            field_key=key,
+            is_active=True,
+            model_field="",
+        ).first()
+        if not field:
+            continue
+
+        value = "" if raw_value is None else str(raw_value).strip()
+        if value:
+            LeadCustomFieldValue.objects.update_or_create(
+                lead=lead,
+                field=field,
+                defaults={"value": value},
+            )
+        else:
+            LeadCustomFieldValue.objects.filter(lead=lead, field=field).delete()
+
+
 # =====================================================
 # PHONE VALIDATION
 # =====================================================
@@ -149,6 +181,7 @@ def _validate_phone(value):
 def create_lead(validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
+    custom_field_values = validated_data.pop("custom_field_values", {})
 
     # ✅ INTEREST
     treatment_interest = validated_data.pop("treatment_interest", [])
@@ -408,6 +441,8 @@ def create_lead(validated_data, request=None):
             file=file
         )
 
+    _save_custom_field_values(lead, custom_field_values)
+
     return lead
 
 
@@ -418,6 +453,7 @@ def create_lead(validated_data, request=None):
 def update_lead(instance, validated_data, request=None):
 
     documents = validated_data.pop("documents", [])
+    custom_field_values = validated_data.pop("custom_field_values", None)
 
     # ✅ INTEREST
     treatment_interest = validated_data.pop("treatment_interest", None)
@@ -674,6 +710,9 @@ def update_lead(instance, validated_data, request=None):
             lead=instance,
             file=file
         )
+
+    if custom_field_values is not None:
+        _save_custom_field_values(instance, custom_field_values)
 
     return instance
 

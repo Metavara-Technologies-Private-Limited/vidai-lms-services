@@ -6,11 +6,52 @@ from restapi.models import (
     PipelineStage,
     StageRule,
     StageField,
+    LeadFormField,
     Clinic,
     PipelineStageAuditLog,
     Lead,
     
 )
+
+
+def _resolve_stage_field_payload(field):
+    field_key = str(field.get("field_key") or "").strip()
+    lead_form_field = None
+    if field_key:
+        lead_form_field = LeadFormField.objects.filter(
+            field_key=field_key,
+            is_active=True,
+        ).first()
+        if lead_form_field is None:
+            raise ValidationError({"field_key": f"Invalid lead form field: {field_key}"})
+
+    if lead_form_field:
+        field_name = lead_form_field.field_label
+        field_type = lead_form_field.stage_field_type
+        is_mandatory = bool(field.get("is_mandatory", False))
+        if lead_form_field.is_required and lead_form_field.is_locked:
+            is_mandatory = True
+        return {
+            "field_key": lead_form_field.field_key,
+            "field_name": field_name,
+            "field_type": field_type,
+            "is_mandatory": is_mandatory,
+        }
+
+    field_name = str(field.get("field_name") or "").strip()
+    field_type = str(field.get("field_type") or "text").strip()
+    valid_types = {choice[0] for choice in StageField.FIELD_TYPE_CHOICES}
+    if not field_name:
+        raise ValidationError({"field_name": "Field name is required"})
+    if field_type not in valid_types:
+        raise ValidationError({"field_type": f"Invalid field type: {field_type}"})
+
+    return {
+        "field_key": None,
+        "field_name": field_name,
+        "field_type": field_type,
+        "is_mandatory": bool(field.get("is_mandatory", False)),
+    }
 
 
 def _assign_fallback_default(clinic):
@@ -242,13 +283,21 @@ def save_stage_rules(stage, rules_data):
 @transaction.atomic
 def save_stage_fields(stage, fields_data):
     StageField.objects.filter(stage=stage).delete()
+    seen_keys = set()
 
     for field in fields_data:
+        payload = _resolve_stage_field_payload(field)
+        duplicate_key = payload["field_key"] or payload["field_name"].lower()
+        if duplicate_key in seen_keys:
+            raise ValidationError({"fields": "Duplicate data capture fields are not allowed"})
+        seen_keys.add(duplicate_key)
+
         StageField.objects.create(
             stage=stage,
-            field_name=field["field_name"],
-            field_type=field["field_type"],
-            is_mandatory=field.get("is_mandatory", False),
+            field_key=payload["field_key"],
+            field_name=payload["field_name"],
+            field_type=payload["field_type"],
+            is_mandatory=payload["is_mandatory"],
         )
 
 
@@ -297,6 +346,7 @@ def duplicate_pipeline(pipeline_id):
         for field in stage.fields.all():
             StageField.objects.create(
                 stage=new_stage,
+                field_key=field.field_key,
                 field_name=field.field_name,
                 field_type=field.field_type,
                 is_mandatory=field.is_mandatory,
@@ -377,6 +427,7 @@ def duplicate_stage(stage_id):
     for field in original.fields.all():
         StageField.objects.create(
             stage=new_stage,
+            field_key=field.field_key,
             field_name=field.field_name,
             field_type=field.field_type,
             is_mandatory=field.is_mandatory,

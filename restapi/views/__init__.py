@@ -3,6 +3,7 @@ from .employee_views import *
 from .clinic_views import *
 
 from .lead_views import *
+from .lead_form_field_views import *
 from .lead_note_views import *
 from .lead_email_views import *
 

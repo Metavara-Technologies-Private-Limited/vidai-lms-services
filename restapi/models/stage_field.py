@@ -20,6 +20,7 @@ class StageField(models.Model):
         ("dropdown", "Dropdown"),
     )
     field_type = models.CharField(max_length=20, choices=FIELD_TYPE_CHOICES)
+    field_key = models.CharField(max_length=100, null=True, blank=True, db_index=True)
 
     is_mandatory = models.BooleanField(default=False)
 
